@@ -24,7 +24,7 @@ set(H_PUBLIC "${SRC_PATH}/public")
 set(H_PUBLIC_PATH "${H_PUBLIC}/cfgo")
 
 message(STATUS "configure file")
-configure_file("${H_PUBLIC_PATH}/config/configuration.h.in" "${H_PUBLIC_PATH}/config/configuration.h")
+configure_file("${H_PUBLIC_PATH}/config/configuration.h.in" "${H_PUBLIC_PATH}/config/configuration.h" IMMEDIATE @ONLY)
 
 message(STATUS "set src files")
 set(MY_PUBLIC_HEADERS
