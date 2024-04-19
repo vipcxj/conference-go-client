@@ -1,0 +1,42 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "cgclient",
+  "version": "0.1.0",
+  "dependencies": [
+    {
+      "name": "asio",
+      "features": [
+        "coroutine"
+      ]
+    },
+    "asiochan",
+    "boost-uuid",
+    "boost-circular-buffer",
+    "boost-algorithm",
+    "cuda",
+    "cuda-api-wrappers",
+    {
+      "name": "opencv",
+      "features": ["cuda"]
+    },
+    "fmt",
+    "cpptrace",
+    "spdlog",
+    "nlohmann-json",
+    {
+      "name": "libdatachannel",
+      "features": ["srtp"]
+    },
+    {
+      "name": "gstreamer",
+      "features": ["plugins-good", "nvcodec"]
+    },
+    "socket-io-client",
+    "gtest",
+    "poco",
+    {
+      "name": "libunwind",
+      "platform": "linux"
+    }
+  ]
+}
