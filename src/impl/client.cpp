@@ -39,7 +39,7 @@ namespace cfgo
             m_client(std::make_unique<sio::client>()),
             m_closer(closer),
             m_peer(std::make_shared<::rtc::PeerConnection>(config.m_rtc_config)),
-            m_id(boost::lexical_cast<std::string>(boost::uuids::random_generator()())),
+            m_id(boost::uuids::to_string(boost::uuids::random_generator()())),
             m_io_context(io_ctx),
             m_thread_safe(thread_safe),
             m_mutex()

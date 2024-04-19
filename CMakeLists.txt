@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(cfgoclient)
+project(conference-go-client)
 
 include(GNUInstallDirs)
 
@@ -18,31 +18,15 @@ else()
     set(SUPPORT_GSTREAMER 0)
 endif()
 
-include("${CMAKE_CURRENT_LIST_DIR}/scripts/cmake/NuGetTools/NuGetTools.cmake")
-file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/nuget/packages")
-set(NUGET_PACKAGES_DIR ${CMAKE_CURRENT_SOURCE_DIR}/nuget/packages)
-nuget_initialize()
-set(ONNX_VERSION "1.17.1")
-nuget_add_dependencies(
-    PACKAGE Microsoft.ML.OnnxRuntime.Gpu VERSION ${ONNX_VERSION} CMAKE_PREFIX_PATHS "../../../cmake"
-)
-if(UNIX)
-    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/nuget/packages/Microsoft.ML.OnnxRuntime.Gpu.Linux/runtimes/linux-x64/native/libonnxruntime.so.${ONNX_VERSION}")
-        execute_process(
-            COMMAND ${CMAKE_COMMAND} -E create_symlink libonnxruntime.so "libonnxruntime.so.${ONNX_VERSION}"
-            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/nuget/packages/Microsoft.ML.OnnxRuntime.Gpu.Linux/runtimes/linux-x64/native/"
-        )
-    endif()
-endif()
-
-
 set(SRC_PATH "${CMAKE_CURRENT_SOURCE_DIR}/src")
 set(H_IMPL "${SRC_PATH}/impl")
 set(H_PUBLIC "${SRC_PATH}/public")
 set(H_PUBLIC_PATH "${H_PUBLIC}/cfgo")
 
+message(STATUS "configure file")
 configure_file("${H_PUBLIC_PATH}/config/configuration.h.in" "${H_PUBLIC_PATH}/config/configuration.h")
 
+message(STATUS "set src files")
 set(MY_PUBLIC_HEADERS
     "${H_PUBLIC_PATH}/config/configuration.h"
     "${H_PUBLIC_PATH}/configuration.hpp"
@@ -131,28 +115,14 @@ set(MY_GST_PLUGIN_SOURCES
 set(MY_TEST_PATH "${SRC_PATH}/test")
 
 if(GSTREAMER_SUPPORT)
-    find_package(PkgConfig)
-    if(USE_GSTREAMER_FULL_STATIC)
-        pkg_search_module(gstreamer-full REQUIRED IMPORTED_TARGET gstreamer-full-1.0)
-    endif()
-    #pkg_search_module(gstreamer-codecparsers REQUIRED IMPORTED_TARGET gstreamer-codecparsers-1.0)
-    pkg_search_module(gstreamer REQUIRED IMPORTED_TARGET gstreamer-1.0)
-    pkg_search_module(gstreamer-allocators REQUIRED IMPORTED_TARGET gstreamer-allocators-1.0)
-    pkg_search_module(gstreamer-app REQUIRED IMPORTED_TARGET gstreamer-app-1.0)
-    pkg_search_module(gstreamer-audio REQUIRED IMPORTED_TARGET gstreamer-audio-1.0)
-    pkg_search_module(gstreamer-base REQUIRED IMPORTED_TARGET gstreamer-base-1.0)
-    pkg_search_module(gstreamer-controller REQUIRED IMPORTED_TARGET gstreamer-controller-1.0)
-    pkg_search_module(gstreamer-cuda REQUIRED IMPORTED_TARGET gstreamer-cuda-1.0)
-    pkg_search_module(gstreamer-net REQUIRED IMPORTED_TARGET gstreamer-net-1.0)
-    pkg_search_module(gstreamer-pbutils REQUIRED IMPORTED_TARGET gstreamer-pbutils-1.0)
-    pkg_search_module(gstreamer-plugins-base REQUIRED IMPORTED_TARGET gstreamer-plugins-base-1.0)
-    pkg_search_module(gstreamer-rtp REQUIRED IMPORTED_TARGET gstreamer-rtp-1.0)
-    pkg_search_module(gstreamer-rtsp REQUIRED IMPORTED_TARGET gstreamer-rtsp-1.0)
-    pkg_search_module(gstreamer-sdp REQUIRED IMPORTED_TARGET gstreamer-sdp-1.0)
-    pkg_search_module(gstreamer-tag REQUIRED IMPORTED_TARGET gstreamer-tag-1.0)
-    pkg_search_module(gstreamer-video REQUIRED IMPORTED_TARGET gstreamer-video-1.0)
+    configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/gstreamer.cmake.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/cmake/gstreamer.cmake"
+        IMMEDIATE @ONLY)
+    include("${CMAKE_CURRENT_BINARY_DIR}/cmake/gstreamer.cmake")
 endif()
 
+message(STATUS "find packages")
 find_package(asio CONFIG REQUIRED)
 find_path(ASIOCHAN_INCLUDE_DIRS "asiochan/asiochan.hpp")
 find_package(Boost REQUIRED)
@@ -165,10 +135,6 @@ find_package(nlohmann_json CONFIG REQUIRED)
 
 if(UNIX AND NOT APPLE)
     set(LINUX TRUE)
-endif()
-
-if(LINUX)
-    pkg_check_modules(libunwind REQUIRED IMPORTED_TARGET GLOBAL libunwind)
 endif()
 
 #list(APPEND CMAKE_INSTALL_RPATH [=[$ORIGIN/../lib]=])
@@ -191,7 +157,6 @@ function(link_gstreamer target)
             PkgConfig::gstreamer-rtsp
             PkgConfig::gstreamer-tag
             PkgConfig::gstreamer-video
-            PkgConfig::gstreamer-cuda
         )
     endif()
     target_compile_definitions(${target} PRIVATE GST_USE_UNSTABLE_API)
@@ -219,6 +184,7 @@ function(fix_win_version_warn target)
     endif()
 endfunction()
 
+message(STATUS "add library cfgoclient")
 add_library(cfgoclient ${MY_SOURCES} ${MY_PUBLIC_HEADERS} ${MY_PRIVATE_HEADERS})
 target_compile_definitions(cfgoclient PRIVATE BUILDING_CFGO)
 target_include_directories(cfgoclient PUBLIC
@@ -229,6 +195,7 @@ target_include_directories(cfgoclient PRIVATE ${H_PRIVATE} ${SRC_PATH})
 fix_win_version_warn(cfgoclient)
 link_common_libs(cfgoclient)
 include_asiochan(cfgoclient)
+target_include_directories(cfgoclient PRIVATE ${Boost_INCLUDE_DIRS})
 target_link_libraries(cfgoclient PRIVATE sioclient::sioclient sioclient::sioclient_tls)
 target_link_libraries(cfgoclient PRIVATE nlohmann_json::nlohmann_json)
 if(TARGET LibDataChannel::LibDataChannel)
@@ -241,6 +208,7 @@ if(GSTREAMER_SUPPORT)
 endif()
 
 if(GSTREAMER_SUPPORT)
+    message(STATUS "add library cfgogst")
     add_library(cfgogst ${MY_GST_PLUGIN_SOURCES} ${MY_GST_PLUGIN_PUBLIC_HEADERS} ${MY_GST_PLUGIN_PRIVATE_HEADERS})
     target_compile_definitions(cfgogst PRIVATE BUILDING_CFGO)
     target_include_directories(cfgogst PUBLIC
@@ -248,6 +216,7 @@ if(GSTREAMER_SUPPORT)
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     )
     target_include_directories(cfgogst PRIVATE ${H_PRIVATE} ${SRC_PATH})
+    target_include_directories(cfgogst PRIVATE ${Boost_INCLUDE_DIRS})
     fix_win_version_warn(cfgogst)
     target_link_libraries(cfgogst PRIVATE cfgoclient)
     include_asiochan(cfgogst)
@@ -259,6 +228,10 @@ if(ENABLE_TEST)
     include(CTest)
 
     find_package(GTest CONFIG REQUIRED)
+
+    if(LINUX)
+        pkg_check_modules(libunwind REQUIRED IMPORTED_TARGET GLOBAL libunwind)
+    endif()
 
     add_executable(test-coevent "${MY_TEST_PATH}/coevent.cpp" "${SRC_PATH}/coevent.cpp" "${H_PRIVATE_PATH}/coevent.hpp")
     target_include_directories(test-coevent PRIVATE "${H_PRIVATE}")
@@ -281,9 +254,29 @@ if(ENABLE_TEST)
         find_package(cuda-api-wrappers CONFIG REQUIRED)
         find_package(OpenCV CONFIG REQUIRED)
 
-        find_package(onnxruntime CONFIG REQUIRED COMPONENTS onnxruntime_providers_cuda OPTIONAL_COMPONENTS onnxruntime_providers_tensorrt)
-
         subdirs(${SRC_PATH}/test/cuda)
+
+
+        message(STATUS "nuget configure")
+        include("${CMAKE_CURRENT_LIST_DIR}/scripts/cmake/NuGetTools/NuGetTools.cmake")
+        file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/nuget/packages")
+        set(NUGET_PACKAGES_DIR ${CMAKE_CURRENT_SOURCE_DIR}/nuget/packages)
+        nuget_initialize()
+        set(ONNX_VERSION "1.17.1")
+        nuget_add_dependencies(
+            PACKAGE Microsoft.ML.OnnxRuntime.Gpu VERSION ${ONNX_VERSION} CMAKE_PREFIX_PATHS "../../../cmake"
+        )
+        if(UNIX)
+            if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/nuget/packages/Microsoft.ML.OnnxRuntime.Gpu.Linux/runtimes/linux-x64/native/libonnxruntime.so.${ONNX_VERSION}")
+                execute_process(
+                    COMMAND ${CMAKE_COMMAND} -E create_symlink libonnxruntime.so "libonnxruntime.so.${ONNX_VERSION}"
+                    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/nuget/packages/Microsoft.ML.OnnxRuntime.Gpu.Linux/runtimes/linux-x64/native/"
+                )
+            endif()
+        endif()
+
+        find_package(onnxruntime CONFIG REQUIRED COMPONENTS onnxruntime_providers_cuda OPTIONAL_COMPONENTS onnxruntime_providers_tensorrt)
+        pkg_search_module(gstreamer-cuda REQUIRED IMPORTED_TARGET gstreamer-cuda-1.0)
 
         add_executable(test-gst "${MY_TEST_PATH}/gst.cpp")
         target_compile_definitions(test-gst PRIVATE BUILDING_CFGO)
@@ -293,6 +286,7 @@ if(ENABLE_TEST)
         target_link_libraries(test-gst PRIVATE cfgo-cuda)
         fix_win_version_warn(test-gst)
         link_gstreamer(test-gst)
+        target_link_libraries(test-gst PRIVATE PkgConfig::gstreamer-cuda)
         include_asiochan(test-gst)
         link_common_libs(test-gst)
         find_package(Poco REQUIRED COMPONENTS Net Foundation)
@@ -324,52 +318,56 @@ if(ENABLE_TEST)
     endif()
 endif()
 
-install(TARGETS cfgoclient EXPORT cfgoclientTargets
+message(STATUS "configure install")
+if(GSTREAMER_SUPPORT)
+    set(INSTALL_TARGETS cfgoclient cfgogst)
+else()
+    set(INSTALL_TARGETS cfgoclient)
+endif()
+install(TARGETS ${INSTALL_TARGETS} EXPORT ${CMAKE_PROJECT_NAME}-targets
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
 install(DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/src/public/cfgo" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+    REGEX "/gst" EXCLUDE
     REGEX "/gst/.*" EXCLUDE
 )
+if(GSTREAMER_SUPPORT)
+    install(DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/src/public/cfgo/gst" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/cfgo")
+endif()
+
 # Export targets
 install(
-	EXPORT cfgoclientTargets
-	FILE cfgoclient-targets.cmake
-	NAMESPACE cfgo::
-	DESTINATION share/cfgo
+	EXPORT ${CMAKE_PROJECT_NAME}-targets
+	FILE ${CMAKE_PROJECT_NAME}-targets.cmake
+	NAMESPACE ${CMAKE_PROJECT_NAME}::
+	DESTINATION share/${CMAKE_PROJECT_NAME}
 )
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/cmake/gstreamer.cmake" DESTINATION share/${CMAKE_PROJECT_NAME})
+if(GSTREAMER_SUPPORT)
+    set(FIND_GSTREAMER "include(\"\${CMAKE_CURRENT_LIST_DIR}/gstreamer.cmake\")\n")
+else()
+    set(FIND_GSTREAMER)
+endif()
+
 # Generate the config file in the current binary dir (this ensures it's not placed directly in source)
-file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/cfgoclient-config.cmake"
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_PROJECT_NAME}-config.cmake"
     "include(CMakeFindDependencyMacro)\n"
-    "find_dependency(Boost CONFIG REQUIRED)\n"
     "find_dependency(cpptrace CONFIG REQUIRED)\n"
     "find_dependency(spdlog CONFIG REQUIRED)\n"
     "find_dependency(fmt CONFIG REQUIRED)\n"
     "find_dependency(sioclient CONFIG REQUIRED)\n"
     "find_dependency(LibDataChannel CONFIG REQUIRED)\n"
     "find_dependency(nlohmann_json CONFIG REQUIRED)\n"
-    "include(\"\${CMAKE_CURRENT_LIST_DIR}/cfgoclient-targets.cmake\")\n"
+    "${FIND_GSTREAMER}"
+    "if(NOT TARGET ${CMAKE_PROJECT_NAME}::${CMAKE_PROJECT_NAME})\n"
+    "    include(\"\${CMAKE_CURRENT_LIST_DIR}/${CMAKE_PROJECT_NAME}-targets.cmake\")\n"
+    "endif()"
 )
 # Install the generated config file
-install(FILES "${CMAKE_CURRENT_BINARY_DIR}/cfgoclient-config.cmake"
-        DESTINATION share/cfgo)
-
-if(GSTREAMER_SUPPORT)
-    install(TARGETS cfgogst EXPORT cfgogstTargets
-        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    )
-    install(DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/src/public/cfgo/gst" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/cfgo")
-    # Export targets
-    install(
-        EXPORT cfgogstTargets
-        FILE cfgogstTargets.cmake
-        NAMESPACE cfgo::
-        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/cfgo
-    )
-endif()
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_PROJECT_NAME}-config.cmake"
+        DESTINATION share/${CMAKE_PROJECT_NAME})
 
 if(NOT TARGET uninstall)
     configure_file(
@@ -380,3 +378,4 @@ if(NOT TARGET uninstall)
     add_custom_target(uninstall
         COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/cmake/uninstall.cmake)
 endif()
+message(STATUS "configure end")
