@@ -170,7 +170,7 @@ endfunction(link_common_libs target)
 
 function(include_asiochan target)
     if(STANDALONE_ASIO)
-        target_compile_definitions(${target} PRIVATE ASIOCHAN_USE_STANDALONE_ASIO)
+        target_compile_definitions(${target} PUBLIC ASIOCHAN_USE_STANDALONE_ASIO)
     endif()
     target_include_directories(${target} PRIVATE ${ASIOCHAN_INCLUDE_DIRS})
 endfunction(include_asiochan target)
