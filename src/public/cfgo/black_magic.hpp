@@ -52,6 +52,24 @@ namespace cfgo
             }, t);
         }
 
+        template <typename First, typename... Others>
+        auto shift_variant(std::variant<First, Others...> &&t)
+            -> std::variant<Others...>
+        {
+            return std::visit(overloaded{
+                []<typename T>(T && v) -> std::variant<Others...> {
+                    if constexpr (std::disjunction_v<std::is_same<std::decay_t<T>, Others>...>)
+                    {
+                        return v;
+                    }
+                    else
+                    {
+                        throw std::bad_variant_access();
+                    }
+                },
+            }, std::move(t));
+        }
+
     } // namespace magic
 
 } // namespace cfgo
