@@ -260,7 +260,8 @@ namespace cfgo
         std::variant<TS...> m_value;
     public:
         using PC = cancelable<std::variant<TS...>>;
-        explicit select_result(std::variant<TS...> v): m_value(v) {}
+        explicit select_result(const std::variant<TS...> & v): m_value(v) {}
+        explicit select_result(std::variant<TS...> && v): m_value(std::move(v)) {}
 
         template <typename T>
         static constexpr bool is_alternative = (std::same_as<T, TS> or ...);
