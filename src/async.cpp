@@ -7,7 +7,7 @@
 
 namespace cfgo
 {
-    close_chan INVALID_CLOSE_CHAN{};
+    close_chan INVALID_CLOSE_CHAN {nullptr};
 
     CancelError::CancelError(std::string&& message, Reason reason, bool trace) noexcept:
         cpptrace::exception_with_message(std::move(message), trace ? cpptrace::detail::get_raw_trace_and_absorb() : cpptrace::raw_trace{}),
@@ -441,6 +441,8 @@ namespace cfgo
         }
     } // namespace detail
 
+    CloseSignal::CloseSignal(std::nullptr_t): m_state(nullptr) {}
+
     CloseSignal::CloseSignal(const std::shared_ptr<detail::CloseSignalState> & state): m_state(state)
     {}
 
@@ -452,63 +454,120 @@ namespace cfgo
 
     auto CloseSignal::init_timer() -> asio::awaitable<void>
     {
-        auto executor = co_await asio::this_coro::executor;
-        m_state->init_timer(executor);
+        if (m_state)
+        {
+            auto executor = co_await asio::this_coro::executor;
+            m_state->init_timer(executor);
+        }
     }
 
     auto CloseSignal::get_waiter() -> std::optional<Waiter>
     {
-        return m_state->get_waiter();
+        if (m_state)
+        {
+            return m_state->get_waiter();
+        }
+        else
+        {
+            // forever, never close.
+            return unique_void_chan {};
+        }
     }
 
     auto CloseSignal::get_stop_waiter() -> std::optional<Waiter>
     {
-        return m_state->get_stop_waiter();
+        if (m_state)
+        {
+            return m_state->get_stop_waiter();
+        }
+        else
+        {
+            // never stop.
+            return std::nullopt;
+        }
     }
 
     bool CloseSignal::is_closed() const noexcept
     {
-        return m_state->m_closed;
+        // null closer never closed.
+        return m_state ? m_state->m_closed : false;
     }
 
     bool CloseSignal::is_timeout() const noexcept
     {
-        return m_state->m_is_timeout;
+        // null closer never timeout.
+        return m_state ? m_state->m_is_timeout : false;
     }
 
     void CloseSignal::close(std::string && reason)
     {
-        m_state->close(false, std::move(reason));
+        if (m_state)
+        {
+            m_state->close(false, std::move(reason));
+        }
+        else
+        {
+            throw cpptrace::runtime_error("The null closer dose not support the close operation.");
+        }
     }
 
     bool CloseSignal::close_no_except(std::string && reason) noexcept
     {
-        return m_state->close_no_except(false, std::move(reason));
+        return m_state ? m_state->close_no_except(false, std::move(reason)) : false;
     }
 
     void CloseSignal::set_timeout(const duration_t& dur, std::string && reason)
     {
-        m_state->set_timeout(dur, std::move(reason));
+        if (m_state)
+        {
+            m_state->set_timeout(dur, std::move(reason));
+        }
+        else
+        {
+            throw cpptrace::runtime_error("The null closer does not support the timeout operation.");
+        }
     }
 
     duration_t CloseSignal::get_timeout() const noexcept
     {
-        return m_state->m_timeout;
+        return m_state ? m_state->m_timeout : duration_t {0};
     }
 
     void CloseSignal::stop(bool stop_timer)
     {
-        m_state->stop(stop_timer);
+        if (m_state)
+        {
+            m_state->stop(stop_timer);
+        }
+        else
+        {
+            throw cpptrace::runtime_error("The null closer does not support the stop operation.");
+        }
     }
 
     void CloseSignal::resume()
     {
-        m_state->resume();
+        if (m_state)
+        {
+            m_state->resume();
+        }
+        else
+        {
+            throw cpptrace::runtime_error("The null closer does not support the stop operation.");
+        }
     }
 
     CloseSignal CloseSignal::create_child() const
     {
-        return m_state->create_child();
+        if (m_state)
+        {
+            return m_state->create_child();
+        }
+        else
+        {
+            // just a new closer.
+            return CloseSignal {};
+        }
     }
 
     auto CloseSignal::await() -> asio::awaitable<bool>
@@ -523,12 +582,12 @@ namespace cfgo
 
     const char * CloseSignal::get_close_reason() const noexcept
     {
-        return m_state->m_close_reason.c_str();
+        return m_state ? m_state->m_close_reason.c_str() : "";
     }
 
     const char * CloseSignal::get_timeout_reason() const noexcept
     {
-        return m_state->m_timeout_reason.c_str();
+        return m_state ? m_state->m_timeout_reason.c_str() : "";
     }
     
 } // namespace cfgo
