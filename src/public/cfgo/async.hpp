@@ -809,7 +809,7 @@ namespace cfgo
                 }
                 else
                 {
-                    co_return res.template get_received<T>();
+                    co_return std::move(res).template get_received<T>();
                 }
             }
         }
@@ -841,7 +841,7 @@ namespace cfgo
             }
             else
             {
-                co_return res.template get_received<T>();
+                co_return std::move(res).template get_received<T>();
             }
         }
         else
