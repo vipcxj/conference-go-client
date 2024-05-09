@@ -52,7 +52,7 @@ namespace cfgo
             std::shared_ptr<rtc::Track> track;
 
             bool m_inited;
-            std::mutex m_lock;
+            mutex m_lock;
             MsgBuffer m_rtp_cache;
             MsgBuffer m_rtcp_cache;
             uint32_t m_seq;

@@ -4,6 +4,11 @@
 #include <memory>
 #include "sio_message.h"
 #include "asiochan/channel.hpp"
+#include "cfgo/macros.h"
+#if DEBUG
+#include "yamc/checked_mutex.hpp"
+#include "yamc/checked_shared_mutex.hpp"
+#endif
 
 namespace cfgo
 {
@@ -18,6 +23,17 @@ namespace cfgo
     struct Subscribation;
     using SubPtr = std::shared_ptr<Subscribation>;
     
+    #if DEBUG
+    using mutex = yamc::checked::mutex;
+    using timed_mutex = yamc::checked::timed_mutex;
+    using recursive_mutex = yamc::checked::recursive_mutex;
+    using recursive_timed_mutex = yamc::checked::recursive_timed_mutex;
+    #else
+    using mutex = std::mutex;
+    using timed_mutex = std::timed_mutex;
+    using recursive_mutex = std::recursive_mutex;
+    using recursive_timed_mutex = std::recursive_timed_mutex;
+    #endif
 } // namespace cfgo
 
 

@@ -407,7 +407,7 @@ namespace cfgo
                 });
                 m_client->connect(m_config.m_signal_url, create_auth_message());
                 DEFERS_WHEN_FAIL(defers);
-                std::mutex cand_mux;
+                mutex cand_mux;
                 std::vector<msg_ptr> cands;
                 bool remoted = false;
                 m_peer->onLocalCandidate([this](auto &&cand)

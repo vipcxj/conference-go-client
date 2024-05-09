@@ -6,6 +6,7 @@
 #include <mutex>
 #include <atomic>
 #include "asio.hpp"
+#include "cfgo/alias.hpp"
 #include "cfgo/move_only_function.hpp"
 
 namespace cfgo {
@@ -19,7 +20,7 @@ namespace cfgo {
         using TimerPtr = std::unique_ptr<asio::steady_timer>;
     private:
         int m_times;
-        std::mutex m_mutex;
+        mutex m_mutex;
         std::atomic_bool m_done;
         std::exception_ptr m_exception;
         cfgo::unique_function<void(std::exception_ptr)> m_handler;

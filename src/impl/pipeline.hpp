@@ -45,7 +45,7 @@ namespace cfgo
                 NODE_HANDLER_MAP m_node_handlers;
                 LinkMap m_links_by_src;
                 LinkList m_pending_links;
-                std::mutex m_mutex;
+                mutex m_mutex;
                 asiochan::unbounded_channel<GstMessage *> m_msg_ch;
                 PadMap m_pads;
                 WaiterMap m_waiters;

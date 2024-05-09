@@ -42,7 +42,7 @@ namespace cfgo
     {
         struct GstCfgoSrcPrivateState
         {
-            std::mutex mutex;
+            mutex mutex;
             bool running;
             cfgo::gst::CfgoSrc::Ptr task;
 

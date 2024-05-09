@@ -96,7 +96,7 @@ namespace cfgo {
 
             CtxPtr m_io_context;
             const bool m_thread_safe;
-            std::mutex m_mutex;
+            mutex m_mutex;
 
             Client(const Configuration& config, const CtxPtr& io_ctx, close_chan closer, bool thread_safe);
             void lock();

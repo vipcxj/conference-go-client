@@ -69,7 +69,7 @@ namespace cfgo
             };
         private:
             State m_state;
-            std::mutex m_state_mutex;
+            mutex m_state_mutex;
             GstCfgoSrcMode m_mode;
             Client::Ptr m_client;
             Pattern m_pattern;
@@ -79,7 +79,7 @@ namespace cfgo
             TryOption m_sub_try_option;
             guint64 m_read_timeout;
             TryOption m_read_try_option;
-            std::recursive_mutex m_mutex;
+            recursive_mutex m_mutex;
             GstCfgoSrc * m_owner = nullptr;
             bool m_detached = false;
             GstElement * m_rtp_bin = nullptr;

@@ -249,7 +249,7 @@ TEST(Chan, AsyncTasksAllVoid) {
         std::size_t n_tasks = 5;
         {
             AsyncTasksAll<void> tasks{};
-            std::mutex mutex;
+            mutex mutex;
             int sum = 0;
             for (std::size_t i = 0; i < n_tasks; i++)
             {
@@ -274,7 +274,7 @@ TEST(Chan, AsyncTasksAllVoid) {
         {
             close_chan closer{};
             AsyncTasksAll<void> tasks{closer};
-            std::mutex mutex;
+            mutex mutex;
             int sum = 0;
             for (std::size_t i = 0; i < n_tasks; i++)
             {
@@ -309,7 +309,7 @@ TEST(Chan, AsyncTasksAllVoid) {
             close_chan closer{};
             closer.set_timeout(std::chrono::milliseconds{100});
             AsyncTasksAll<void> tasks{closer};
-            std::mutex mutex;
+            mutex mutex;
             int sum = 0;
             for (std::size_t i = 0; i < n_tasks; i++)
             {
@@ -338,7 +338,7 @@ TEST(Chan, AsyncTasksAllVoid) {
         {
             close_chan closer{};
             AsyncTasksAll<void> tasks{closer};
-            std::mutex mutex;
+            mutex mutex;
             int sum = 0;
             for (std::size_t i = 0; i < n_tasks; i++)
             {

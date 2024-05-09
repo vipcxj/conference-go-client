@@ -24,7 +24,7 @@ namespace cfgo
                 SampleBuffer m_cache;
                 unique_void_chan m_sample_notify;
                 unique_void_chan m_eos_notify;
-                std::mutex m_mutex;
+                mutex m_mutex;
                 std::uint32_t m_seq;
                 bool m_eos;
                 bool m_init;

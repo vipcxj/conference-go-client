@@ -1,0 +1,16 @@
+{
+    "name": "yamc",
+    "version": "1.0.0",
+    "description": "C++ mutex collections, cross-platform header-only C++11 (or later) library.",
+    "homepage": "https://github.com/vipcxj/yamc",
+    "dependencies": [
+      {
+        "name": "vcpkg-cmake",
+        "host": true
+      },
+      {
+        "name": "vcpkg-cmake-config",
+        "host": true
+      }
+    ]
+  }

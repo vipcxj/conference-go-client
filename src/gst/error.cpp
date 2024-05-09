@@ -52,7 +52,7 @@ namespace cfgo
             std::string m_trace_str;
             std::string m_trace_color_str;
             std::string m_message;
-            std::mutex m_mutex;
+            mutex m_mutex;
 
             void _capture();
             void _cache_trace(const cpptrace::stacktrace & trace, bool overwrite = true);

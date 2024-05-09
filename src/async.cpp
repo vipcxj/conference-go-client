@@ -108,7 +108,7 @@ namespace cfgo
             std::string m_close_reason;
             bool m_is_timeout = false;
             bool m_stop = false;
-            std::mutex m_mutex;
+            mutex m_mutex;
             duration_t m_timeout = duration_t {0};
             duration_t m_stop_timeout = duration_t {0};
             std::string m_timeout_reason;

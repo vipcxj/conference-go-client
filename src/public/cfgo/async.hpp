@@ -93,7 +93,7 @@ namespace cfgo
         bool m_busy = false;
         using busy_chan = asiochan::channel<void>;
         std::vector<busy_chan> m_busy_chans;
-        std::mutex m_mutex;
+        mutex m_mutex;
     public:
         [[nodiscard]] asio::awaitable<bool> accquire(close_chan close_ch = INVALID_CLOSE_CHAN);
         auto release() -> asio::awaitable<void>;
@@ -992,7 +992,7 @@ namespace cfgo
         asiochan::channel<DataType> m_data_ch;
         close_chan m_done_signal;
         std::vector<TaskType> m_tasks;
-        std::mutex m_mutex;
+        mutex m_mutex;
         bool m_start;
         std::exception_ptr m_internal_err;
 
@@ -1493,7 +1493,7 @@ namespace cfgo
         friend void manually_ptr_unref<T>(manually_ptr<T> ** ptr);
     private:
         std::uint32_t m_ref_count;
-        std::mutex m_mutex;
+        mutex m_mutex;
         T m_data;
     };
 

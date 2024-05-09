@@ -23,7 +23,7 @@ namespace cfgo
                 std::string m_tgt_pad_name;
                 GstPad * m_tgt_pad = nullptr;
                 asiochan::channel<bool, 1> m_linked_ch;
-                std::mutex m_mutex;
+                mutex m_mutex;
                 cfgo::AsyncMutex m_a_mutex;
                 Pipeline * m_pipeline;
 

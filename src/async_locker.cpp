@@ -255,7 +255,7 @@ namespace cfgo
             std::uint32_t m_next_epoch = 0;
             bool m_locked = false;
             unique_void_chan m_ready_ch;
-            std::mutex m_mutex;
+            mutex m_mutex;
         };
         
         AsyncBlockerManager::AsyncBlockerManager(const ScheduleConfigure & configure): m_conf(configure) {}

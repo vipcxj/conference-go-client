@@ -92,7 +92,7 @@ namespace cfgo
     std::unordered_map<int, cfgo::Track::Ptr> track_map;
     std::unordered_map<int, int> track_ref_map;
 
-    std::mutex c_mutex;
+    mutex c_mutex;
     int last_handle = 0;
 
     CFGO_DEFINE_CPP_GET_REF(execution_context, Client::CtxPtr, "execution context")
