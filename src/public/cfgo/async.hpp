@@ -51,9 +51,14 @@ namespace cfgo
         CloseSignal(std::shared_ptr<detail::CloseSignalState> && state);
     public:
         using Waiter = asiochan::channel<void, 1>;
-        CloseSignal();
+        CloseSignal(std::nullptr_t);
+         CloseSignal();
         [[nodiscard]] bool is_closed() const noexcept;
         [[nodiscard]] bool is_timeout() const noexcept;
+        [[nodiscard]] inline operator bool() const noexcept
+        {
+            return (bool) m_state;
+        }
         void close(std::string && reason = "");
         bool close_no_except(std::string && reason = "") noexcept;
         /**
@@ -85,7 +90,7 @@ namespace cfgo
     };
 
     inline bool is_valid_close_chan(const close_chan & ch) noexcept {
-        return ch != INVALID_CLOSE_CHAN;
+        return ch;
     }
 
     class AsyncMutex {
@@ -255,7 +260,8 @@ namespace cfgo
         std::variant<TS...> m_value;
     public:
         using PC = cancelable<std::variant<TS...>>;
-        explicit select_result(std::variant<TS...> v): m_value(v) {}
+        explicit select_result(const std::variant<TS...> & v): m_value(v) {}
+        explicit select_result(std::variant<TS...> && v): m_value(std::move(v)) {}
 
         template <typename T>
         static constexpr bool is_alternative = (std::same_as<T, TS> or ...);
@@ -612,22 +618,22 @@ namespace cfgo
     template <asiochan::select_op First_Op, asiochan::select_op... Ops,
               asio::execution::executor Executor = typename First_Op::executor_type>
     requires asiochan::waitable_selection<First_Op, Ops...>
-    constexpr auto select_(First_Op first_op, Ops... other_ops)
+    constexpr auto select_(First_Op && first_op, Ops && ... other_ops)
     {
         if constexpr (sizeof...(Ops) == 0)
         {
-            return asiochan::select(first_op);
+            return asiochan::select(std::forward<First_Op>(first_op));
         }
         else
         {
-            return asiochan::select(first_op, other_ops...);
+            return asiochan::select(std::forward<First_Op>(first_op), std::forward<Ops>(other_ops)...);
         }
     }
 
     template <asiochan::select_op First_Op, asiochan::select_op... Ops,
               asio::execution::executor Executor = typename First_Op::executor_type>
     requires asiochan::waitable_selection<First_Op, Ops...>
-    [[nodiscard]] auto select(close_chan close_ch, First_Op first_op, Ops... other_ops) -> asio::awaitable<cancelable_select_result<typename First_Op::result_type, typename Ops::result_type...>>
+    [[nodiscard]] auto select(close_chan close_ch, First_Op && first_op, Ops && ... other_ops) -> asio::awaitable<cancelable_select_result<typename First_Op::result_type, typename Ops::result_type...>>
     {
         if constexpr (sizeof...(Ops) > 0)
         {
@@ -643,9 +649,9 @@ namespace cfgo
                     auto && res = co_await select_(
                         combine_read_op<void, asiochan::ops::read<void, close_chan::Waiter>, std::decay_t<First_Op>>(
                             asiochan::ops::read(*waiter_opt),
-                            first_op
+                            std::forward<First_Op>(first_op)
                         ),
-                        other_ops...
+                        std::forward<Ops>(other_ops)...
                     );
                     if (res.received_from(*waiter_opt))
                     {
@@ -672,8 +678,8 @@ namespace cfgo
                 {
                     auto res = co_await select_(
                         asiochan::ops::read(*waiter_opt),
-                        first_op,
-                        other_ops...
+                        std::forward<First_Op>(first_op),
+                        std::forward<Ops>(other_ops)...
                     );
                     if (res.received_from(*waiter_opt))
                     {
@@ -702,7 +708,7 @@ namespace cfgo
         }
         else
         {
-            auto && res = co_await select_(first_op, std::forward<Ops>(other_ops)...);
+            auto && res = co_await select_(std::forward<First_Op>(first_op), std::forward<Ops>(other_ops)...);
             co_return cancelable_select_result<typename First_Op::result_type, typename Ops::result_type...>(std::move(res).to_variant());
         }
     }
@@ -710,7 +716,7 @@ namespace cfgo
     template <asiochan::select_op First_Op, asiochan::select_op... Ops,
               asio::execution::executor Executor = typename First_Op::executor_type>
     requires asiochan::waitable_selection<First_Op, Ops...>
-    [[nodiscard]] auto select_or_throw(close_chan close_ch, First_Op first_op, Ops... other_ops) -> asio::awaitable<select_result<typename First_Op::result_type, typename Ops::result_type...>>
+    [[nodiscard]] auto select_or_throw(close_chan close_ch, First_Op && first_op, Ops && ... other_ops) -> asio::awaitable<select_result<typename First_Op::result_type, typename Ops::result_type...>>
     {
         if constexpr (sizeof...(Ops) > 0)
         {
@@ -726,9 +732,9 @@ namespace cfgo
                     auto && res = co_await select_(
                         combine_read_op<void, asiochan::ops::read<void, close_chan::Waiter>, std::decay_t<First_Op>>(
                             asiochan::ops::read(*waiter_opt),
-                            first_op
+                            std::forward<First_Op>(first_op)
                         ),
-                        other_ops...
+                        std::forward<Ops>(other_ops)...
                     );
                     if (res.received_from(*waiter_opt))
                     {
@@ -751,8 +757,8 @@ namespace cfgo
                 {
                     auto res = co_await select_(
                         asiochan::ops::read(*waiter_opt),
-                        first_op,
-                        other_ops...
+                        std::forward<First_Op>(first_op),
+                        std::forward<Ops>(other_ops)...
                     );
                     if (res.received_from(*waiter_opt))
                     {
@@ -779,7 +785,7 @@ namespace cfgo
         }
         else
         {
-            auto && res = co_await select_(first_op, std::forward<Ops>(other_ops)...);
+            auto && res = co_await select_(std::forward<First_Op>(first_op), std::forward<Ops>(other_ops)...);
             co_return select_result<typename First_Op::result_type, typename Ops::result_type...>(std::move(res).to_variant());
         }
     }
@@ -804,7 +810,7 @@ namespace cfgo
                 }
                 else
                 {
-                    co_return res.template get_received<T>();
+                    co_return std::move(res).template get_received<T>();
                 }
             }
         }
@@ -836,7 +842,7 @@ namespace cfgo
             }
             else
             {
-                co_return res.template get_received<T>();
+                co_return std::move(res).template get_received<T>();
             }
         }
         else
