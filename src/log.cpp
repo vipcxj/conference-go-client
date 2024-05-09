@@ -50,7 +50,7 @@ namespace cfgo
 
         std::shared_ptr<spdlog::logger> Log::create_logger(Category category, const std::string & name) const
         {
-            auto logger_name = name.empty() ? cfgo::Log::get_category_name(category) : name;
+            auto logger_name = name.empty() ? fmt::format("cfgo::{}", cfgo::Log::get_category_name(category)) : name;
             auto logger = spdlog::stdout_color_mt(logger_name);
             logger->set_level(get_level(category));
             return logger;
@@ -72,7 +72,8 @@ namespace cfgo
         {
         case CLIENT:
             return "client";
-        
+        case CFGOSRC:
+            return "gst::src";
         default:
             return "unknown";
         }
