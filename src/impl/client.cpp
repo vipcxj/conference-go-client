@@ -35,7 +35,8 @@ namespace cfgo
 
         Client::Client(
             const Configuration &config, const CtxPtr &io_ctx, close_chan closer, bool thread_safe
-        ) : m_config(config),
+        ) : m_logger(cfgo::Log::instance().create_logger(cfgo::Log::CLIENT)),
+            m_config(config),
             m_client(std::make_unique<sio::client>()),
             m_closer(closer),
             m_peer(std::make_shared<::rtc::PeerConnection>(config.m_rtc_config)),
@@ -287,8 +288,9 @@ namespace cfgo
         {
             auto ack_ch = std::make_shared<msg_chan>();
             msg_chan_weak_ptr weak_ack_ch = ack_ch;
+            auto self = shared_from_this();
             auto weak_self = weak_from_this();
-            spdlog::debug("[send msg {}] sending msg...", evt);
+            m_logger->debug("[send msg {}] sending msg...", evt);
             m_client->socket()->emit(evt, msg, [&evt, &weak_self, weak_ack_ch](auto &&ack_msgs)
             {
                 if (auto ack_ch = weak_ack_ch.lock())
@@ -297,13 +299,13 @@ namespace cfgo
                     {
                         if (ack_msgs.size() > 0)
                         {
-                            spdlog::debug("[send msg {}] got a ack msg.", evt);
+                            self->m_logger->debug("[send msg {}] got a ack msg.", evt);
                             auto&& ack_msg = ack_msgs[0];
                             self->write_ch(*ack_ch, ack_msg);
                         }
                         else
                         {
-                            spdlog::debug("[send msg {}] got a empty ack msg.", evt);
+                            self->m_logger->debug("[send msg {}] got a empty ack msg.", evt);
                             self->write_ch(*ack_ch, msg_ptr());
                         }
                     }
@@ -320,12 +322,12 @@ namespace cfgo
             auto result = co_await chan_read<msg_ptr>(*ack_ch, close_chan);
             if (result.is_canceled())
             {
-                spdlog::debug("[send msg {}] timeout.", evt);
+                self->m_logger->debug("[send msg {}] timeout.", evt);
                 co_return make_canceled<msg_ptr>();
             }
             else
             {
-                spdlog::debug("[send msg {}] acked.", evt);
+                self->m_logger->debug("[send msg {}] acked.", evt);
                 co_return result.value();
             }
         }
@@ -352,47 +354,39 @@ namespace cfgo
             co_return msg;
         }
 
-        void log_signaling_state(rtc::PeerConnection::SignalingState state) {
-            spdlog::debug("signaling state changed to {}", signaling_state_to_str(state));
-        }
-
-        #define OBSERVE_SIGNALING_STATE(peer) \
-        spdlog::debug("current signaling state is {}", signaling_state_to_str(peer->signalingState())); \
-        peer->onSignalingStateChange(log_signaling_state); \
+        #define OBSERVE_SIGNALING_STATE(self, peer) \
+        self->m_logger->debug("current signaling state is {}", signaling_state_to_str(peer->signalingState())); \
+        peer->onSignalingStateChange([self](rtc::PeerConnection::SignalingState state) { \
+            self->m_logger->debug("signaling state changed to {}", signaling_state_to_str(state)); \
+        }); \
         DEFER({ \
-            spdlog::debug("clean onSignalingStateChange callback."); \
+            self->m_logger->debug("clean onSignalingStateChange callback."); \
             peer->onSignalingStateChange(nullptr); \
         })
 
-        void log_gathering_state(rtc::PeerConnection::GatheringState state) {
-            spdlog::debug("gathering state changed to {}", gathering_state_to_str(state));
-        }
-        #define OBSERVE_GATHERING_STATE(peer) \
-        spdlog::debug("current gathering state is {}", gathering_state_to_str(peer->gatheringState())); \
-        peer->onGatheringStateChange(log_gathering_state); \
+        #define OBSERVE_GATHERING_STATE(self, peer) \
+        self->m_logger->debug("current gathering state is {}", gathering_state_to_str(peer->gatheringState())); \
+        peer->onGatheringStateChange([self](rtc::PeerConnection::GatheringState state) { \
+            self->m_logger->debug("gathering state changed to {}", gathering_state_to_str(state)); \
+        }); \
         DEFER({ \
-            spdlog::debug("clean onGatheringStateChange callback."); \
+            self->m_logger->debug("clean onGatheringStateChange callback."); \
             peer->onGatheringStateChange(nullptr); \
         })
 
-        void log_ice_state(rtc::PeerConnection::IceState state) {
-            spdlog::debug("ice state changed to {}", ice_state_to_str(state));
-            using ice_state = rtc::PeerConnection::IceState;
-        }
-        #define OBSERVE_ICE_STATE(peer) \
-        spdlog::debug("current ice state is {}", ice_state_to_str(peer->iceState())); \
-        peer->onIceStateChange(log_ice_state); \
+        #define OBSERVE_ICE_STATE(self, peer) \
+        self->m_logger->debug("current ice state is {}", ice_state_to_str(peer->iceState())); \
+        peer->onIceStateChange([self](rtc::PeerConnection::IceState state) { \
+            self->m_logger->debug("ice state changed to {}", ice_state_to_str(state)); \
+        }); \
         DEFER({ \
-            spdlog::debug("clean onIceStateChange callback."); \
+            self->m_logger->debug("clean onIceStateChange callback."); \
             peer->onIceStateChange(nullptr); \
         })
 
-        void log_peer_state(rtc::PeerConnection::State state) {
-            spdlog::debug("peer state changed to {}", peer_state_to_str(state));
-        }
-
         auto Client::subscribe(Pattern pattern, std::vector<std::string> req_types, close_chan close_ch) -> asio::awaitable<cfgo::Subscribation::Ptr>
         {
+            auto self = shared_from_this();
             auto closer = close_ch;
             if (!is_valid_close_chan(closer) && is_valid_close_chan(m_closer))
             {
@@ -402,7 +396,7 @@ namespace cfgo
             if (co_await m_a_mutex.accquire(closer))
             {
                 DEFER({
-                    spdlog::debug("release.");
+                    self->m_logger->debug("release.");
                     m_a_mutex.release(asio::get_associated_executor(m_io_context));
                 });
                 m_client->connect(m_config.m_signal_url, create_auth_message());
@@ -410,56 +404,56 @@ namespace cfgo
                 mutex cand_mux;
                 std::vector<msg_ptr> cands;
                 bool remoted = false;
-                m_peer->onLocalCandidate([this](auto &&cand)
+                m_peer->onLocalCandidate([self](auto &&cand)
                 {
-                    spdlog::debug("send local candidate to remote.");
-                    emit("candidate", create_add_cand_message(cand));
+                    self->m_logger->debug("send local candidate to remote.");
+                    self->emit("candidate", create_add_cand_message(cand));
                 });
                 DEFER({
-                    spdlog::debug("clean onLocalCandidate callback.");
+                    self->m_logger->debug("clean onLocalCandidate callback.");
                     m_peer->onLocalCandidate(nullptr);
                 });
-                OBSERVE_SIGNALING_STATE(m_peer);
-                OBSERVE_GATHERING_STATE(m_peer);
-                OBSERVE_ICE_STATE(m_peer);
+                OBSERVE_SIGNALING_STATE(self, m_peer);
+                OBSERVE_GATHERING_STATE(self, m_peer);
+                OBSERVE_ICE_STATE(self, m_peer);
                 asiochan::channel<::rtc::PeerConnection::State> peer_state_chan{};
-                m_peer->onStateChange([this, &peer_state_chan](auto &&state)
+                m_peer->onStateChange([self, &peer_state_chan](auto &&state)
                 {
-                    log_peer_state(state);
+                    self->m_logger->debug("peer state changed to {}", peer_state_to_str(state));
                     switch (state)
                     {
                     case ::rtc::PeerConnection::State::Failed:
                     case ::rtc::PeerConnection::State::Closed:
                     case ::rtc::PeerConnection::State::Connected:
-                        write_ch(peer_state_chan, state);
+                        self->write_ch(peer_state_chan, state);
                         break;
                     } 
                 });
                 DEFER({
-                    spdlog::debug("clean onStateChange callback.");
+                    self->m_logger->debug("clean onStateChange callback.");
                     m_peer->onStateChange(nullptr);
                 });
-                m_client->socket()->on("candidate", [this, &remoted, &cands, &cand_mux](auto &&evt)
+                m_client->socket()->on("candidate", [self, &remoted, &cands, &cand_mux](auto &&evt)
                 {
                     if (evt.need_ack())
                     {
-                        spdlog::debug("[receive candidate msg] ack");
+                        self->m_logger->debug("[receive candidate msg] ack");
                         evt.put_ack_message(sio::message::list("ack"));
                     }
                     std::lock_guard guard(cand_mux);
                     if (!remoted)
                     {
-                        spdlog::debug("[receive candidate msg] add candidate to cache.");
+                        self->m_logger->debug("[receive candidate msg] add candidate to cache.");
                         cands.push_back(evt.get_message());
                     }
                     else
                     {
-                        spdlog::debug("[receive candidate msg] add candidate to peer.");
-                        this->add_candidate(evt.get_message());
+                        self->m_logger->debug("[receive candidate msg] add candidate to peer.");
+                        self->add_candidate(evt.get_message());
                     } 
                 });
                 DEFER({
-                    spdlog::debug("clean candidate callback.");
+                    self->m_logger->debug("clean candidate callback.");
                     m_client->socket()->off("candidate");
                 });
                 MsgChanner msg_channer(this);
@@ -469,7 +463,7 @@ namespace cfgo
                 auto sub_res = co_await emit_with_ack("subscribe", create_subscribe_message(pattern, req_types), closer);
                 if (!sub_res)
                 {
-                    spdlog::debug("timeout when waiting ack of subscribe msg.");
+                    self->m_logger->debug("timeout when waiting ack of subscribe msg.");
                     co_return nullptr;
                 }
                 auto sub_id = get_msg_base_field<std::string>(sub_res.value(), "id");
@@ -477,11 +471,11 @@ namespace cfgo
                 {
                     throw std::runtime_error("no id found on subscribe ack msg.");
                 }
-                spdlog::debug("sub id: {}", sub_id);
-                defers.add_defer([this, sub_id = sub_id.value()]()
+                self->m_logger->debug("sub id: {}", sub_id);
+                defers.add_defer([self, sub_id = sub_id.value()]()
                 {
-                    spdlog::debug("unsubscribe.");
-                    emit("subscribe", create_unsubscribe_message(std::move(sub_id)));
+                    self->m_logger->debug("unsubscribe.");
+                    self->emit("subscribe", create_unsubscribe_message(std::move(sub_id)));
                 });
 
                 auto subed_msg = co_await wait_for_msg("subscribed", msg_channer, closer, [&sub_id](auto &&msg)
@@ -490,7 +484,7 @@ namespace cfgo
                 });
                 if (!subed_msg)
                 {
-                    spdlog::debug("timeout when waiting subscribed msg.");
+                    self->m_logger->debug("timeout when waiting subscribed msg.");
                     co_return nullptr;
                 }
                 auto sdp_id = get_msg_base_field<std::int64_t>(subed_msg.value(), "sdpId");
@@ -505,18 +499,18 @@ namespace cfgo
                 }
                 auto sub_ptr = std::make_shared<cfgo::Subscribation>(sub_id.value(), pub_id.value());
                 get_msg_object_array_field<cfgo::Track>(subed_msg.value(), "tracks", sub_ptr->tracks());
-                spdlog::debug("subscribed with sdp id: {}, pub id: {} and {} tracks", sdp_id, pub_id, sub_ptr->tracks().size());
+                self->m_logger->debug("subscribed with sdp id: {}, pub id: {} and {} tracks", sdp_id, pub_id, sub_ptr->tracks().size());
                 if (sub_ptr->tracks().empty())
                 {
-                    spdlog::debug("subscribed with no tracks.");
+                    self->m_logger->debug("subscribed with no tracks.");
                     defers.success();
                     co_return sub_ptr;
                 }
                 std::vector<TrackPtr> uncompleted_tracks(sub_ptr->tracks());
                 asiochan::channel<void> tracks_ch{};
-                m_peer->onTrack([&uncompleted_tracks, &tracks_ch, this](auto &&track) mutable
+                m_peer->onTrack([&uncompleted_tracks, &tracks_ch, self](auto &&track) mutable
                 {
-                    spdlog::debug("accept track with mid {}.", track->mid());
+                    self->m_logger->debug("accept track with mid {}.", track->mid());
                     auto&& iter = std::partition(uncompleted_tracks.begin(), uncompleted_tracks.end(), [&track](const TrackPtr& t) -> bool {
                         return t->bind_id() == track->mid();
                     });
@@ -527,11 +521,11 @@ namespace cfgo
                     }
                     if (uncompleted_tracks.empty())
                     {
-                        this->write_ch(tracks_ch);
+                        self->write_ch(tracks_ch);
                     } 
                 });
                 DEFER({
-                    spdlog::debug("clean onTrack callback.");
+                    self->m_logger->debug("clean onTrack callback.");
                     m_peer->onTrack(nullptr);
                 });
 
@@ -541,16 +535,16 @@ namespace cfgo
                 });
                 if (!sdp_msg)
                 {
-                    spdlog::debug("timeout when waiting sdp msg.");
+                    self->m_logger->debug("timeout when waiting sdp msg.");
                     co_return nullptr;
                 }  
-                m_peer->onLocalDescription([this, sdp_id = sdp_id.value()](const rtc::Description& desc) {
-                    update_gst_sdp();
-                    spdlog::debug("send local desc to remote.");
-                    m_client->socket()->emit("sdp", create_sdp_message(sdp_id, desc));
+                m_peer->onLocalDescription([self, sdp_id = sdp_id.value()](const rtc::Description& desc) {
+                    self->update_gst_sdp();
+                    self->m_logger->debug("send local desc to remote.");
+                    self->m_client->socket()->emit("sdp", create_sdp_message(sdp_id, desc));
                 });
                 DEFER({
-                    spdlog::debug("clean onLocalDescription callback.");
+                    self->m_logger->debug("clean onLocalDescription callback.");
                     m_peer->onLocalDescription(nullptr);
                 });
                 auto &&desc = to_description(sdp_msg.value());
@@ -558,29 +552,29 @@ namespace cfgo
                 {
                     throw std::runtime_error("bad sdp msg");
                 }
-                spdlog::debug("set remote description");
+                self->m_logger->debug("set remote description");
                 m_peer->setRemoteDescription(desc.value());
                 {
                     std::lock_guard guard(cand_mux);
                     remoted = true;
                     for (auto &&m : cands)
                     {
-                        spdlog::debug("add cached candidate to peer.");
+                        self->m_logger->debug("add cached candidate to peer.");
                         add_candidate(m);
                     }
                 }
 
-                spdlog::debug("waiting peer state changed...");
+                self->m_logger->debug("waiting peer state changed...");
                 auto &&state_res = co_await chan_read<rtc::PeerConnection::State>(peer_state_chan, closer);
                 if (!state_res)
                 {
-                    spdlog::debug("timeout when waiting peer state.");
+                    self->m_logger->debug("timeout when waiting peer state.");
                     co_return nullptr;
                 }
                 auto state = state_res.value();
                 if (state != ::rtc::PeerConnection::State::Connected)
                 {
-                    spdlog::debug("peer is not connected: {}", (int)state);
+                    self->m_logger->debug("peer is not connected: {}", (int)state);
                     co_return nullptr;
                 }
 

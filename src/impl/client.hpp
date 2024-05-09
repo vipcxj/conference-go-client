@@ -5,6 +5,7 @@
 #include "cfgo/alias.hpp"
 #include "cfgo/async.hpp"
 #include "cfgo/configuration.hpp"
+#include "cfgo/log.hpp"
 #include "cfgo/pattern.hpp"
 #include "cfgo/utils.hpp"
 #include "sio_client.h"
@@ -50,6 +51,7 @@ namespace cfgo {
                 ~MsgChanner();
             };
         private:
+            Logger m_logger;
             Configuration m_config;
             std::unique_ptr<sio::client> m_client;
             std::shared_ptr<rtc::PeerConnection> m_peer;
