@@ -201,6 +201,7 @@ target_include_directories(cfgoclient PUBLIC
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 target_include_directories(cfgoclient PRIVATE ${H_PRIVATE} ${SRC_PATH})
+target_link_libraries(cfgoclient PUBLIC yamc)
 fix_win_version_warn(cfgoclient)
 link_common_libs(cfgoclient)
 include_asiochan(cfgoclient)
@@ -369,6 +370,7 @@ file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_PROJECT_NAME}-config.cmake"
     "find_dependency(sioclient CONFIG REQUIRED)\n"
     "find_dependency(LibDataChannel CONFIG REQUIRED)\n"
     "find_dependency(nlohmann_json CONFIG REQUIRED)\n"
+    "find_dependency(yamc CONFIG REQUIRED)\n"
     "${FIND_GSTREAMER}"
     "if(NOT TARGET ${CMAKE_PROJECT_NAME}::${CMAKE_PROJECT_NAME})\n"
     "    include(\"\${CMAKE_CURRENT_LIST_DIR}/${CMAKE_PROJECT_NAME}-targets.cmake\")\n"
