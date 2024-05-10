@@ -1,5 +1,6 @@
 #include "cfgo/gst/error.hpp"
 #include "cfgo/gst/utils.hpp"
+#include "cfgo/log.hpp"
 #include "cfgo/utils.hpp"
 #include <exception>
 #include <mutex>
@@ -143,7 +144,7 @@ namespace cfgo
                 auto priv = cfgo_error_get_private(error);
                 if (!priv)
                 {
-                    spdlog::error("Unable to get the private from GError object.");
+                    Log::instance().default_logger()->error("Unable to get the private from GError object.");
                     return error;
                 }
                 if (except && gen_trace)
@@ -227,7 +228,7 @@ void cfgo_error_submit(GstElement * src, GError * error)
         {
             gst_message_unref(message);
         }
-        spdlog::warn("Failed to post the error message to gst element {}. The error is \"{}\".", 
+        cfgo::Log::instance().default_logger()->warn("Failed to post the error message to gst element {}. The error is \"{}\".", 
             GST_ELEMENT_NAME(src), 
             cfgo_error_get_message(error)
         );

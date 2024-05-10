@@ -4,6 +4,7 @@
 #include "cfgo/client.hpp"
 #include "cfgo/track.hpp"
 #include "cfgo/async.hpp"
+#include "cfgo/log.hpp"
 #include "cfgo/spd_helper.hpp"
 #include "cfgo/gst/gstcfgosrc.h"
 #include "cfgo/gst/utils.hpp"
@@ -68,6 +69,7 @@ namespace cfgo
                 STOPED
             };
         private:
+            Logger m_logger;
             State m_state;
             mutex m_state_mutex;
             GstCfgoSrcMode m_mode;

@@ -13,9 +13,13 @@
 #endif
 
 #if DEBUG
-    #pragma message("Debug mode detected")
+    #if defined(_WIN32)
+        #pragma message("Debug mode detected")
+    #endif
 #else
-    #pragma message("Not debug mode detected")
+    #if defined(_WIN32)
+        #pragma message("Not debug mode detected")
+    #endif
 #endif
 
 

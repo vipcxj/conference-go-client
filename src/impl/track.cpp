@@ -1,5 +1,6 @@
 #include "impl/track.hpp"
 #include "cfgo/defer.hpp"
+#include "cfgo/async.hpp"
 #include "cpptrace/cpptrace.hpp"
 #include "spdlog/spdlog.h"
 #ifdef CFGO_SUPPORT_GSTREAMER
@@ -13,7 +14,7 @@ namespace cfgo
     namespace impl
     {
         Track::Track(const msg_ptr & msg, int cache_capicity)
-        : m_rtp_cache(cache_capicity), m_rtcp_cache(cache_capicity), m_inited(false), m_seq(0)
+        : m_logger(Log::instance().create_logger(Log::Category::TRACK)), m_rtp_cache(cache_capicity), m_rtcp_cache(cache_capicity), m_inited(false), m_seq(0)
         #ifdef CFGO_SUPPORT_GSTREAMER
         , m_gst_media(nullptr)
         #endif
@@ -221,24 +222,18 @@ namespace cfgo
 
         void Track::on_track_open()
         {
-            if (!m_open_notify.try_write())
-            {
-                spdlog::warn("[Track::on_track_open] This should not happen.");
-            }
+            chan_must_write(m_open_notify);
         }
 
         void Track::on_track_closed()
         {
-            spdlog::debug("The track is closed.");
-            if (!m_closed_notify.try_write())
-            {
-                spdlog::warn("[Track::on_track_closed] This should not happen.");
-            }
+            m_logger->debug("The track is closed.");
+            chan_must_write(m_closed_notify);
         }
 
         void Track::on_track_error(std::string error)
         {
-            spdlog::error(error);
+            m_logger->error(error);
         }
 
         auto Track::await_open_or_closed(close_chan close_ch) -> asio::awaitable<bool>

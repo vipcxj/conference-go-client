@@ -2,6 +2,7 @@
 #include "cfgo/cbridge.hpp"
 #include "cfgo/utils.hpp"
 #include "cfgo/async.hpp"
+#include "cfgo/log.hpp"
 #include "cpptrace.hpp"
 #include "spdlog/spdlog.h"
 #include "asio/io_context.hpp"
@@ -237,7 +238,7 @@ namespace cfgo
         }
         catch(...)
         {
-            spdlog::error(cfgo::what(std::current_exception()));
+            cfgo::Log::instance().default_logger()->error(cfgo::what(std::current_exception()));
             return CFGO_ERR_FAILURE;
         }
     }
@@ -251,7 +252,7 @@ namespace cfgo
         }
         catch(...)
         {
-            spdlog::error(cfgo::what(std::current_exception()));
+            cfgo::Log::instance().default_logger()->error(cfgo::what(std::current_exception()));
             return err;
         }
     }
@@ -411,7 +412,7 @@ CFGO_API int cfgo_client_subscribe(
                 }
                 catch(...)
                 {
-                    spdlog::error(cfgo::what(std::current_exception()));
+                    cfgo::Log::instance().default_logger()->error(cfgo::what(std::current_exception()));
                     if (on_sub_callback)
                     {
                         on_sub_callback(CFGO_ERR_FAILURE, user_data);

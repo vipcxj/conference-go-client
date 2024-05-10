@@ -24,6 +24,7 @@
 #include "cfgo/gst/error.hpp"
 #include "cfgo/gst/utils.hpp"
 #include "cfgo/async.hpp"
+#include "cfgo/log.hpp"
 #include "cfgo/fmt.hpp"
 #include "cfgo/capi.h"
 #include "cfgo/cbridge.hpp"
@@ -42,19 +43,9 @@ namespace cfgo
     {
         struct GstCfgoSrcPrivateState
         {
-            mutex mutex;
+            cfgo::mutex mutex;
             bool running;
             cfgo::gst::CfgoSrc::Ptr task;
-
-            GstCfgoSrcPrivateState()
-            {
-                spdlog::debug("new GstCfgoSrcPrivateState.");
-            }
-
-            ~GstCfgoSrcPrivateState()
-            {
-                spdlog::debug("delete GstCfgoSrcPrivateState.");
-            }
         };
     } // namespace gst
     
@@ -398,7 +389,7 @@ void _gst_cfgosrc_prepare(GstCfgoSrc *cfgosrc, bool reset_task)
             if (!GST_CFGOSRC_PVS(cfgosrc)->task || reset_task)
             {
                 GST_DEBUG_OBJECT(cfgosrc, "%s", "Creating the task.");
-                spdlog::debug("cfgosrc created with sub timeout {} and read timeout {}.", cfgosrc->sub_timeout, cfgosrc->read_timeout);
+                cfgo::Log::instance().default_logger()->debug("cfgosrc created with sub timeout {} and read timeout {}.", cfgosrc->sub_timeout, cfgosrc->read_timeout);
                 GST_CFGOSRC_PVS(cfgosrc)->task = cfgo::gst::CfgoSrc::create(
                     cfgosrc->client_handle, 
                     cfgosrc->pattern, cfgosrc->req_types, 
@@ -859,7 +850,7 @@ void gst_cfgosrc_dispose(GObject *object)
         if (GST_CFGOSRC_PVS(cfgosrc)->task)
         {
             GST_CFGOSRC_PVS(cfgosrc)->task->detach();
-            spdlog::debug("cfgosrc destroy.");
+            cfgo::Log::instance().default_logger()->debug("cfgosrc destroy.");
             GST_CFGOSRC_PVS(cfgosrc)->task.reset();
         }
     }

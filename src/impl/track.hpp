@@ -10,6 +10,7 @@
 #include "cfgo/config/configuration.h"
 #include "cfgo/track.hpp"
 #include "cfgo/async.hpp"
+#include "cfgo/log.hpp"
 #include "impl/client.hpp"
 #include "boost/circular_buffer.hpp"
 #ifdef CFGO_SUPPORT_GSTREAMER
@@ -52,6 +53,7 @@ namespace cfgo
             std::shared_ptr<rtc::Track> track;
 
             bool m_inited;
+            Logger m_logger;
             mutex m_lock;
             MsgBuffer m_rtp_cache;
             MsgBuffer m_rtcp_cache;

@@ -1,6 +1,7 @@
 #include "cfgo/async.hpp"
 #include "cfgo/defer.hpp"
 #include "cfgo/utils.hpp"
+#include "cfgo/log.hpp"
 #include "spdlog/spdlog.h"
 #include <list>
 #include <chrono>
@@ -267,7 +268,7 @@ namespace cfgo
             }
             catch(...)
             {
-                spdlog::error(cfgo::what());
+                cfgo::Log::instance().default_logger()->error(cfgo::what());
             }
             return false;
         }

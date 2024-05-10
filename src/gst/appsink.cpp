@@ -78,7 +78,6 @@ namespace cfgo
                 {
                     std::lock_guard lk(self->m_mutex);
                     self->m_eos = true;
-                    spdlog::debug("on eos.");
                     chan_maybe_write(self->m_eos_notify);
                 }
             }
@@ -103,7 +102,6 @@ namespace cfgo
                     auto sample = gst_app_sink_pull_sample(appsink);
                     if (sample)
                     {
-                        spdlog::trace("new sample");
                         self->m_cache.push_back(std::make_pair(self->m_seq++, steal_shared_gst_sample(sample)));
                         chan_maybe_write(self->m_sample_notify);
                     }

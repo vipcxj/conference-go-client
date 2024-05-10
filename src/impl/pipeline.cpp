@@ -1,8 +1,8 @@
 #include "impl/pipeline.hpp"
 #include "cpptrace/cpptrace.hpp"
-#include "spdlog/spdlog.h"
 #include "cfgo/defer.hpp"
 #include "cfgo/utils.hpp"
+#include "cfgo/log.hpp"
 #include "cfgo/gst/helper.h"
 #include <cctype>
 
@@ -34,7 +34,7 @@ namespace cfgo
                         {
                             if (c1 != 'u')
                             {
-                                spdlog::warn("Unsupport format. pad1: {}, pad2: {}.", name1, name2);
+                                cfgo::Log::instance().default_logger()->warn("Unsupport format. pad1: {}, pad2: {}.", name1, name2);
                                 return false;
                             }
                             else
@@ -58,7 +58,7 @@ namespace cfgo
                         {
                             if (c2 != 'u')
                             {
-                                spdlog::warn("Unsupport format. pad1: {}, pad2: {}.", name1, name2);
+                                cfgo::Log::instance().default_logger()->warn("Unsupport format. pad1: {}, pad2: {}.", name1, name2);
                                 return false;
                             }
                             else
@@ -158,12 +158,7 @@ namespace cfgo
             }
 
             gboolean on_bus_message(GstBus *bus, GstMessage *message, gpointer user_data) 
-            {
-                if (GST_MESSAGE_TYPE(message) == GST_MESSAGE_ERROR)
-                {
-                    spdlog::warn("got error");
-                }
-                
+            {   
                 gst_message_ref(message);
                 if (auto pipeline = cast_weak_holder<Pipeline>(user_data)->lock())
                 {
@@ -262,7 +257,7 @@ namespace cfgo
                         );
                     }
                     case GST_MESSAGE_EOS:
-                        spdlog::debug("The pipeline accept eos message.");
+                        cfgo::Log::instance().default_logger()->debug("The pipeline accept eos message.");
                         co_return true;
                     }
                 } while (true);

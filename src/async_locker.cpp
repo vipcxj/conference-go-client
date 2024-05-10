@@ -428,7 +428,6 @@ namespace cfgo
             }
             catch(...)
             {
-                spdlog::debug("unlock because except.");
                 unlock();
                 std::rethrow_exception(std::current_exception());
             }

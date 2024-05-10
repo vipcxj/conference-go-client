@@ -311,12 +311,12 @@ namespace cfgo
                     }
                     else
                     {
-                        spdlog::debug("[send msg {}] this has been released.", evt);
+                        Log::instance().default_logger()->debug("[send msg {}] this has been released.", evt);
                     }
                 }
                 else
                 {
-                    spdlog::debug("[send msg {}] ack channel has been released.", evt);
+                    Log::instance().default_logger()->debug("[send msg {}] ack channel has been released.", evt);
                 }
             });
             auto result = co_await chan_read<msg_ptr>(*ack_ch, close_chan);
