@@ -453,7 +453,7 @@ namespace cfgo
     CloseSignal::CloseSignal(): m_state(std::make_shared<detail::CloseSignalState>())
     {}
 
-    auto CloseSignal::init_timer() -> asio::awaitable<void>
+    auto CloseSignal::init_timer() const -> asio::awaitable<void>
     {
         if (m_state)
         {
@@ -462,7 +462,7 @@ namespace cfgo
         }
     }
 
-    auto CloseSignal::get_waiter() -> std::optional<Waiter>
+    auto CloseSignal::get_waiter() const -> std::optional<Waiter>
     {
         if (m_state)
         {
@@ -475,7 +475,7 @@ namespace cfgo
         }
     }
 
-    auto CloseSignal::get_stop_waiter() -> std::optional<Waiter>
+    auto CloseSignal::get_stop_waiter() const -> std::optional<Waiter>
     {
         if (m_state)
         {
@@ -500,7 +500,7 @@ namespace cfgo
         return m_state ? m_state->m_is_timeout : false;
     }
 
-    void CloseSignal::close(std::string && reason)
+    void CloseSignal::close(std::string && reason) const
     {
         if (m_state)
         {
@@ -512,12 +512,12 @@ namespace cfgo
         }
     }
 
-    bool CloseSignal::close_no_except(std::string && reason) noexcept
+    bool CloseSignal::close_no_except(std::string && reason) const noexcept
     {
         return m_state ? m_state->close_no_except(false, std::move(reason)) : false;
     }
 
-    void CloseSignal::set_timeout(const duration_t& dur, std::string && reason)
+    void CloseSignal::set_timeout(const duration_t& dur, std::string && reason) const
     {
         if (m_state)
         {
@@ -534,7 +534,7 @@ namespace cfgo
         return m_state ? m_state->m_timeout : duration_t {0};
     }
 
-    void CloseSignal::stop(bool stop_timer)
+    void CloseSignal::stop(bool stop_timer) const
     {
         if (m_state)
         {
@@ -546,7 +546,7 @@ namespace cfgo
         }
     }
 
-    void CloseSignal::resume()
+    void CloseSignal::resume() const
     {
         if (m_state)
         {
@@ -571,7 +571,7 @@ namespace cfgo
         }
     }
 
-    auto CloseSignal::await() -> asio::awaitable<bool>
+    auto CloseSignal::await() const -> asio::awaitable<bool>
     {
         co_await init_timer();
         if (auto waiter = get_waiter())

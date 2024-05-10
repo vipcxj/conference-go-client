@@ -91,6 +91,8 @@ namespace cfgo {
             void write_ch(asiochan::channel<void>& ch) {
                 asio::co_spawn(asio::get_associated_executor(m_io_context), ch.write(), asio::detached);
             };
+            void setup_socket_close_callback(const close_chan & closer);
+            void clean_socket_close_callback();
             void emit(const std::string& evt, msg_ptr msg);
             [[nodiscard]] asio::awaitable<cancelable<msg_ptr>> emit_with_ack(const std::string& evt, msg_ptr msg, close_chan& close_chan) const;
             [[nodiscard]] asio::awaitable<cancelable<msg_ptr>> wait_for_msg(const std::string& evt, MsgChanner& msg_channer, close_chan& close_chan, std::function<bool(msg_ptr)> cond);

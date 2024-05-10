@@ -47,7 +47,9 @@ namespace cfgo
             #ifdef CFGO_SUPPORT_GSTREAMER
             , m_gst_sdp(nullptr)
             #endif
-        {}
+        {
+            m_client->set_reconnect_attempts(0);
+        }
 
         Client::~Client()
         {
@@ -97,6 +99,12 @@ namespace cfgo
             {
                 m_mutex.unlock();
             }
+        }
+
+        msg_ptr create_setup_message()
+        {
+            auto setup_msg = sio::object_message::create();
+            return setup_msg;
         }
 
         msg_ptr Client::create_auth_message() const
@@ -279,6 +287,22 @@ namespace cfgo
             }
         }
 
+        void Client::setup_socket_close_callback(const close_chan & closer)
+        {
+            m_client->set_close_listener([closer](auto reason) {
+                closer.close();
+            });
+            m_client->set_fail_listener([closer]() {
+                closer.close();
+            });
+        }
+
+        void Client::clean_socket_close_callback()
+        {
+            m_client->set_close_listener(nullptr);
+            m_client->set_fail_listener(nullptr);
+        }
+
         void Client::emit(const std::string &evt, msg_ptr msg)
         {
             m_client->socket()->emit(evt, std::move(msg));
@@ -387,10 +411,14 @@ namespace cfgo
         auto Client::subscribe(Pattern pattern, std::vector<std::string> req_types, close_chan close_ch) -> asio::awaitable<cfgo::Subscribation::Ptr>
         {
             auto self = shared_from_this();
-            auto closer = close_ch;
-            if (!is_valid_close_chan(closer) && is_valid_close_chan(m_closer))
+            close_chan closer = nullptr;
+            if (!close_ch && m_closer)
             {
-                closer = m_closer;
+                closer = m_closer.create_child();
+            }
+            else
+            {
+                closer = close_ch.create_child();
             }
             
             if (co_await m_a_mutex.accquire(closer))
@@ -399,7 +427,17 @@ namespace cfgo
                     self->m_logger->debug("release.");
                     m_a_mutex.release(asio::get_associated_executor(m_io_context));
                 });
+                self->setup_socket_close_callback(closer);
+                DEFER({
+                    self->clean_socket_close_callback();
+                });
                 m_client->connect(m_config.m_signal_url, create_auth_message());
+                auto setup_ack = co_await self->emit_with_ack("setup", create_setup_message(), closer);
+                if (!setup_ack)
+                {
+                    self->m_logger->debug("timeout when sending setup msg.");
+                    co_return nullptr;
+                }
                 DEFERS_WHEN_FAIL(defers);
                 mutex cand_mux;
                 std::vector<msg_ptr> cands;
@@ -475,7 +513,10 @@ namespace cfgo
                 defers.add_defer([self, sub_id = sub_id.value()]()
                 {
                     self->m_logger->debug("unsubscribe.");
-                    self->emit("subscribe", create_unsubscribe_message(std::move(sub_id)));
+                    if (self->m_client->opened())
+                    {
+                        self->emit("subscribe", create_unsubscribe_message(std::move(sub_id)));
+                    }
                 });
 
                 auto subed_msg = co_await wait_for_msg("subscribed", msg_channer, closer, [&sub_id](auto &&msg)
@@ -652,12 +693,13 @@ namespace cfgo
             msg_chan ch{};
             m_chan_map[evt] = ch;
             m_client->m_client->socket()->on(evt, [ch, c = m_client, ack = std::move(ack)](auto &&evt) mutable
-                                             {
-            if (evt.need_ack())
             {
-                evt.put_ack_message(sio::message::list(ack));
-            }
-            c->write_ch(ch, evt.get_message()); });
+                if (evt.need_ack())
+                {
+                    evt.put_ack_message(sio::message::list(ack));
+                }
+                c->write_ch(ch, evt.get_message());
+            });
         }
 
         void Client::MsgChanner::release(const std::string &evt)

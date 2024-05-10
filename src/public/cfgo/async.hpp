@@ -59,17 +59,17 @@ namespace cfgo
         {
             return (bool) m_state;
         }
-        void close(std::string && reason = "");
-        bool close_no_except(std::string && reason = "") noexcept;
+        void close(std::string && reason = "") const;
+        bool close_no_except(std::string && reason = "") const noexcept;
         /**
          * Async wait until closed or timeout. Return false if timeout.
         */
-        [[nodiscard]] auto await() -> asio::awaitable<bool>;
-        void set_timeout(const duration_t& dur, std::string && reason = "");
+        [[nodiscard]] auto await() const -> asio::awaitable<bool>;
+        void set_timeout(const duration_t& dur, std::string && reason = "") const;
         duration_t get_timeout() const noexcept;
         [[nodiscard]] CloseSignal create_child() const;
-        void stop(bool stop_timer = true);
-        void resume();
+        void stop(bool stop_timer = true) const;
+        void resume() const;
         [[nodiscard]] friend inline auto operator==(
             CloseSignal const& lhs,
             CloseSignal const& rhs) noexcept -> bool
@@ -80,9 +80,9 @@ namespace cfgo
             CloseSignal const& lhs,
             CloseSignal const& rhs) noexcept -> bool = default;
 
-        auto init_timer() -> asio::awaitable<void>;
-        [[nodiscard]] auto get_waiter() -> std::optional<Waiter>;
-        [[nodiscard]] auto get_stop_waiter() -> std::optional<Waiter>;
+        auto init_timer() const -> asio::awaitable<void>;
+        [[nodiscard]] auto get_waiter() const -> std::optional<Waiter>;
+        [[nodiscard]] auto get_stop_waiter() const -> std::optional<Waiter>;
         [[nodiscard]] const char * get_close_reason() const noexcept;
         [[nodiscard]] const char * get_timeout_reason() const noexcept;
 
