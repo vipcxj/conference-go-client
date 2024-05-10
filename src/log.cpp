@@ -28,17 +28,24 @@ namespace cfgo
             struct CategoryInfo
             {
                 LogLevel level = DEFAULT_LOG_LEVEL;
+                bool level_set = false;
                 bool backtrace = DEFAULT_LOG_BACKTRACE;
+                bool backtrack_set = false;
                 std::size_t backtrace_size = DEFAULT_LOG_BACKTRACE_SIZE;
+                bool backtrace_size_set = false;
                 std::string pattern;
+                bool pattern_set = false;
                 LogTimeType time_type = DEFAULT_LOG_TIME_TYPE;
+                bool time_type_set = false;
                 LoggerFactory factory = create_default_logger;
+                bool factory_set = false;
             };
             using CategoryMap = std::unordered_map<Category, CategoryInfo>;
 
             Log();
 
             void set_logger_factory(Category category, LoggerFactory factory);
+            const LoggerFactory get_logger_factory(Category category) const;
             void set_level(Category category, LogLevel level);
             LogLevel get_level(Category category) const;
             void set_pattern(Category category, const std::string & pattern, LogTimeType time_type);
@@ -47,6 +54,7 @@ namespace cfgo
             void enable_backtrace(Category category, std::size_t size);
             void disable_backtrace(Category category);
             bool is_backtrace(Category category) const;
+            std::size_t get_backtrace_size(Category category) const;
             Logger create_logger(Category category, const std::string & name) const;
             Logger default_logger() const;
         private:
@@ -66,6 +74,22 @@ namespace cfgo
             {
                 auto [iter, _] = m_categories.try_emplace(category);
                 iter->second.factory = std::move(factory);
+                iter->second.factory_set = true;
+            }
+        }
+
+        const LoggerFactory Log::get_logger_factory(Category category) const
+        {
+            auto cat_iter = m_categories.find(category);
+            if (cat_iter != m_categories.end())
+            {
+                return cat_iter->second.factory_set 
+                    ? cat_iter->second.factory 
+                    : (category != Category::DEFAULT ? get_logger_factory(Category::DEFAULT) : create_default_logger);
+            }
+            else
+            {
+                return category != Category::DEFAULT ? get_logger_factory(Category::DEFAULT) : create_default_logger;
             }
         }
 
@@ -73,6 +97,7 @@ namespace cfgo
         {            
             auto [iter, _] = m_categories.try_emplace(category);
             iter->second.level = level;
+            iter->second.level_set = true;
             if (category == Category::DEFAULT)
             {
                 m_default_logger->set_level(level);
@@ -84,11 +109,13 @@ namespace cfgo
             auto cat_iter = m_categories.find(category);
             if (cat_iter != m_categories.end())
             {
-                return cat_iter->second.level;
+                return cat_iter->second.level_set 
+                    ? cat_iter->second.level 
+                    : (category != Category::DEFAULT ? get_level(Category::DEFAULT) : DEFAULT_LOG_LEVEL);
             }
             else
             {
-                return DEFAULT_LOG_LEVEL;
+                return category != Category::DEFAULT ? get_level(Category::DEFAULT) : DEFAULT_LOG_LEVEL;
             }
         }
 
@@ -96,7 +123,9 @@ namespace cfgo
         {
             auto [iter, _] = m_categories.try_emplace(category);
             iter->second.pattern = pattern;
+            iter->second.pattern_set = true;
             iter->second.time_type = time_type;
+            iter->second.time_type_set = true;
             if (category == Category::DEFAULT)
             {
                 m_default_logger->set_pattern(pattern, time_type);
@@ -108,11 +137,13 @@ namespace cfgo
             auto cat_iter = m_categories.find(category);
             if (cat_iter != m_categories.end())
             {
-                return cat_iter->second.pattern;
+                return cat_iter->second.pattern_set 
+                    ? cat_iter->second.pattern 
+                    : (category != Category::DEFAULT ? get_pattern(Category::DEFAULT) : "");
             }
             else
             {
-                return "";
+                return category != Category::DEFAULT ? get_pattern(Category::DEFAULT) : "";
             }
         }
 
@@ -121,11 +152,13 @@ namespace cfgo
             auto cat_iter = m_categories.find(category);
             if (cat_iter != m_categories.end())
             {
-                return cat_iter->second.time_type;
+                return cat_iter->second.time_type_set 
+                    ? cat_iter->second.time_type 
+                    : (category != Category::DEFAULT ? get_time_type(Category::DEFAULT) : DEFAULT_LOG_TIME_TYPE);
             }
             else
             {
-                return DEFAULT_LOG_TIME_TYPE;
+                return category != Category::DEFAULT ? get_time_type(Category::DEFAULT) : DEFAULT_LOG_TIME_TYPE;
             }
         }
 
@@ -133,7 +166,9 @@ namespace cfgo
         {
             auto [iter, _] = m_categories.try_emplace(category);
             iter->second.backtrace = true;
+            iter->second.backtrack_set = true;
             iter->second.backtrace_size = size;
+            iter->second.backtrace_size_set = true;
             if (category == Category::DEFAULT)
             {
                 m_default_logger->enable_backtrace(size);
@@ -144,7 +179,9 @@ namespace cfgo
         {
             auto [iter, _] = m_categories.try_emplace(category);
             iter->second.backtrace = false;
-            iter->second.backtrace_size = DEFAULT_LOG_BACKTRACE_SIZE;
+            iter->second.backtrack_set = true;
+            iter->second.backtrace_size = 0;
+            iter->second.backtrace_size_set = false;
             if (category == Category::DEFAULT)
             {
                 m_default_logger->disable_backtrace();
@@ -156,11 +193,28 @@ namespace cfgo
             auto cat_iter = m_categories.find(category);
             if (cat_iter != m_categories.end())
             {
-                return cat_iter->second.backtrace;
+                return cat_iter->second.backtrack_set 
+                    ? cat_iter->second.backtrace 
+                    : (category != Category::DEFAULT ? is_backtrace(Category::DEFAULT) : DEFAULT_LOG_BACKTRACE);
             }
             else
             {
-                return DEFAULT_LOG_BACKTRACE;
+                return category != Category::DEFAULT ? is_backtrace(Category::DEFAULT) : DEFAULT_LOG_BACKTRACE;
+            }
+        }
+
+        std::size_t Log::get_backtrace_size(Category category) const
+        {
+            auto cat_iter = m_categories.find(category);
+            if (cat_iter != m_categories.end())
+            {
+                return cat_iter->second.backtrace_size_set 
+                    ? cat_iter->second.backtrace_size 
+                    : (category != Category::DEFAULT ? get_backtrace_size(Category::DEFAULT) : DEFAULT_LOG_BACKTRACE_SIZE);
+            }
+            else
+            {
+                return category != Category::DEFAULT ? get_backtrace_size(Category::DEFAULT) : DEFAULT_LOG_BACKTRACE_SIZE;
             }
         }
 
@@ -179,40 +233,22 @@ namespace cfgo
             {
                 logger_name = name;
             }
-            auto cat_iter = m_categories.find(category);
-            if (cat_iter != m_categories.end())
+            auto logger = get_logger_factory(category)(logger_name);
+            logger->set_level(get_level(category));
+            auto pattern = get_pattern(category);
+            if (!pattern.empty())
             {
-                auto & cat = cat_iter->second;
-                auto logger = cat.factory(logger_name);
-                logger->set_level(cat.level);
-                if (!cat.pattern.empty())
-                {
-                    logger->set_pattern(cat.pattern, cat.time_type);
-                }
-                if (cat.backtrace)
-                {
-                    logger->enable_backtrace(cat.backtrace_size);
-                }
-                else
-                {
-                    logger->disable_backtrace();
-                }
-                return logger;
+                logger->set_pattern(pattern, get_time_type(category));
+            }
+            if (is_backtrace(category))
+            {
+                logger->enable_backtrace(get_backtrace_size(category));
             }
             else
             {
-                auto logger = create_default_logger(logger_name);
-                logger->set_level(DEFAULT_LOG_LEVEL);
-                if (DEFAULT_LOG_BACKTRACE)
-                {
-                    logger->enable_backtrace(DEFAULT_LOG_BACKTRACE_SIZE);
-                }
-                else
-                {
-                    logger->disable_backtrace();
-                }
-                return logger;
+                logger->disable_backtrace();
             }
+            return logger;
         }
 
         Logger Log::default_logger() const

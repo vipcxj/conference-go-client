@@ -807,6 +807,7 @@ int main(int argc, char **argv) {
     gst_init(&argc, &argv);
     GST_PLUGIN_STATIC_REGISTER(cfgosrc);
     spdlog::set_level(spdlog::level::debug);
+    cfgo::Log::instance().set_level(cfgo::Log::DEFAULT, spdlog::level::debug);
     gst_debug_set_threshold_for_name("cfgosrc", GST_LEVEL_TRACE);
 
     debug_plugins();
