@@ -431,7 +431,27 @@ namespace cfgo
                 DEFER({
                     self->clean_socket_close_callback();
                 });
+                // self->m_client->socket()->on_any([self](sio::event& event) {
+                //     self->m_logger->debug("receive {} msg.", event.get_name());
+                //     if (event.need_ack())
+                //     {
+                //          event.put_ack_message(sio::message::list("ack"));
+                //     }
+                // });
+                // unique_void_chan open_ch {};
+                // m_client->set_socket_open_listener([open_ch](std::string const& nsp) {
+                //     chan_must_write(open_ch);
+                // });
+                // DEFER({
+                //     m_client->set_socket_open_listener(nullptr);
+                // });
                 m_client->connect(m_config.m_signal_url, create_auth_message());
+                // auto open_res = co_await chan_read<void>(open_ch, closer);
+                // if (!open_res)
+                // {
+                //     self->m_logger->debug("timeout when open the socket.");
+                //     co_return nullptr;
+                // }
                 auto setup_ack = co_await self->emit_with_ack("setup", create_setup_message(), closer);
                 if (!setup_ack)
                 {

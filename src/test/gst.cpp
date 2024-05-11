@@ -144,7 +144,7 @@ auto main_task(cfgo::Client::CtxPtr exec_ctx, const std::string & token, cfgo::c
                 },
                 {
                     "op": 7,
-                    "args": ["uid", "0"]
+                    "args": ["key", "0"]
                 }
             ]
         })",
