@@ -49,6 +49,9 @@ struct _GstCfgoSrc
 struct _GstCfgoSrcClass
 {
     GstBinClass parent_class;
+
+    void (*decodebin_created) (GstElement * element, GstElement * decodebin);
+    void (*parsebin_created) (GstElement * element, GstElement * decodebin);
 };
 
 GType gst_cfgosrc_get_type(void);

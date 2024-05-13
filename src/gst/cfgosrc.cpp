@@ -408,14 +408,22 @@ namespace cfgo
                 cfgo_error_submit_general(GST_ELEMENT(owner), ("Unable to add " + processor_name + " to " + GST_ELEMENT_NAME(owner) + ".").c_str(), TRUE, TRUE);
                 return;
             }
-            if (m_decode_caps && type == "decodebin")
+            if (type == "decodebin")
             {
-                g_object_set(
-                    processor,
-                    "caps",
-                    m_decode_caps,
-                    NULL
-                );
+                cfgosrc_decodebin_created(GST_ELEMENT(owner), processor);
+                if (m_decode_caps)
+                {
+                    g_object_set(
+                        processor,
+                        "caps",
+                        m_decode_caps,
+                        NULL
+                    );
+                }
+            }
+            else if (type == "parsebin")
+            {
+                cfgosrc_parsebin_created(GST_ELEMENT(owner), processor);
             }
             channel.m_pad_added_handle = g_signal_connect_data(processor, "pad-added", G_CALLBACK(pad_added_handler), make_weak_holder(weak_from_this()), [](gpointer data, GClosure * closure) {
                 destroy_weak_holder<CfgoSrc>(data);
@@ -447,6 +455,16 @@ namespace cfgo
             if (!channel.m_processor)
             {
                 return;
+            }
+
+            auto processor_name = gst_plugin_feature_get_name(GST_PLUGIN_FEATURE(gst_element_get_factory(channel.m_processor)));
+            if (g_str_equal(processor_name, "decodebin"))
+            {
+                cfgosrc_decodebin_will_destroyed(GST_ELEMENT(owner), channel.m_processor);
+            }
+            else if (g_str_equal(processor_name, "parsebin"))
+            {
+                cfgosrc_parsebin_will_destroyed(GST_ELEMENT(owner), channel.m_processor);
             }
             
             if (channel.m_pad_added_handle)

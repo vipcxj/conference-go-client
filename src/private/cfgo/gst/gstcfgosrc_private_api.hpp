@@ -18,6 +18,10 @@ namespace cfgo
         void link_rtcp_src(GstCfgoSrc * parent, GstPad * pad);
         GstFlowReturn push_rtp_buffer(GstCfgoSrc * parent, GstBuffer * buffer);
         GstFlowReturn push_rtcp_buffer(GstCfgoSrc * parent, GstBuffer * buffer);
+        void cfgosrc_decodebin_created(GstElement * cfgosrc, GstElement * decodebin);
+        void cfgosrc_parsebin_created(GstElement * cfgosrc, GstElement * parsebin);
+        void cfgosrc_decodebin_will_destroyed(GstElement * cfgosrc, GstElement * decodebin);
+        void cfgosrc_parsebin_will_destroyed(GstElement * cfgosrc, GstElement * parsebin);
     } // namespace gst
     
 } // namespace cfgo

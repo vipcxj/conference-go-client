@@ -84,6 +84,16 @@ static void gst_cfgosrc_release_pad(GstElement *element, GstPad *pad);
 static GstStateChangeReturn
 gst_cfgosrc_change_state(GstElement *element, GstStateChange transition);
 
+/* signals */
+enum
+{
+  SIGNAL_DECODEBIN_CREATED,
+  SIGNAL_PARSEBIN_CREATED,
+  LAST_SIGNAL
+};
+
+static guint gst_cfgosrc_signals[LAST_SIGNAL] = { 0 };
+
 #define DEFAULT_GST_CFGO_SRC_MODE GST_CFGO_SRC_MODE_RAW
 
 enum
@@ -221,6 +231,26 @@ namespace cfgo
         {
             return gst_app_src_push_buffer(GST_APP_SRC(parent->priv->rtcpsrc), buffer);
         }
+
+        void cfgosrc_decodebin_created(GstElement * cfgosrc, GstElement * decodebin)
+        {
+            g_signal_emit(G_OBJECT(cfgosrc), gst_cfgosrc_signals[SIGNAL_DECODEBIN_CREATED], 0, decodebin);
+        }
+
+        void cfgosrc_parsebin_created(GstElement * cfgosrc, GstElement * parsebin)
+        {
+            g_signal_emit(G_OBJECT(cfgosrc), gst_cfgosrc_signals[SIGNAL_PARSEBIN_CREATED], 0, parsebin);
+        }
+
+        void cfgosrc_decodebin_will_destroyed(GstElement * cfgosrc, GstElement * decodebin)
+        {
+            // TODO: do clean thing.
+        }
+
+        void cfgosrc_parsebin_will_destroyed(GstElement * cfgosrc, GstElement * parsebin)
+        {
+            // TODO: do clean thing.
+        }
     } // namespace gst
     
 } // namespace cfgo
@@ -249,6 +279,20 @@ gst_cfgosrc_class_init(GstCfgoSrcClass *klass)
     gobject_class->dispose = gst_cfgosrc_dispose;
     gobject_class->finalize = gst_cfgosrc_finalize;
     element_class->change_state = GST_DEBUG_FUNCPTR(gst_cfgosrc_change_state);
+
+    gst_cfgosrc_signals[SIGNAL_DECODEBIN_CREATED] = g_signal_new(
+        "decodebin-created", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST,
+        G_STRUCT_OFFSET(GstCfgoSrcClass, decodebin_created),
+        NULL, NULL, NULL,
+        G_TYPE_NONE, 1, GST_TYPE_ELEMENT
+    );
+
+    gst_cfgosrc_signals[SIGNAL_PARSEBIN_CREATED] = g_signal_new(
+        "parsebin-created", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST,
+        G_STRUCT_OFFSET(GstCfgoSrcClass, parsebin_created),
+        NULL, NULL, NULL,
+        G_TYPE_NONE, 1, GST_TYPE_ELEMENT
+    );
 
     g_object_class_install_property(
         gobject_class, PROP_CLIENT,
