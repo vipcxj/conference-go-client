@@ -43,6 +43,9 @@ namespace cfgo
         class CloseSignalState;
     } // namespace detail
 
+    constexpr const char * CLOSER_DEFAULT_CLOSE_REASON = "user request";
+    constexpr const char * CLOSER_DEFAULT_TIMEOUT_REASON = "timeout";
+
     class CloseSignal
     {
     private:
@@ -52,20 +55,27 @@ namespace cfgo
     public:
         using Waiter = asiochan::channel<void, 1>;
         CloseSignal(std::nullptr_t);
-         CloseSignal();
+        CloseSignal();
+        CloseSignal(const CloseSignal &) = default;
+        CloseSignal(CloseSignal &&cc) = default;
+        CloseSignal &operator=(const CloseSignal &) = default;
+        CloseSignal &operator=(CloseSignal &&cc) = default;
         [[nodiscard]] bool is_closed() const noexcept;
         [[nodiscard]] bool is_timeout() const noexcept;
         [[nodiscard]] inline operator bool() const noexcept
         {
             return (bool) m_state;
         }
-        void close(std::string && reason = "") const;
-        bool close_no_except(std::string && reason = "") const noexcept;
+        void close(const std::string & reason) const;
+        void close(std::string && reason = CLOSER_DEFAULT_CLOSE_REASON) const;
+        bool close_no_except(const std::string & reason) const noexcept;
+        bool close_no_except(std::string && reason = CLOSER_DEFAULT_CLOSE_REASON) const noexcept;
         /**
          * Async wait until closed or timeout. Return false if timeout.
         */
         [[nodiscard]] auto await() const -> asio::awaitable<bool>;
-        void set_timeout(const duration_t& dur, std::string && reason = "") const;
+        void set_timeout(const duration_t& dur, const std::string & reason) const;
+        void set_timeout(const duration_t& dur, std::string && reason = CLOSER_DEFAULT_TIMEOUT_REASON) const;
         duration_t get_timeout() const noexcept;
         [[nodiscard]] CloseSignal create_child() const;
         void stop(bool stop_timer = true) const;
@@ -507,7 +517,7 @@ namespace cfgo
 
     close_chan make_timeout(const duration_t& dur);
 
-    auto wait_timeout(const duration_t& dur) -> asio::awaitable<void>;
+    auto wait_timeout(const duration_t& dur, close_chan closer = nullptr, std::string && reasion = "timeout") -> asio::awaitable<void>;
 
     template <asiochan::sendable T, asiochan::select_op Op1, asiochan::select_op Op2>
     class combine_read_op
@@ -1013,17 +1023,8 @@ namespace cfgo
         virtual auto _sync() -> asio::awaitable<void> = 0;
         virtual AT _collect_result() = 0;
     public:
-        AsyncTasksBase(const close_chan & close_ch): m_start(false)
-        {
-            if (is_valid_close_chan(close_ch))
-            {
-                m_close_ch = close_ch.create_child();
-            }
-            else
-            {
-                m_close_ch = close_chan {};
-            }
-        }
+        AsyncTasksBase(const close_chan & close_ch): m_close_ch(close_ch.create_child()), m_start(false)
+        {}
 
         virtual ~AsyncTasksBase() = default;
 

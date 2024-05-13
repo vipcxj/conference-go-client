@@ -36,7 +36,4 @@ struct fmt::formatter<sio::message::ptr> : fmt::formatter<std::string>
     }
 };
 
-#define CFGO_DEFINE_SPD_CAT(NAME) extern static auto CFGO_SPD_LOGGER##NAME = spdlog::get(#NAME); 
-
-
 #endif

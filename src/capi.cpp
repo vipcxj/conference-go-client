@@ -3,7 +3,7 @@
 #include "cfgo/utils.hpp"
 #include "cfgo/async.hpp"
 #include "cfgo/log.hpp"
-#include "cpptrace.hpp"
+#include "cpptrace/cpptrace.hpp"
 #include "spdlog/spdlog.h"
 #include "asio/io_context.hpp"
 #include "asio/thread_pool.hpp"

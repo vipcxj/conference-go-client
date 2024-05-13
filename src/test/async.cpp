@@ -1,4 +1,5 @@
 #include "cfgo/async.hpp"
+#include "cfgo/log.hpp"
 #include "asio.hpp"
 #include "gtest/gtest.h"
 #include <chrono>
@@ -163,7 +164,7 @@ TEST(Chan, AsyncTasksAllT) {
             for (std::size_t i = 0; i < n_tasks; i++)
             {
                 tasks.add_task([i, amp = distrib(gen)](auto closer) -> asio::awaitable<int> {
-                    co_await wait_timeout(std::chrono::milliseconds{300 + amp});
+                    co_await wait_timeout(std::chrono::milliseconds{300 + amp}, closer);
                     co_return (int) i;
                 });
             }
@@ -567,15 +568,18 @@ TEST(Closer, ParentAndChildrenDestructingTogether) {
         close_chan parent {};
         for (size_t i = 0; i < 10; i++)
         {
-            std::thread([child = parent.create_child()]() {
+            auto child = parent.create_child();
+            std::thread([child]() {
+                std::this_thread::sleep_for(std::chrono::milliseconds {100});
                 std::ignore = child.is_closed();
             }).detach();
         }
     }
-    std::this_thread::sleep_for(std::chrono::milliseconds {500});
+    std::this_thread::sleep_for(std::chrono::milliseconds {1000});
 }
 
 int main(int argc, char **argv) {
-    testing::InitGoogleTest(&argc, argv);
+    // testing::InitGoogleTest(&argc, argv);
+    cfgo::Log::instance().set_level(cfgo::Log::DEFAULT, spdlog::level::trace);
     return RUN_ALL_TESTS();
 }

@@ -49,12 +49,21 @@ namespace cfgo
         return timeout;
     }
 
-    auto wait_timeout(const duration_t& dur) -> asio::awaitable<void> {
-        auto executor = co_await asio::this_coro::executor;
-        auto timer = asio::steady_timer{executor};
-        timer.expires_after(dur);
-        co_await timer.async_wait(asio::use_awaitable);
-        co_return;
+    auto wait_timeout(const duration_t& dur, close_chan closer, std::string && reasion) -> asio::awaitable<void> {
+        if (closer)
+        {
+            auto timeout_closer = closer.create_child();
+            timeout_closer.set_timeout(dur, std::move(reasion));
+            co_await timeout_closer.await();
+        }
+        else
+        {
+            auto executor = co_await asio::this_coro::executor;
+            auto timer = asio::steady_timer{executor};
+            timer.expires_after(dur);
+            co_await timer.async_wait(asio::use_awaitable);
+            co_return;
+        }
     }
 
     auto AsyncMutex::accquire(close_chan close_chan) -> asio::awaitable<bool>
@@ -112,12 +121,16 @@ namespace cfgo
             mutex m_mutex;
             duration_t m_timeout = duration_t {0};
             duration_t m_stop_timeout = duration_t {0};
-            std::string m_timeout_reason;
-            std::shared_ptr<asio::steady_timer> m_timer;
+            std::string m_timeout_reason = "timeout";
+            std::shared_ptr<asio::steady_timer> m_timer = nullptr;
             std::list<Waiter> m_waiters;
             std::list<Waiter> m_stop_waiters;
-            CloseSignalState * m_parent = nullptr;
+            std::weak_ptr<CloseSignalState> m_parent;
             std::list<Ptr> m_children;
+
+            CloseSignalState();
+            CloseSignalState(const std::weak_ptr<CloseSignalState> & parent);
+            CloseSignalState(std::weak_ptr<CloseSignalState> && parent);
 
             ~CloseSignalState() noexcept;
 
@@ -131,8 +144,10 @@ namespace cfgo
 
             bool _close_no_except(bool is_timeout, std::string && reason) noexcept;
 
+            void close(bool is_timeout, const std::string & reason);
             void close(bool is_timeout, std::string && reason);
 
+            bool close_no_except(bool is_timeout, const std::string & reason) noexcept;
             bool close_no_except(bool is_timeout, std::string && reason) noexcept;
 
             void stop(bool stop_timer);
@@ -143,6 +158,7 @@ namespace cfgo
 
             void _set_timeout(const duration_t& dur, std::string && reason);
 
+            void set_timeout(const duration_t& dur, const std::string & reason);
             void set_timeout(const duration_t& dur, std::string && reason);
 
             Ptr create_child();
@@ -151,6 +167,12 @@ namespace cfgo
 
             void unbind_parent() noexcept;
         };
+
+        CloseSignalState::CloseSignalState(): m_parent() {}
+        CloseSignalState::CloseSignalState(const std::weak_ptr<CloseSignalState> & parent)
+        : m_parent(parent) {}
+        CloseSignalState::CloseSignalState(std::weak_ptr<CloseSignalState> && parent)
+        : m_parent(std::move(parent)) {}
 
         CloseSignalState::~CloseSignalState() noexcept
         {
@@ -181,19 +203,24 @@ namespace cfgo
             {
                 return;
             }
-
-            std::lock_guard lock(m_mutex);
-            if (m_closed || m_timer)
             {
-                return;
+                std::lock_guard lock(m_mutex);
+                if (m_closed || m_timer)
+                {
+                    return;
+                }
+                m_timer = std::make_shared<asio::steady_timer>(executor);
+                if (m_timeout != duration_t {0})
+                {
+                    m_timer->expires_after(m_timeout);
+                    asio::co_spawn(executor, fix_async_lambda([self = shared_from_this()]() -> asio::awaitable<void> {
+                        co_await self->timer_task();
+                    }), asio::detached);
+                }
             }
-            m_timer = std::make_shared<asio::steady_timer>(executor);
-            if (m_timeout != duration_t {0})
+            if (auto parent = m_parent.lock())
             {
-                m_timer->expires_after(m_timeout);
-                asio::co_spawn(executor, fix_async_lambda([self = shared_from_this()]() -> asio::awaitable<void> {
-                    co_await self->timer_task();
-                }), asio::detached);
+                parent->init_timer(executor);
             }
         }
 
@@ -246,9 +273,9 @@ namespace cfgo
                 }
                 m_stop_waiters.pop_front();
             }
-            if (m_parent != nullptr)
+            if (auto parent = m_parent.lock())
             {
-                m_parent->remove_child(this);
+                parent->remove_child(this);
             }
             while (!m_children.empty())
             {
@@ -263,7 +290,7 @@ namespace cfgo
         {
             try
             {
-                _close(false, std::move(reason));
+                _close(is_timeout, std::move(reason));
                 return true;
             }
             catch(...)
@@ -271,6 +298,12 @@ namespace cfgo
                 cfgo::Log::instance().default_logger()->error(cfgo::what());
             }
             return false;
+        }
+
+        void CloseSignalState::close(bool is_timeout, const std::string & reason)
+        {
+            auto reason_copy = reason;
+            close(is_timeout, std::move(reason_copy));
         }
 
         void CloseSignalState::close(bool is_timeout, std::string && reason)
@@ -281,6 +314,12 @@ namespace cfgo
             }
             std::lock_guard lock(m_mutex);
             _close(is_timeout, std::move(reason));
+        }
+
+        bool CloseSignalState::close_no_except(bool is_timeout, const std::string & reason) noexcept
+        {
+            auto reason_copy = reason;
+            return close_no_except(is_timeout, std::move(reason_copy));
         }
 
         bool CloseSignalState::close_no_except(bool is_timeout, std::string && reason) noexcept
@@ -407,6 +446,12 @@ namespace cfgo
             }
         }
 
+        void CloseSignalState::set_timeout(const duration_t& dur, const std::string& reason)
+        {
+            auto reason_copy = reason;
+            set_timeout(dur, std::move(reason_copy));
+        }
+
         void CloseSignalState::set_timeout(const duration_t& dur, std::string&& reason)
         {
             if (m_closed)
@@ -420,8 +465,7 @@ namespace cfgo
         auto CloseSignalState::create_child() -> Ptr
         {
             std::lock_guard lock(m_mutex);
-            auto child = std::make_shared<CloseSignalState>();
-            child->m_parent = this;
+            auto child = std::make_shared<CloseSignalState>(weak_from_this());
             m_children.push_back(child);
             return child;
         }
@@ -438,7 +482,7 @@ namespace cfgo
         void CloseSignalState::unbind_parent() noexcept
         {
             std::lock_guard lock(m_mutex);
-            m_parent = nullptr;
+            m_parent.reset();
         }
     } // namespace detail
 
@@ -500,6 +544,12 @@ namespace cfgo
         return m_state ? m_state->m_is_timeout : false;
     }
 
+    void CloseSignal::close(const std::string & reason) const
+    {
+        auto reason_copy = reason;
+        close(std::move(reason_copy));
+    }
+
     void CloseSignal::close(std::string && reason) const
     {
         if (m_state)
@@ -512,9 +562,21 @@ namespace cfgo
         }
     }
 
+    bool CloseSignal::close_no_except(const std::string & reason) const noexcept
+    {
+        auto reason_copy = reason;
+        return close_no_except(std::move(reason_copy));
+    }
+
     bool CloseSignal::close_no_except(std::string && reason) const noexcept
     {
         return m_state ? m_state->close_no_except(false, std::move(reason)) : false;
+    }
+
+    void CloseSignal::set_timeout(const duration_t& dur, const std::string & reason) const
+    {
+        auto reason_copy = reason;
+        set_timeout(dur, std::move(reason_copy));
     }
 
     void CloseSignal::set_timeout(const duration_t& dur, std::string && reason) const
