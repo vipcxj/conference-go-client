@@ -1,5 +1,5 @@
-#ifndef _CFGO_GST_PIPELINE_IMPL_HPP_
-#define _CFGO_GST_PIPELINE_IMPL_HPP_
+#ifndef _CFGO_IMPL_PIPELINE_HPP_
+#define _CFGO_IMPL_PIPELINE_HPP_
 
 #include <memory>
 #include <unordered_map>

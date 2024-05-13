@@ -1,5 +1,5 @@
-#ifndef _CFGO_GST_LINK_IMPL_HPP_
-#define _CFGO_GST_LINK_IMPL_HPP_
+#ifndef _CFGO_IMPL_LINK_HPP_
+#define _CFGO_IMPL_LINK_HPP_
 
 #include "gst/gst.h"
 #include <string>

@@ -1,5 +1,5 @@
-#ifndef _CFGO_CLIENT_IMPL_HPP_
-#define _CFGO_CLIENT_IMPL_HPP_
+#ifndef _CFGO_IMPL_CLIENT_HPP_
+#define _CFGO_IMPL_CLIENT_HPP_
 
 #include "cfgo/config/configuration.h"
 #include "cfgo/alias.hpp"

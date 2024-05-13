@@ -1,5 +1,5 @@
-#ifndef _GST_CFGO_GST_GST_CFGO_SRC_PRIVATE_API_H_
-#define _GST_CFGO_GST_GST_CFGO_SRC_PRIVATE_API_H_
+#ifndef _CFGO_GST_GSTCFGOSRC_PRIVATE_API_H_
+#define _CFGO_GST_GSTCFGOSRC_PRIVATE_API_H_
 
 #include "gst/gst.h"
 #include "gst/app/gstappsrc.h"

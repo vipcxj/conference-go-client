@@ -1,5 +1,5 @@
-#ifndef _CFGO_TRACK_IMPL_HPP_
-#define _CFGO_TRACK_IMPL_HPP_
+#ifndef _CFGO_IMP_TRACK_HPP_
+#define _CFGO_IMP_TRACK_HPP_
 
 #include <string>
 #include <memory>

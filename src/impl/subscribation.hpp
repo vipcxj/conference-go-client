@@ -1,5 +1,5 @@
-#ifndef _CFGO_SUBSCRIBATION_IMPL_HPP_
-#define _CFGO_SUBSCRIBATION_IMPL_HPP_
+#ifndef _CFGO_IMPL_SUBSCRIBATION_HPP_
+#define _CFGO_IMPL_SUBSCRIBATION_HPP_
 
 #include <memory>
 #include <string>

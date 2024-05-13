@@ -1,5 +1,5 @@
-#ifndef _CFGO_RTC_HELPER_H_
-#define _CFGO_RTC_HELPER_H_
+#ifndef _CFGO_RTC_HELPER_HPP_
+#define _CFGO_RTC_HELPER_HPP_
 
 #include "rtc/peerconnection.hpp"
 

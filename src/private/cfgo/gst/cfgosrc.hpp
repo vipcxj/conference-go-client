@@ -1,5 +1,5 @@
-#ifndef _GST_CFGO_GST_CFGO_SRC_H_
-#define _GST_CFGO_GST_CFGO_SRC_H_
+#ifndef _CFGO_GST_CFGOSRC_HPP_
+#define _CFGO_GST_CFGOSRC_HPP_
 
 #include "cfgo/client.hpp"
 #include "cfgo/track.hpp"
