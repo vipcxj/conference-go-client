@@ -1,5 +1,5 @@
-#ifndef _GST_CFGO_GST_LINK_H_
-#define _GST_CFGO_GST_LINK_H_
+#ifndef _CFGO_GST_LINK_HPP_
+#define _CFGO_GST_LINK_HPP_
 
 #include <memory>
 #include "cfgo/utils.hpp"

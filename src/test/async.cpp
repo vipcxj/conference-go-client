@@ -560,6 +560,21 @@ TEST(Helper, SharedPtrHolder) {
     EXPECT_EQ(ptr.use_count(), 1);
 }
 
+TEST(Closer, ParentAndChildrenDestructingTogether) {
+    using namespace cfgo;
+    for (size_t i = 0; i < 10; i++)
+    {
+        close_chan parent {};
+        for (size_t i = 0; i < 10; i++)
+        {
+            std::thread([child = parent.create_child()]() {
+                std::ignore = child.is_closed();
+            }).detach();
+        }
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds {500});
+}
+
 int main(int argc, char **argv) {
     testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

@@ -1,5 +1,5 @@
-#ifndef _CFGO_FMT_H_
-#define _CFGO_FMT_H_
+#ifndef _CFGO_FMT_HPP_
+#define _CFGO_FMT_HPP_
 
 #include "fmt/core.h"
 #include "fmt/format.h"

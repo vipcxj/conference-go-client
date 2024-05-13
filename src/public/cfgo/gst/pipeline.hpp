@@ -1,5 +1,5 @@
-#ifndef _GST_CFGO_GST_PIPELINE_HPP_
-#define _GST_CFGO_GST_PIPELINE_HPP_
+#ifndef _CFGO_GST_PIPELINE_HPP_
+#define _CFGO_GST_PIPELINE_HPP_
 
 #include "cfgo/alias.hpp"
 #include "cfgo/async.hpp"

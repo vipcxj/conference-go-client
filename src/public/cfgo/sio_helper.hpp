@@ -1,5 +1,5 @@
-#ifndef _CFGO_SIO_HELPER_H_
-#define _CFGO_SIO_HELPER_H_
+#ifndef _CFGO_SIO_HELPER_HPP_
+#define _CFGO_SIO_HELPER_HPP_
 
 #include <string>
 #include "sio_message.h"

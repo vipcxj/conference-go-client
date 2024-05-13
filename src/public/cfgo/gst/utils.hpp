@@ -1,5 +1,5 @@
-#ifndef _CFGO_GST_UTILS_H_
-#define _CFGO_GST_UTILS_H_
+#ifndef _CFGO_GST_UTILS_HPP_
+#define _CFGO_GST_UTILS_HPP_
 
 #include "gst/gst.h"
 #include <memory>

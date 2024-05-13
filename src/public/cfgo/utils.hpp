@@ -1,5 +1,5 @@
-#ifndef _CFGO_UTILS_H_
-#define _CFGO_UTILS_H_
+#ifndef _CFGO_UTILS_HPP_
+#define _CFGO_UTILS_HPP_
 #include <string>
 #include <exception>
 #include <memory>

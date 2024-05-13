@@ -1,5 +1,5 @@
-#ifndef _GST_CFGOSRC_H_
-#define _GST_CFGOSRC_H_
+#ifndef _CFGO_GST_GSTCFGOSRC_H_
+#define _CFGO_GST_GSTCFGOSRC_H_
 
 #include <gst/gst.h>
 #include "cfgo/exports.h"

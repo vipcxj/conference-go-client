@@ -1,5 +1,5 @@
-#ifndef _GST_CFGO_GST_GST_HPP_
-#define _GST_CFGO_GST_GST_HPP_
+#ifndef _CFGO_GST_GST_HPP_
+#define _CFGO_GST_GST_HPP_
 
 #include "cfgo/gst/gst.h"
 #include "cfgo/gst/error.hpp"

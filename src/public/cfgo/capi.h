@@ -1,5 +1,5 @@
-#ifndef _CFGO_CINTERFACE_HPP_
-#define _CFGO_CINTERFACE_HPP_
+#ifndef _CFGO_CAPI_H_
+#define _CFGO_CAPI_H_
 
 #include "rtc/rtc.h"
 #include "cfgo/exports.h"
