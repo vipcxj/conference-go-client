@@ -561,19 +561,28 @@ TEST(Helper, SharedPtrHolder) {
     EXPECT_EQ(ptr.use_count(), 1);
 }
 
-TEST(Closer, ParentAndChildrenDestructingTogether) {
+TEST(Closer, ParentAndChildrenCloseTogether) {
     using namespace cfgo;
-    for (size_t i = 0; i < 10; i++)
+    std::random_device rd {};
+    std::mt19937 gen(rd());
+    std::vector<close_chan> closers {};
+    for (size_t i = 0; i < 100; i++)
     {
         close_chan parent {};
+        closers.push_back(parent);
         for (size_t i = 0; i < 10; i++)
         {
             auto child = parent.create_child();
-            std::thread([child]() {
-                std::this_thread::sleep_for(std::chrono::milliseconds {100});
-                std::ignore = child.is_closed();
-            }).detach();
+            closers.push_back(child);
         }
+    }
+    std::shuffle(closers.begin(), closers.end(), gen);
+    for (auto && closer : closers)
+    {
+        std::thread([closer]() {
+            std::this_thread::sleep_for(std::chrono::milliseconds {100});
+            closer.close();
+        }).detach();
     }
     std::this_thread::sleep_for(std::chrono::milliseconds {1000});
 }

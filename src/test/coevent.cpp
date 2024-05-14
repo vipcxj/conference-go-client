@@ -208,22 +208,10 @@ TEST_F(CoEventTest, TriggerException) {
 TEST_F(CoEventTest, TriggerTimeout) {
     do_test([](CoEventTest* self) -> asio::awaitable<void> {
         auto event = CoEventWrpper<>::create();
-        testing::Sequence s1, s2, s3;
-        // co_await event->await();
         EXPECT_CALL(event->partner, before_await())
             .WillOnce(testing::Return());
         EXPECT_CALL(event->partner, after_await())
             .Times(0);
-
-        std::thread([event, self]() {
-            auto work = asio::make_work_guard(self->io_ctx);
-            std::this_thread::sleep_for(std::chrono::seconds{1});
-        }).detach();
-        try {
-            co_await event->await(std::chrono::milliseconds{500});
-        } catch (...) {
-
-        }
         EXPECT_THROW({
             co_await event->await(std::chrono::milliseconds{500});
         }, decltype(std::make_error_code(std::errc::timed_out)));

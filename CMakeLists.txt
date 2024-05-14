@@ -245,6 +245,7 @@ if(ENABLE_TEST)
     endif()
 
     add_executable(test-coevent "${MY_TEST_PATH}/coevent.cpp" "${SRC_PATH}/coevent.cpp" "${H_PRIVATE_PATH}/coevent.hpp")
+    target_include_directories(test-coevent PRIVATE "${H_PUBLIC}")
     target_include_directories(test-coevent PRIVATE "${H_PRIVATE}")
     find_package(asio CONFIG REQUIRED)
     target_link_libraries(test-coevent PRIVATE asio::asio)
