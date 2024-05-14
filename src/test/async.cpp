@@ -579,7 +579,7 @@ TEST(Closer, ParentAndChildrenDestructingTogether) {
 }
 
 int main(int argc, char **argv) {
-    // testing::InitGoogleTest(&argc, argv);
-    cfgo::Log::instance().set_level(cfgo::Log::DEFAULT, spdlog::level::trace);
+    testing::InitGoogleTest(&argc, argv);
+    // cfgo::Log::instance().set_level(cfgo::Log::DEFAULT, spdlog::level::trace);
     return RUN_ALL_TESTS();
 }
