@@ -163,9 +163,9 @@ namespace cfgo
 
             Ptr create_child();
 
-            void remove_child(CloseSignalState * child);
+            void _remove_me(CloseSignalState * child);
 
-            void unbind_parent() noexcept;
+            void _unbind_parent() noexcept;
         };
 
         CloseSignalState::CloseSignalState(): m_parent() {}
@@ -275,15 +275,38 @@ namespace cfgo
             }
             if (auto parent = m_parent.lock())
             {
-                parent->remove_child(this);
+                do
+                {
+                    std::unique_lock lk(parent->m_mutex, std::try_to_lock);
+                    if (lk.owns_lock())
+                    {
+                        parent->_remove_me(this);
+                        break;
+                    }
+                    else
+                    {
+                        std::this_thread::yield();
+                    }
+                } while (true);
             }
-            while (!m_children.empty())
+            for (auto && child : m_children)
             {
-                auto child = m_children.front();
-                child->unbind_parent();
+                do
+                {
+                    std::unique_lock lk(child->m_mutex, std::try_to_lock);
+                    if (lk.owns_lock())
+                    {
+                        child->_unbind_parent();
+                        break;
+                    }
+                    else
+                    {
+                        std::this_thread::yield();
+                    }
+                } while (true);
                 child->close_no_except(is_timeout, std::move(reason));
-                m_children.pop_front();
             }
+            m_children.clear();
         }
 
         bool CloseSignalState::_close_no_except(bool is_timeout, std::string && reason) noexcept
@@ -470,18 +493,16 @@ namespace cfgo
             return child;
         }
 
-        void CloseSignalState::remove_child(CloseSignalState * child)
+        void CloseSignalState::_remove_me(CloseSignalState * child)
         {
-            std::lock_guard lock(m_mutex);
             m_children.erase(
                 std::remove_if(m_children.begin(), m_children.end(), [child](auto && v) { return v.get() == child; }),
                 m_children.end()
             );
         }
 
-        void CloseSignalState::unbind_parent() noexcept
+        void CloseSignalState::_unbind_parent() noexcept
         {
-            std::lock_guard lock(m_mutex);
             m_parent.reset();
         }
     } // namespace detail
