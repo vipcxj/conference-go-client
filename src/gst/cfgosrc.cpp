@@ -901,56 +901,68 @@ namespace cfgo
                         self->m_logger->debug("It seems that the track is closed.");
                         co_return;
                     }
-                    
-                    self->m_logger->trace("Received {} bytes {} data.", msg->size(), msg_type);
-                    auto buffer = _safe_use_owner<GstBuffer *>([&msg](auto owner) {
-                        GstBuffer *buffer;
-                        buffer = gst_buffer_new_and_alloc(msg->size());
-                        auto clock = gst_element_get_clock(GST_ELEMENT(owner));
-                        if (!clock)
+
+                    bool stop = false;
+                    do {
+                        self->m_logger->trace("Received {} bytes {} data.", msg->size(), msg_type);
+                        auto buffer = _safe_use_owner<GstBuffer *>([&msg](auto owner) {
+                            GstBuffer *buffer;
+                            buffer = gst_buffer_new_and_alloc(msg->size());
+                            auto clock = gst_element_get_clock(GST_ELEMENT(owner));
+                            if (!clock)
+                            {
+                                clock = gst_system_clock_obtain();
+                            }
+                            DEFER({
+                                gst_object_unref(clock);
+                            });
+                            auto time_now = gst_clock_get_time(clock);
+                            auto runing_time = time_now - gst_element_get_base_time(GST_ELEMENT(owner));
+                            GST_BUFFER_PTS(buffer) = GST_BUFFER_DTS(buffer) = runing_time;
+                            return buffer;
+                        });
+                        if (!buffer)
                         {
-                            clock = gst_system_clock_obtain();
+                            stop = true;
+                            break;
+                        }
+                        GstMapInfo info = GST_MAP_INFO_INIT;
+                        if (!gst_buffer_map(buffer.value(), &info, GST_MAP_READWRITE))
+                        {
+                            if (auto owner = _safe_get_owner())
+                            {
+                                auto error = steal_shared_g_error(create_gerror_general("Unable to map the buffer", true));
+                                cfgo_error_submit(owner.get(), error.get());
+                            }
+                            stop = true;
+                            break;
                         }
                         DEFER({
-                            gst_object_unref(clock);
+                            gst_buffer_unmap(buffer.value(), &info);
                         });
-                        auto time_now = gst_clock_get_time(clock);
-                        auto runing_time = time_now - gst_element_get_base_time(GST_ELEMENT(owner));
-                        GST_BUFFER_PTS(buffer) = GST_BUFFER_DTS(buffer) = runing_time;
-                        return buffer;
-                    });
-                    if (!buffer)
+                        memcpy(info.data, msg->data(), msg->size());
+                        if (!_safe_use_owner<void>([self, msg_type, buffer = buffer.value()](auto owner) {
+                            self->m_logger->trace("Push {} bytes {} buffer.", gst_buffer_get_size(buffer), msg_type);
+                            if (msg_type == Track::MsgType::RTP)
+                            {
+                                push_rtp_buffer(owner, buffer);
+                            }
+                            else if (msg_type == Track::MsgType::RTCP)
+                            {
+                                push_rtcp_buffer(owner, buffer);
+                            }
+                        }))
+                        {
+                            stop = true;
+                            break;
+                        }
+                    } while (false);
+
+                    if (stop)
                     {
                         co_return;
                     }
-                    GstMapInfo info = GST_MAP_INFO_INIT;
-                    if (!gst_buffer_map(buffer.value(), &info, GST_MAP_READWRITE))
-                    {
-                        if (auto owner = _safe_get_owner())
-                        {
-                            auto error = steal_shared_g_error(create_gerror_general("Unable to map the buffer", true));
-                            cfgo_error_submit(owner.get(), error.get());
-                        }
-                        co_return;
-                    }
-                    DEFER({
-                        gst_buffer_unmap(buffer.value(), &info);
-                    });
-                    memcpy(info.data, msg->data(), msg->size());
-                    if (!_safe_use_owner<void>([self, msg_type, buffer = buffer.value()](auto owner) {
-                        self->m_logger->trace("Push {} bytes {} buffer.", gst_buffer_get_size(buffer), msg_type);
-                        if (msg_type == Track::MsgType::RTP)
-                        {
-                            push_rtp_buffer(owner, buffer);
-                        }
-                        else if (msg_type == Track::MsgType::RTCP)
-                        {
-                            push_rtcp_buffer(owner, buffer);
-                        }
-                    }))
-                    {
-                        co_return;
-                    }
+                    
                     if (msg_type == Track::MsgType::RTP)
                     {
                         if (session.m_rtp_enough_data_ch.try_read())
