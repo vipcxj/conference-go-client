@@ -455,6 +455,7 @@ auto main_task(cfgo::Client::CtxPtr exec_ctx, const std::string & token, cfgo::c
                         }
                     });
 
+                    cudaEvent_t start, end;
                     {
                         auto caps = gst_sample_get_caps(sample.get());
                         GstVideoFrame cuda_frame;
@@ -467,7 +468,6 @@ auto main_task(cfgo::Client::CtxPtr exec_ctx, const std::string & token, cfgo::c
 
                         gst_cuda_context_push(cuda_mem->context);
                         CUstream cuda_stream = gst_cuda_stream_get_handle(stream);
-                        cudaEvent_t start, end;
                         cudaEventCreate(&start);
                         cudaCheckErrors("create start event");
                         cudaEventCreate(&end);
