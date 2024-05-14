@@ -905,7 +905,7 @@ namespace cfgo
                     bool stop = false;
                     do {
                         self->m_logger->trace("Received {} bytes {} data.", msg->size(), msg_type);
-                        auto buffer = _safe_use_owner<GstBuffer *>([&msg](auto owner) {
+                        auto maybe_buffer = _safe_use_owner<GstBuffer *>([&msg](auto owner) {
                             GstBuffer *buffer;
                             buffer = gst_buffer_new_and_alloc(msg->size());
                             auto clock = gst_element_get_clock(GST_ELEMENT(owner));
@@ -921,13 +921,22 @@ namespace cfgo
                             GST_BUFFER_PTS(buffer) = GST_BUFFER_DTS(buffer) = runing_time;
                             return buffer;
                         });
+                        if (!maybe_buffer)
+                        {
+                            stop = true;
+                            break;
+                        }
+                        auto buffer = maybe_buffer.value();
                         if (!buffer)
                         {
                             stop = true;
                             break;
                         }
+                        DEFER({
+                            gst_buffer_unref(buffer);
+                        });
                         GstMapInfo info = GST_MAP_INFO_INIT;
-                        if (!gst_buffer_map(buffer.value(), &info, GST_MAP_READWRITE))
+                        if (!gst_buffer_map(buffer, &info, GST_MAP_READWRITE))
                         {
                             if (auto owner = _safe_get_owner())
                             {
@@ -938,10 +947,10 @@ namespace cfgo
                             break;
                         }
                         DEFER({
-                            gst_buffer_unmap(buffer.value(), &info);
+                            gst_buffer_unmap(buffer, &info);
                         });
                         memcpy(info.data, msg->data(), msg->size());
-                        if (!_safe_use_owner<void>([self, msg_type, buffer = buffer.value()](auto owner) {
+                        if (!_safe_use_owner<void>([self, msg_type, buffer](auto owner) {
                             self->m_logger->trace("Push {} bytes {} buffer.", gst_buffer_get_size(buffer), msg_type);
                             if (msg_type == Track::MsgType::RTP)
                             {

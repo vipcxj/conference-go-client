@@ -55,6 +55,7 @@ set(MY_PUBLIC_HEADERS
     "${H_PUBLIC_PATH}/cfgo.hpp"
 )
 set(MY_GST_PLUGIN_PUBLIC_HEADERS
+    "${H_PUBLIC_PATH}/gst/buffer_pool.hpp"
     "${H_PUBLIC_PATH}/gst/gstcfgosrc.h"
     "${H_PUBLIC_PATH}/gst/error.h"
     "${H_PUBLIC_PATH}/gst/error.hpp"
@@ -104,6 +105,7 @@ set(MY_SOURCES
     "${H_IMPL}/subscribation.cpp"
 )
 set(MY_GST_PLUGIN_SOURCES
+    "${SRC_PATH}/gst/buffer_pool.cpp"
     "${SRC_PATH}/gst/gstcfgosrc.cpp"
     "${SRC_PATH}/gst/error.cpp"
     "${SRC_PATH}/gst/cfgosrc.cpp"
