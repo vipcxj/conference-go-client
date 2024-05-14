@@ -455,36 +455,41 @@ auto main_task(cfgo::Client::CtxPtr exec_ctx, const std::string & token, cfgo::c
                         }
                     });
 
-                    auto caps = gst_sample_get_caps(sample.get());
-                    GstVideoFrame cuda_frame;
-                    GstVideoInfo info;
-                    gst_video_info_from_caps(&info, caps);
-                    gst_video_frame_map(&cuda_frame, &info, buffer, (GstMapFlags) (GST_MAP_READ | GST_MAP_CUDA));
+                    {
+                        auto caps = gst_sample_get_caps(sample.get());
+                        GstVideoFrame cuda_frame;
+                        GstVideoInfo info;
+                        gst_video_info_from_caps(&info, caps);
+                        gst_video_frame_map(&cuda_frame, &info, buffer, (GstMapFlags) (GST_MAP_READ | GST_MAP_CUDA));
+                        DEFER({
+                            gst_video_frame_unmap(&cuda_frame);
+                        });
 
-                    gst_cuda_context_push(cuda_mem->context);
-                    CUstream cuda_stream = gst_cuda_stream_get_handle(stream);
-                    cudaEvent_t start, end;
-                    cudaEventCreate(&start);
-                    cudaCheckErrors("create start event");
-                    cudaEventCreate(&end);
-                    cudaCheckErrors("create stop event");
-                    cudaEventRecord(start, cuda_stream);
-                    gst::copy_frame((unsigned char *) GST_VIDEO_FRAME_PLANE_DATA(&cuda_frame, 0), 1024, d_ready_areas, frame % 16, 0, cuda_stream);
-                    cudaEventRecord(end, cuda_stream);
-                    sync_ch_ptr->ref();
-                    cudaStreamAddCallback(cuda_stream, [](cudaStream_t stream, cudaError_t status, void * userData) {
-                        manually_ptr<unique_void_chan> * sync_ch_ptr = (manually_ptr<unique_void_chan> * ) userData;
-                        try
-                        {
-                            chan_must_write(sync_ch_ptr->data());
-                        }
-                        catch(...)
-                        {
-                            spdlog::error(what());
-                        }
-                        manually_ptr_unref(&sync_ch_ptr);
-                    }, sync_ch_ptr, 0);
-                    gst_cuda_context_pop(NULL);
+                        gst_cuda_context_push(cuda_mem->context);
+                        CUstream cuda_stream = gst_cuda_stream_get_handle(stream);
+                        cudaEvent_t start, end;
+                        cudaEventCreate(&start);
+                        cudaCheckErrors("create start event");
+                        cudaEventCreate(&end);
+                        cudaCheckErrors("create stop event");
+                        cudaEventRecord(start, cuda_stream);
+                        gst::copy_frame((unsigned char *) GST_VIDEO_FRAME_PLANE_DATA(&cuda_frame, 0), 1024, d_ready_areas, frame % 16, 0, cuda_stream);
+                        cudaEventRecord(end, cuda_stream);
+                        sync_ch_ptr->ref();
+                        cudaStreamAddCallback(cuda_stream, [](cudaStream_t stream, cudaError_t status, void * userData) {
+                            manually_ptr<unique_void_chan> * sync_ch_ptr = (manually_ptr<unique_void_chan> * ) userData;
+                            try
+                            {
+                                chan_must_write(sync_ch_ptr->data());
+                            }
+                            catch(...)
+                            {
+                                spdlog::error(what());
+                            }
+                            manually_ptr_unref(&sync_ch_ptr);
+                        }, sync_ch_ptr, 0);
+                        gst_cuda_context_pop(NULL);
+                    }
 
                     co_await sync_ch_ptr->data().read();
                     float used = 0.0;
