@@ -323,7 +323,7 @@ gst_cfgosrc_class_init(GstCfgoSrcClass *klass)
         "buffer-allocate", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_LAST,
         G_STRUCT_OFFSET(GstCfgoSrcClass, buffer_allocate),
         _gst_buffer_accumulator, NULL, NULL,
-        GST_TYPE_BUFFER, 0
+        GST_TYPE_BUFFER, 0, G_TYPE_NONE
     );
 
     g_object_class_install_property(
