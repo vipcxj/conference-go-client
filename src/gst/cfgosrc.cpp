@@ -903,6 +903,7 @@ namespace cfgo
                     }
 
                     bool stop = false;
+                    GstBuffer * buffer = nullptr;
                     do {
                         self->m_logger->trace("Received {} bytes {} data.", msg->size(), msg_type);
                         auto maybe_buffer = _safe_use_owner<GstBuffer *>([&msg](auto owner) {
@@ -926,30 +927,27 @@ namespace cfgo
                             stop = true;
                             break;
                         }
-                        auto buffer = maybe_buffer.value();
+                        buffer = maybe_buffer.value();
                         if (!buffer)
                         {
                             stop = true;
                             break;
                         }
-                        DEFER({
-                            gst_buffer_unref(buffer);
-                        });
-                        GstMapInfo info = GST_MAP_INFO_INIT;
-                        if (!gst_buffer_map(buffer, &info, GST_MAP_READWRITE))
                         {
-                            if (auto owner = _safe_get_owner())
+                            GstMapInfo info = GST_MAP_INFO_INIT;
+                            if (!gst_buffer_map(buffer, &info, GST_MAP_READWRITE))
                             {
-                                auto error = steal_shared_g_error(create_gerror_general("Unable to map the buffer", true));
-                                cfgo_error_submit(owner.get(), error.get());
+                                if (auto owner = _safe_get_owner())
+                                {
+                                    auto error = steal_shared_g_error(create_gerror_general("Unable to map the buffer", true));
+                                    cfgo_error_submit(owner.get(), error.get());
+                                }
+                                stop = true;
+                                break;
                             }
-                            stop = true;
-                            break;
-                        }
-                        DEFER({
+                            memcpy(info.data, msg->data(), msg->size());
                             gst_buffer_unmap(buffer, &info);
-                        });
-                        memcpy(info.data, msg->data(), msg->size());
+                        }
                         if (!_safe_use_owner<void>([self, msg_type, buffer](auto owner) {
                             self->m_logger->trace("Push {} bytes {} buffer.", gst_buffer_get_size(buffer), msg_type);
                             if (msg_type == Track::MsgType::RTP)
@@ -960,6 +958,10 @@ namespace cfgo
                             {
                                 push_rtcp_buffer(owner, buffer);
                             }
+                            else
+                            {
+                                gst_buffer_unref(buffer);
+                            }
                         }))
                         {
                             stop = true;
@@ -969,6 +971,10 @@ namespace cfgo
 
                     if (stop)
                     {
+                        if (buffer)
+                        {
+                            gst_buffer_unref(buffer);
+                        }
                         co_return;
                     }
                     
