@@ -68,7 +68,7 @@ namespace cfgo
 
         } // namespace detail
 
-        BufferPool::BufferPool(std::nullptr_t): ImplBy(nullptr) {}
+        BufferPool::BufferPool(std::nullptr_t): ImplBy(std::shared_ptr<detail::BufferPool>()) {}
 
         BufferPool::BufferPool(guint buf_size, guint min_buf, guint max_buf): ImplBy(buf_size, min_buf, max_buf) {}
 

@@ -77,6 +77,9 @@ static void gst_cfgosrc_get_property(GObject *object,
                                      guint property_id, GValue *value, GParamSpec *pspec);
 static void gst_cfgosrc_dispose(GObject *object);
 static void gst_cfgosrc_finalize(GObject *object);
+static void gst_cfgosrc_decodebin_created(GstElement * element, GstElement * decodebin);
+static void gst_cfgosrc_parsebin_created(GstElement * element, GstElement * decodebin);
+static GstBuffer * gst_cfgosrc_buffer_allocate(GstElement * element);
 
 static GstPad *gst_cfgosrc_request_new_pad(GstElement *element,
                                            GstPadTemplate *templ, const gchar *name);
@@ -1005,17 +1008,17 @@ gst_cfgosrc_change_state(GstElement *element, GstStateChange transition)
     return ret;
 }
 
-void gst_cfgosrc_decodebin_created(GstElement * element, GstElement * decodebin)
+static void gst_cfgosrc_decodebin_created(GstElement * element, GstElement * decodebin)
 {
 
 }
 
-void gst_cfgosrc_parsebin_created(GstElement * element, GstElement * decodebin)
+static void gst_cfgosrc_parsebin_created(GstElement * element, GstElement * decodebin)
 {
 
 }
 
-GstBuffer * gst_cfgosrc_buffer_allocate(GstElement * element)
+static GstBuffer * gst_cfgosrc_buffer_allocate(GstElement * element)
 {
     return nullptr;
 }
