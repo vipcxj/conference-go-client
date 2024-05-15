@@ -903,6 +903,7 @@ namespace cfgo
                     }
 
                     bool stop = false;
+                    bool skip = false;
                     GstBuffer * buffer = nullptr;
                     do {
                         self->m_logger->trace("Received {} bytes {} data.", msg->size(), msg_type);
@@ -935,7 +936,7 @@ namespace cfgo
                         {
                             stop = true;
                             break;
-                        }
+                        }                        
                         {
                             GstMapInfo info = GST_MAP_INFO_INIT;
                             if (!gst_buffer_map(buffer, &info, GST_MAP_READWRITE))
@@ -946,6 +947,12 @@ namespace cfgo
                                     cfgo_error_submit(owner.get(), error.get());
                                 }
                                 stop = true;
+                                break;
+                            }
+                            if (msg->size() > info.maxsize)
+                            {
+                                skip = true;
+                                m_logger->warn("The buffer is too small for the msg. The msg size is {}. The buffer max size is {}", msg->size(), info.maxsize);
                                 break;
                             }
                             memcpy(info.data, msg->data(), msg->size());

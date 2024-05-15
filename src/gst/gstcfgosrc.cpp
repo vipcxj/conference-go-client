@@ -268,12 +268,8 @@ namespace cfgo
 
         GstBuffer * cfgosrc_buffer_allocate(GstElement * cfgosrc)
         {
-            GValue buffer_value = G_VALUE_INIT;
-            g_value_init(&buffer_value, GST_TYPE_BUFFER);
-            g_value_set_boxed(&buffer_value, NULL);
-            g_signal_emit(G_OBJECT(cfgosrc), gst_cfgosrc_signals[SIGNAL_BUFFER_ALLOCATE], 0, &buffer_value);
-            GstBuffer * buffer = GST_BUFFER(g_value_dup_boxed(&buffer_value));
-            g_value_unset(&buffer_value);
+            GstBuffer * buffer = nullptr;
+            g_signal_emit(G_OBJECT(cfgosrc), gst_cfgosrc_signals[SIGNAL_BUFFER_ALLOCATE], 0, &buffer);
             return buffer;
         }
     } // namespace gst
@@ -323,7 +319,7 @@ gst_cfgosrc_class_init(GstCfgoSrcClass *klass)
         "buffer-allocate", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_LAST,
         G_STRUCT_OFFSET(GstCfgoSrcClass, buffer_allocate),
         _gst_buffer_accumulator, NULL, NULL,
-        GST_TYPE_BUFFER, 0, G_TYPE_NONE
+        GST_TYPE_BUFFER, 0
     );
 
     g_object_class_install_property(
@@ -417,9 +413,9 @@ gst_cfgosrc_class_init(GstCfgoSrcClass *klass)
             GST_TYPE_CAPS,
             (GParamFlags)(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
 
-    klass->decodebin_created = gst_cfgosrc_decodebin_created;
-    klass->parsebin_created = gst_cfgosrc_parsebin_created;
-    klass->buffer_allocate = gst_cfgosrc_buffer_allocate;
+    klass->decodebin_created = GST_DEBUG_FUNCPTR(gst_cfgosrc_decodebin_created);
+    klass->parsebin_created = GST_DEBUG_FUNCPTR(gst_cfgosrc_parsebin_created);
+    klass->buffer_allocate = GST_DEBUG_FUNCPTR(gst_cfgosrc_buffer_allocate);
 }
 
 

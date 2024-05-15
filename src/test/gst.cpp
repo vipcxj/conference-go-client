@@ -123,6 +123,12 @@ std::string cv_type2str(int type)
     return r;
 }
 
+GstBuffer * allocate_buffer(GstElement * element, gpointer user_data)
+{
+    auto & self = cfgo::cast_shared_holder_ref<cfgo::gst::BufferPool>(user_data);
+    return self->acquire_buffer();
+}
+
 auto main_task(cfgo::Client::CtxPtr exec_ctx, const std::string & token, cfgo::close_chan closer) -> asio::awaitable<void> {
     using namespace cfgo;
     cfgo::Configuration conf { "http://localhost:8080", token };
@@ -130,6 +136,7 @@ auto main_task(cfgo::Client::CtxPtr exec_ctx, const std::string & token, cfgo::c
     gst::Pipeline pipeline("test pipeline", exec_ctx);
     pipeline.add_node("cfgosrc", "cfgosrc");
     auto decode_caps = gst_caps_from_string("video/x-raw(memory:CUDAMemory)");
+    std::shared_ptr<gst::BufferPool> buffer_pool = std::make_shared<gst::BufferPool>(1600, 16, 48);
     g_object_set(
         pipeline.require_node("cfgosrc").get(),
         "client",
@@ -155,6 +162,14 @@ auto main_task(cfgo::Client::CtxPtr exec_ctx, const std::string & token, cfgo::c
         NULL
     );
     gst_caps_unref(decode_caps);
+    g_signal_connect_data(
+        pipeline.require_node("cfgosrc").get(), 
+        "buffer-allocate", 
+        G_CALLBACK(allocate_buffer), 
+        cfgo::make_shared_holder(buffer_pool), [](gpointer data, GClosure *closure) {
+            cfgo::destroy_shared_holder<gst::BufferPool>(data);
+        },
+    GConnectFlags::G_CONNECT_DEFAULT);
     pipeline.add_node("cudaconvertscale", "cudaconvertscale");
     g_object_set(
         pipeline.require_node("cudaconvertscale").get(),
