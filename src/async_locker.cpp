@@ -1,5 +1,6 @@
 #include "cfgo/async_locker.hpp"
 #include "cfgo/async.hpp"
+#include "cfgo/log.hpp"
 #include <list>
 #include <memory>
 #include <algorithm>
@@ -44,7 +45,7 @@ namespace cfgo
             std::variant<std::nullptr_t, std::shared_ptr<void>, std::int64_t, double, std::string> m_user_data;
         };
 
-        // can not concurrent with unblock
+        // only called by manager
         auto AsyncBlocker::request_block(close_chan closer) -> asio::awaitable<bool>
         {
             if (m_block)
@@ -77,7 +78,7 @@ namespace cfgo
             return m_blocked;
         }
         
-        // can not concurrent with request_block
+        // only called by manager
         bool AsyncBlocker::unblock()
         {
             if (m_block)
@@ -238,7 +239,6 @@ namespace cfgo
                 }
                 else if (m_conf.target_batch < 0)
                 {
-                    int _n = m_conf.target_batch + m_blockers.size();
                     n = (std::uint32_t) std::max(m_conf.target_batch + (std::int64_t) m_blockers.size(), (std::int64_t) m_conf.min_batch);
                 }
                 else
@@ -413,13 +413,21 @@ namespace cfgo
                         tasks.add_task(fix_async_lambda([blocker = blocker.m_blocker, timeout = m_conf.block_timeout](close_chan closer) -> asio::awaitable<void> {
                             auto child_closer = closer.create_child();
                             child_closer.set_timeout(timeout);
-                            if (!co_await blocker->request_block(child_closer))
+                            if (blocker->has_int_data())
                             {
-                                blocker->unblock();
-                                if (!child_closer.is_timeout())
+                                cfgo::Log::instance().default_logger()->info("[blocker {}] requesting block.", blocker->get_integer_user_data());
+                            }
+                            if (!co_await blocker->request_block(child_closer) && !child_closer.is_timeout())
+                            {
+                                if (blocker->has_int_data())
                                 {
-                                    throw CancelError(child_closer);
+                                    cfgo::Log::instance().default_logger()->info("[blocker {}] canceled.", blocker->get_integer_user_data());
                                 }
+                                throw CancelError(child_closer);
+                            }
+                            if (blocker->has_int_data())
+                            {
+                                cfgo::Log::instance().default_logger()->info("[blocker {}] block requested.", blocker->get_integer_user_data());
                             }
                         }));
                     }
@@ -600,28 +608,28 @@ namespace cfgo
 
     AsyncBlockerManager::AsyncBlockerManager(const Configure & configure): ImplBy(configure) {}
 
-    auto AsyncBlockerManager::lock(close_chan closer) -> asio::awaitable<void>
+    auto AsyncBlockerManager::lock(close_chan closer) const -> asio::awaitable<void>
     {
         return impl()->lock(std::move(closer));
     }
 
-    void AsyncBlockerManager::unlock()
+    void AsyncBlockerManager::unlock() const
     {
         impl()->unlock();
     }
 
-    void AsyncBlockerManager::collect_locked_blocker(std::vector<cfgo::AsyncBlocker> & blockers)
+    void AsyncBlockerManager::collect_locked_blocker(std::vector<cfgo::AsyncBlocker> & blockers) const
     {
         impl()->collect_locked_blocker(blockers);
     }
     
-    auto AsyncBlockerManager::add_blocker(int priority, close_chan closer) -> asio::awaitable<AsyncBlocker>
+    auto AsyncBlockerManager::add_blocker(int priority, close_chan closer) const -> asio::awaitable<AsyncBlocker>
     {
         auto block_ptr = co_await impl()->add_blocker(priority, closer);
         co_return AsyncBlocker{block_ptr};
     }
 
-    void AsyncBlockerManager::remove_blocker(std::uint32_t id)
+    void AsyncBlockerManager::remove_blocker(std::uint32_t id) const
     {
         impl()->remove_blocker(id);
     }

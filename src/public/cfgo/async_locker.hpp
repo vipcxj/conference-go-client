@@ -341,11 +341,11 @@ namespace cfgo
         };
 
         AsyncBlockerManager(const Configure & configure);
-        auto lock(close_chan closer = INVALID_CLOSE_CHAN) -> asio::awaitable<void>;
-        void unlock();
-        void collect_locked_blocker(std::vector<AsyncBlocker> & blockers);
-        auto add_blocker(int priority, close_chan closer = INVALID_CLOSE_CHAN) -> asio::awaitable<AsyncBlocker>;
-        void remove_blocker(std::uint32_t id);
+        auto lock(close_chan closer = INVALID_CLOSE_CHAN) const -> asio::awaitable<void>;
+        void unlock() const;
+        void collect_locked_blocker(std::vector<AsyncBlocker> & blockers) const;
+        auto add_blocker(int priority, close_chan closer = INVALID_CLOSE_CHAN) const -> asio::awaitable<AsyncBlocker>;
+        void remove_blocker(std::uint32_t id) const;
     };
     
 } // namespace cfgo

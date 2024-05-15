@@ -1,4 +1,6 @@
 #include "cfgo/async.hpp"
+#include "cfgo/async_locker.hpp"
+#include "cfgo/defer.hpp"
 #include "cfgo/log.hpp"
 #include "asio.hpp"
 #include "gtest/gtest.h"
@@ -250,7 +252,7 @@ TEST(Chan, AsyncTasksAllVoid) {
         std::size_t n_tasks = 5;
         {
             AsyncTasksAll<void> tasks{};
-            mutex mutex;
+            cfgo::mutex mutex;
             int sum = 0;
             for (std::size_t i = 0; i < n_tasks; i++)
             {
@@ -275,7 +277,7 @@ TEST(Chan, AsyncTasksAllVoid) {
         {
             close_chan closer{};
             AsyncTasksAll<void> tasks{closer};
-            mutex mutex;
+            cfgo::mutex mutex;
             int sum = 0;
             for (std::size_t i = 0; i < n_tasks; i++)
             {
@@ -310,7 +312,7 @@ TEST(Chan, AsyncTasksAllVoid) {
             close_chan closer{};
             closer.set_timeout(std::chrono::milliseconds{100});
             AsyncTasksAll<void> tasks{closer};
-            mutex mutex;
+            cfgo::mutex mutex;
             int sum = 0;
             for (std::size_t i = 0; i < n_tasks; i++)
             {
@@ -339,7 +341,7 @@ TEST(Chan, AsyncTasksAllVoid) {
         {
             close_chan closer{};
             AsyncTasksAll<void> tasks{closer};
-            mutex mutex;
+            cfgo::mutex mutex;
             int sum = 0;
             for (std::size_t i = 0; i < n_tasks; i++)
             {
@@ -585,6 +587,79 @@ TEST(Closer, ParentAndChildrenCloseTogether) {
         }).detach();
     }
     std::this_thread::sleep_for(std::chrono::milliseconds {1000});
+}
+
+TEST(AsyncBlocker, CheckDeadLock) {
+    using namespace cfgo;
+    AsyncBlockerManager::Configure conf {
+        .block_timeout = std::chrono::milliseconds {30},
+        .target_batch = 10,
+        .min_batch = 1,
+    };
+    AsyncBlockerManager manager {conf};
+    close_chan closer {};
+    asio::thread_pool m_pool {};
+    auto mutex = std::make_shared<cfgo::mutex>();
+    for (size_t i = 0; i < 10; i++)
+    {
+        asio::co_spawn(m_pool.get_executor(), fix_async_lambda([i, manager, closer, mutex]() -> asio::awaitable<void> {
+            auto blocker = co_await manager.add_blocker(0, closer);
+            blocker.set_user_data((std::int64_t) i);
+            try
+            {
+                do
+                {
+                    co_await wait_timeout(std::chrono::milliseconds {40}, closer);
+                    {
+                        std::lock_guard lk(*mutex);
+                        std::cout << "[blocker " << i << "] checking block" << std::endl;
+                    }
+                    if (blocker.need_block())
+                    {
+                        {
+                            std::lock_guard lk(*mutex);
+                            std::cout << "[blocker " << i << "] blocked" << std::endl;
+                        }
+                        co_await blocker.await_unblock();
+                    }
+                    else
+                    {
+                        std::lock_guard lk(*mutex);
+                        std::cout << "[blocker " << i << "] not blocked" << std::endl;
+                    }
+                } while (true);
+            }
+            catch(const CancelError& e)
+            {
+                std::cerr << e.what() << std::endl;
+            }
+        }), asio::detached);
+    }
+    do_async(fix_async_lambda([manager, closer, mutex]() -> asio::awaitable<void> {
+        std::vector<AsyncBlocker> blockers {};
+        for (size_t i = 0; i < 20; i++)
+        {
+            {
+                std::lock_guard lk(*mutex);
+                std::cout << "[" << i << "] locking " << std::endl;
+            }
+            co_await manager.lock(closer);
+            {
+                std::lock_guard lk(*mutex);
+                std::cout << "[" << i << "] locked " << std::endl;
+            }
+            DEFER({
+                manager.unlock();
+            });
+            manager.collect_locked_blocker(blockers);
+            for (auto && blocker : blockers)
+            {
+                std::cout << "got blocker " << blocker.get_integer_user_data() << std::endl;
+            }
+        }
+        closer.close();
+        std::cout << "closed" << std::endl;
+    }), true);
 }
 
 int main(int argc, char **argv) {

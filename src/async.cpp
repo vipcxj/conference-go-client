@@ -54,7 +54,10 @@ namespace cfgo
         {
             auto timeout_closer = closer.create_child();
             timeout_closer.set_timeout(dur, std::move(reasion));
-            co_await timeout_closer.await();
+            if (co_await timeout_closer.await())
+            {
+                throw CancelError(closer);
+            }
         }
         else
         {
@@ -488,9 +491,19 @@ namespace cfgo
         auto CloseSignalState::create_child() -> Ptr
         {
             std::lock_guard lock(m_mutex);
-            auto child = std::make_shared<CloseSignalState>(weak_from_this());
-            m_children.push_back(child);
-            return child;
+            if (m_closed)
+            {
+                auto child = std::make_shared<CloseSignalState>();
+                auto close_reason = m_close_reason;
+                child->_close_no_except(m_is_timeout, std::move(close_reason));
+                return child;
+            }
+            else
+            {
+                auto child = std::make_shared<CloseSignalState>(weak_from_this());
+                m_children.push_back(child);
+                return child;
+            }
         }
 
         void CloseSignalState::_remove_me(CloseSignalState * child)
