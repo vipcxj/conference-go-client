@@ -52,6 +52,7 @@ struct _GstCfgoSrcClass
 
     void (*decodebin_created) (GstElement * element, GstElement * decodebin);
     void (*parsebin_created) (GstElement * element, GstElement * decodebin);
+    GstBuffer * (*buffer_allocate) (GstElement * element);
 };
 
 GType gst_cfgosrc_get_type(void);

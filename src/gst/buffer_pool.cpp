@@ -68,11 +68,26 @@ namespace cfgo
 
         } // namespace detail
 
+        BufferPool::BufferPool(std::nullptr_t): ImplBy(nullptr) {}
+
         BufferPool::BufferPool(guint buf_size, guint min_buf, guint max_buf): ImplBy(buf_size, min_buf, max_buf) {}
+
+        BufferPool::operator bool() const noexcept
+        {
+            return (bool) impl();
+        }
 
         GstBuffer * BufferPool::acquire_buffer() const
         {
-            return impl()->acquire_buffer();
+            auto & ptr = impl();
+            if (ptr)
+            {
+                return ptr->acquire_buffer();
+            }
+            else
+            {
+                throw cpptrace::runtime_error("The pool is nullptr.");
+            }
         }
         
     } // namespace gst

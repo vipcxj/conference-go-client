@@ -17,7 +17,9 @@ namespace cfgo
         class BufferPool : public cfgo::ImplBy<detail::BufferPool>
         {
         public:
+            BufferPool(std::nullptr_t);
             BufferPool(guint buf_size, guint min_buf, guint max_buf);
+            operator bool() const noexcept;
             GstBuffer * acquire_buffer() const;
         };
 

@@ -907,8 +907,11 @@ namespace cfgo
                     do {
                         self->m_logger->trace("Received {} bytes {} data.", msg->size(), msg_type);
                         auto maybe_buffer = _safe_use_owner<GstBuffer *>([&msg](auto owner) {
-                            GstBuffer *buffer;
-                            buffer = gst_buffer_new_and_alloc(msg->size());
+                            GstBuffer *buffer = cfgosrc_buffer_allocate(GST_ELEMENT(owner));
+                            if (!buffer)
+                            {
+                                buffer = gst_buffer_new_and_alloc(msg->size());
+                            }
                             auto clock = gst_element_get_clock(GST_ELEMENT(owner));
                             if (!clock)
                             {

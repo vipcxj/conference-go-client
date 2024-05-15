@@ -22,6 +22,7 @@ namespace cfgo
         void cfgosrc_parsebin_created(GstElement * cfgosrc, GstElement * parsebin);
         void cfgosrc_decodebin_will_destroyed(GstElement * cfgosrc, GstElement * decodebin);
         void cfgosrc_parsebin_will_destroyed(GstElement * cfgosrc, GstElement * parsebin);
+        GstBuffer * cfgosrc_buffer_allocate(GstElement * cfgosrc);
     } // namespace gst
     
 } // namespace cfgo
