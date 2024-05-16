@@ -413,21 +413,9 @@ namespace cfgo
                         tasks.add_task(fix_async_lambda([blocker = blocker.m_blocker, timeout = m_conf.block_timeout](close_chan closer) -> asio::awaitable<void> {
                             auto child_closer = closer.create_child();
                             child_closer.set_timeout(timeout);
-                            if (blocker->has_int_data())
-                            {
-                                cfgo::Log::instance().default_logger()->info("[blocker {}] requesting block.", blocker->get_integer_user_data());
-                            }
                             if (!co_await blocker->request_block(child_closer) && !child_closer.is_timeout())
                             {
-                                if (blocker->has_int_data())
-                                {
-                                    cfgo::Log::instance().default_logger()->info("[blocker {}] canceled.", blocker->get_integer_user_data());
-                                }
                                 throw CancelError(child_closer);
-                            }
-                            if (blocker->has_int_data())
-                            {
-                                cfgo::Log::instance().default_logger()->info("[blocker {}] block requested.", blocker->get_integer_user_data());
                             }
                         }));
                     }

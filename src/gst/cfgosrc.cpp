@@ -56,7 +56,7 @@ namespace cfgo
             }
             if (!m_pads.empty())
             {
-                Log::instance().default_logger()->warn("m_pads should be empty when destructed.");
+                CFGO_WARN("m_pads should be empty when destructed.");
             }
             for (auto && pad : m_pads)
             {
@@ -175,11 +175,11 @@ namespace cfgo
         {
             if (m_rtp_pad)
             {
-                Log::instance().default_logger()->warn("m_rtp_pad must be nullptr when sesson destructed.");
+                CFGO_WARN("m_rtp_pad must be nullptr when sesson destructed.");
             }
             if (m_rtcp_pad)
             {
-                Log::instance().default_logger()->warn("m_rtcp_pad must be nullptr when sesson destructed.");
+                CFGO_WARN("m_rtcp_pad must be nullptr when sesson destructed.");
             }
         }
 

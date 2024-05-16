@@ -34,7 +34,7 @@ namespace cfgo
                         {
                             if (c1 != 'u')
                             {
-                                cfgo::Log::instance().default_logger()->warn("Unsupport format. pad1: {}, pad2: {}.", name1, name2);
+                                CFGO_WARN("Unsupport format. pad1: {}, pad2: {}.", name1, name2);
                                 return false;
                             }
                             else
@@ -58,7 +58,7 @@ namespace cfgo
                         {
                             if (c2 != 'u')
                             {
-                                cfgo::Log::instance().default_logger()->warn("Unsupport format. pad1: {}, pad2: {}.", name1, name2);
+                                CFGO_WARN("Unsupport format. pad1: {}, pad2: {}.", name1, name2);
                                 return false;
                             }
                             else
@@ -257,7 +257,7 @@ namespace cfgo
                         );
                     }
                     case GST_MESSAGE_EOS:
-                        cfgo::Log::instance().default_logger()->debug("The pipeline accept eos message.");
+                        CFGO_DEBUG("The pipeline accept eos message.");
                         co_return true;
                     }
                 } while (true);

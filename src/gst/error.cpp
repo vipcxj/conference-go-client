@@ -138,13 +138,13 @@ namespace cfgo
 
         auto crete_gerror (CfgoError type, const gchar * message, bool gen_trace, const std::exception_ptr & except) -> GError *
         {
-            auto error = g_error_new(CFGO_ERROR, type, "%s", message);
+            auto error = g_error_new(CFGO_ERR, type, "%s", message);
             if (gen_trace || except)
             {
                 auto priv = cfgo_error_get_private(error);
                 if (!priv)
                 {
-                    Log::instance().default_logger()->error("Unable to get the private from GError object.");
+                    CFGO_ERROR("Unable to get the private from GError object.");
                     return error;
                 }
                 if (except && gen_trace)
@@ -228,7 +228,7 @@ void cfgo_error_submit(GstElement * src, GError * error)
         {
             gst_message_unref(message);
         }
-        cfgo::Log::instance().default_logger()->warn("Failed to post the error message to gst element {}. The error is \"{}\".", 
+        CFGO_WARN("Failed to post the error message to gst element {}. The error is \"{}\".", 
             GST_ELEMENT_NAME(src), 
             cfgo_error_get_message(error)
         );

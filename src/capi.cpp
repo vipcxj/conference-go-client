@@ -238,7 +238,7 @@ namespace cfgo
         }
         catch(...)
         {
-            cfgo::Log::instance().default_logger()->error(cfgo::what(std::current_exception()));
+            CFGO_ERROR(cfgo::what(std::current_exception()));
             return CFGO_ERR_FAILURE;
         }
     }
@@ -252,7 +252,7 @@ namespace cfgo
         }
         catch(...)
         {
-            cfgo::Log::instance().default_logger()->error(cfgo::what(std::current_exception()));
+            CFGO_ERROR(cfgo::what(std::current_exception()));
             return err;
         }
     }
@@ -412,7 +412,7 @@ CFGO_API int cfgo_client_subscribe(
                 }
                 catch(...)
                 {
-                    cfgo::Log::instance().default_logger()->error(cfgo::what(std::current_exception()));
+                    CFGO_ERROR(cfgo::what(std::current_exception()));
                     if (on_sub_callback)
                     {
                         on_sub_callback(CFGO_ERR_FAILURE, user_data);

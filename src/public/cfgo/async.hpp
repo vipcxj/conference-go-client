@@ -667,7 +667,7 @@ namespace cfgo
                     {
                         if (!close_ch.is_closed())
                         {
-                            cfgo::Log::instance().default_logger()->error("this should not happened. num of other ops: {}", sizeof...(Ops));
+                            CFGO_ERROR("this should not happened. num of other ops: {}", sizeof...(Ops));
                         }
                         co_return make_canceled_select_result<First_Op, Ops...>();
                     }
@@ -1062,14 +1062,14 @@ namespace cfgo
                                 if constexpr (std::is_void_v<T>)
                                 {
                                     co_await task(close_ch);
-                                    cfgo::Log::instance().default_logger()->trace("task done.");
+                                    CFGO_TRACE("task done.");
                                     co_await chan_write_or_throw<DataType>(data_ch, DataType(i, nullptr), close_ch);
                                     co_return;
                                 }
                                 else
                                 {
                                     auto res = co_await task(close_ch);
-                                    cfgo::Log::instance().default_logger()->trace("task done.");
+                                    CFGO_TRACE("task done.");
                                     co_await chan_write_or_throw<DataType>(data_ch, DataType(i, res, nullptr), close_ch);
                                     co_return res;
                                 }
@@ -1084,15 +1084,15 @@ namespace cfgo
                                 if constexpr (std::is_void_v<T>)
                                 {
                                     closed = !co_await chan_write<DataType>(data_ch, std::make_tuple(i, except), close_ch);
-                                    cfgo::Log::instance().default_logger()->trace("except writed with closer {}", closed ? "closed" : "not closed");
+                                    CFGO_TRACE("except writed with closer {}", closed ? "closed" : "not closed");
                                 }
                                 else
                                 {
                                     closed = !co_await chan_write<DataType>(data_ch, std::make_tuple(i, std::nullopt, except), close_ch);
-                                    cfgo::Log::instance().default_logger()->trace("except writed with closer {}", closed ? "closed" : "not closed");
+                                    CFGO_TRACE("except writed with closer {}", closed ? "closed" : "not closed");
                                 }
                             }
-                            cfgo::Log::instance().default_logger()->trace("task exit.");
+                            CFGO_TRACE("task exit.");
                         }),
                         asio::detached
                     );

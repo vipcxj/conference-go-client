@@ -610,55 +610,40 @@ TEST(AsyncBlocker, CheckDeadLock) {
                 do
                 {
                     co_await wait_timeout(std::chrono::milliseconds {40}, closer);
-                    {
-                        std::lock_guard lk(*mutex);
-                        std::cout << "[blocker " << i << "] checking block" << std::endl;
-                    }
+                    CFGO_INFO("[blocker {}] checking block", i);
                     if (blocker.need_block())
                     {
-                        {
-                            std::lock_guard lk(*mutex);
-                            std::cout << "[blocker " << i << "] blocked" << std::endl;
-                        }
+                        CFGO_INFO("[blocker {}] blocking", i);
                         co_await blocker.await_unblock();
+                        CFGO_INFO("[blocker {}] blocked", i);
                     }
                     else
                     {
-                        std::lock_guard lk(*mutex);
-                        std::cout << "[blocker " << i << "] not blocked" << std::endl;
+                        CFGO_INFO("[blocker {}] not to block", i);
                     }
                 } while (true);
             }
-            catch(const CancelError& e)
-            {
-                std::cerr << e.what() << std::endl;
-            }
+            catch(const CancelError& e) {}
         }), asio::detached);
     }
     do_async(fix_async_lambda([manager, closer, mutex]() -> asio::awaitable<void> {
         std::vector<AsyncBlocker> blockers {};
         for (size_t i = 0; i < 20; i++)
         {
-            {
-                std::lock_guard lk(*mutex);
-                std::cout << "[" << i << "] locking " << std::endl;
-            }
+            CFGO_INFO("[{}] locking", i);
             co_await manager.lock(closer);
-            {
-                std::lock_guard lk(*mutex);
-                std::cout << "[" << i << "] locked " << std::endl;
-            }
+            CFGO_INFO("[{}] locked", i);
             DEFER({
                 manager.unlock();
             });
             manager.collect_locked_blocker(blockers);
             for (auto && blocker : blockers)
             {
-                std::cout << "got blocker " << blocker.get_integer_user_data() << std::endl;
+                CFGO_INFO("got blocker {}", blocker.get_integer_user_data());
             }
         }
         closer.close();
-        std::cout << "closed" << std::endl;
+        CFGO_INFO("closed");
     }), true);
 }
 

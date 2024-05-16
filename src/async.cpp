@@ -278,6 +278,14 @@ namespace cfgo
             }
             if (auto parent = m_parent.lock())
             {
+                int i = 0;
+                bool self_unlocked = false;
+                DEFER({
+                    if (self_unlocked)
+                    {
+                        m_mutex.lock();
+                    }
+                });
                 do
                 {
                     std::unique_lock lk(parent->m_mutex, std::try_to_lock);
@@ -288,28 +296,50 @@ namespace cfgo
                     }
                     else
                     {
+                        if (i == 6 && !self_unlocked)
+                        {
+                            m_mutex.unlock();
+                            self_unlocked = true;
+                        }
                         std::this_thread::yield();
+                        ++i;
                     }
                 } while (true);
             }
-            for (auto && child : m_children)
+            // copy children, so when we can safely unlock in the loop
+            auto children = m_children;
+            m_children.clear();
+            for (auto && child : children)
             {
+                int i = 0;
+                bool self_unlocked = false;
+                DEFER({
+                    if (self_unlocked)
+                    {
+                        m_mutex.lock();
+                    }
+                });
                 do
                 {
                     std::unique_lock lk(child->m_mutex, std::try_to_lock);
                     if (lk.owns_lock())
                     {
                         child->_unbind_parent();
+                        child->_close_no_except(is_timeout, std::move(reason));
                         break;
                     }
                     else
                     {
+                        if (i == 6 && !self_unlocked)
+                        {
+                            m_mutex.unlock();
+                            self_unlocked = true;
+                        }
                         std::this_thread::yield();
+                        ++i;
                     }
                 } while (true);
-                child->close_no_except(is_timeout, std::move(reason));
             }
-            m_children.clear();
         }
 
         bool CloseSignalState::_close_no_except(bool is_timeout, std::string && reason) noexcept
@@ -321,7 +351,7 @@ namespace cfgo
             }
             catch(...)
             {
-                cfgo::Log::instance().default_logger()->error(cfgo::what());
+                CFGO_ERROR(cfgo::what());
             }
             return false;
         }
@@ -364,31 +394,35 @@ namespace cfgo
             {
                 return;
             }
-            std::lock_guard lock(m_mutex);
-            if (!m_closed && !m_stop)
+            std::list<Ptr> children {};
             {
-                m_stop = true;
-                if (stop_timer)
+                std::lock_guard lock(m_mutex);
+                if (!m_closed && !m_stop)
                 {
-                    if (m_timer && m_timeout > duration_t {0})
+                    m_stop = true;
+                    if (stop_timer)
                     {
-                        auto now = std::chrono::steady_clock::now();
-                        if (m_timer->expiry() > now)
+                        if (m_timer && m_timeout > duration_t {0})
                         {
-                            m_stop_timeout = m_timer->expiry() - now;
+                            auto now = std::chrono::steady_clock::now();
+                            if (m_timer->expiry() > now)
+                            {
+                                m_stop_timeout = m_timer->expiry() - now;
+                                _set_timeout(duration_t {0}, std::move(m_timeout_reason));
+                            }
+                        }
+                        else
+                        {
+                            m_stop_timeout = m_timeout;
                             _set_timeout(duration_t {0}, std::move(m_timeout_reason));
                         }
                     }
-                    else
-                    {
-                        m_stop_timeout = m_timeout;
-                        _set_timeout(duration_t {0}, std::move(m_timeout_reason));
-                    }
+                    children = m_children;
                 }
-                for (auto && child : m_children)
-                {
-                    child->stop(stop_timer);
-                }
+            }
+            for (auto && child : children)
+            {
+                child->stop(stop_timer);
             }
         }
 
@@ -398,28 +432,32 @@ namespace cfgo
             {
                 return;
             }
-            std::lock_guard lock(m_mutex);
-            if (m_stop)
+            std::list<Ptr> children {};
             {
-                m_stop = false;
-                while (!m_stop_waiters.empty())
+                std::lock_guard lock(m_mutex);
+                if (m_stop)
                 {
-                    auto waiter = m_stop_waiters.front();
-                    if (!waiter.try_write())
+                    m_stop = false;
+                    while (!m_stop_waiters.empty())
                     {
-                        throw cpptrace::logic_error(cfgo::THIS_IS_IMPOSSIBLE);
+                        auto waiter = m_stop_waiters.front();
+                        if (!waiter.try_write())
+                        {
+                            throw cpptrace::logic_error(cfgo::THIS_IS_IMPOSSIBLE);
+                        }
+                        m_stop_waiters.pop_front();
                     }
-                    m_stop_waiters.pop_front();
+                    if (m_stop_timeout > duration_t {0})
+                    {
+                        _set_timeout(m_stop_timeout, std::move(m_timeout_reason));
+                        m_stop_timeout = duration_t {0};
+                    }
+                    children = m_children;
                 }
-                if (m_stop_timeout > duration_t {0})
-                {
-                    _set_timeout(m_stop_timeout, std::move(m_timeout_reason));
-                    m_stop_timeout = duration_t {0};
-                }
-                for (auto && child : m_children)
-                {
-                    child->resume();
-                }
+            }
+            for (auto && child : children)
+            {
+                child->resume();
             }
         }
 

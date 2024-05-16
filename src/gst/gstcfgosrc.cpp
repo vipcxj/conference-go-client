@@ -465,7 +465,7 @@ void _gst_cfgosrc_prepare(GstCfgoSrc *cfgosrc, bool reset_task)
             if (!GST_CFGOSRC_PVS(cfgosrc)->task || reset_task)
             {
                 GST_DEBUG_OBJECT(cfgosrc, "%s", "Creating the task.");
-                cfgo::Log::instance().default_logger()->debug("cfgosrc created with sub timeout {} and read timeout {}.", cfgosrc->sub_timeout, cfgosrc->read_timeout);
+                CFGO_DEBUG("cfgosrc created with sub timeout {} and read timeout {}.", cfgosrc->sub_timeout, cfgosrc->read_timeout);
                 GST_CFGOSRC_PVS(cfgosrc)->task = cfgo::gst::CfgoSrc::create(
                     cfgosrc->client_handle, 
                     cfgosrc->pattern, cfgosrc->req_types, 
@@ -926,7 +926,7 @@ void gst_cfgosrc_dispose(GObject *object)
         if (GST_CFGOSRC_PVS(cfgosrc)->task)
         {
             GST_CFGOSRC_PVS(cfgosrc)->task->detach();
-            cfgo::Log::instance().default_logger()->debug("cfgosrc destroy.");
+            CFGO_DEBUG("cfgosrc destroy.");
             GST_CFGOSRC_PVS(cfgosrc)->task.reset();
         }
     }

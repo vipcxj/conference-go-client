@@ -12,7 +12,7 @@ typedef enum
     CFGO_ERROR_GENERAL
 } CfgoError;
 
-#define CFGO_ERROR (cfgo_error_quark ())
+#define CFGO_ERR (cfgo_error_quark ())
 GQuark cfgo_error_quark (void);
 
 void cfgo_error_set_timeout (GError ** error, const gchar * message, gboolean trace);

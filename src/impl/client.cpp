@@ -335,12 +335,12 @@ namespace cfgo
                     }
                     else
                     {
-                        Log::instance().default_logger()->debug("[send msg {}] this has been released.", evt);
+                        CFGO_DEBUG("[send msg {}] this has been released.", evt);
                     }
                 }
                 else
                 {
-                    Log::instance().default_logger()->debug("[send msg {}] ack channel has been released.", evt);
+                    CFGO_DEBUG("[send msg {}] ack channel has been released.", evt);
                 }
             });
             auto result = co_await chan_read<msg_ptr>(*ack_ch, close_chan);
