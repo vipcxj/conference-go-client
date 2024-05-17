@@ -5,7 +5,6 @@
 #include "cfgo/utils.hpp"
 
 #include "spdlog/spdlog.h"
-#include <tuple>
 
 namespace cfgo
 {
@@ -54,14 +53,7 @@ namespace cfgo
 do { \
     if (LOGGER->should_log(cfgo::LogLevel::LVL)) \
     { \
-        if constexpr(_CFGO_VARARGS_NUM(__VA_ARGS__) > 0) \
-        { \
-            LOGGER->MTH(FMT, __VA_ARGS__); \
-        } \
-        else \
-        { \
-            LOGGER->MTH(FMT); \
-        } \
+        LOGGER->MTH(FMT CFGO_VA_ARGS(__VA_ARGS__)); \
     } \
 } while(false)
 
@@ -70,14 +62,7 @@ do { \
     const auto & logger = cfgo::Log::instance().default_logger(); \
     if (logger->should_log(cfgo::LogLevel::LVL)) \
     { \
-        if constexpr(_CFGO_VARARGS_NUM(__VA_ARGS__) > 0) \
-        { \
-            logger->MTH(FMT, __VA_ARGS__); \
-        } \
-        else \
-        { \
-            logger->MTH(FMT); \
-        } \
+        logger->MTH(FMT CFGO_VA_ARGS(__VA_ARGS__)); \
     } \
 } while(false)
 
