@@ -29,6 +29,8 @@
 #define _CFGO_QT(c) #c
 #define CFGO_QT(c) _CFGO_QT(c)
 
+#define CFGO_VA_ARGS(...) , ##__VA_ARGS__
+
 #define _CFGO_MAKE_PTR_TYPE(TYPE) \
     TYPE(const TYPE &) = delete; \
     TYPE & operator = (const TYPE &) = delete
