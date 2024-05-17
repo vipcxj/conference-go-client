@@ -143,9 +143,7 @@ namespace cfgo
 
             auto get_waiter() -> std::optional<Waiter>;
 
-            void _close(bool is_timeout, std::string && reason);
-
-            bool _close_no_except(bool is_timeout, std::string && reason) noexcept;
+            void _close_self(bool is_timeout, std::string && reason);
 
             void close(bool is_timeout, const std::string & reason);
             void close(bool is_timeout, std::string && reason);
@@ -166,9 +164,7 @@ namespace cfgo
 
             Ptr create_child();
 
-            void _remove_me(CloseSignalState * child);
-
-            void _unbind_parent() noexcept;
+            void remove_me(CloseSignalState * child);
         };
 
         CloseSignalState::CloseSignalState(): m_parent() {}
@@ -179,7 +175,7 @@ namespace cfgo
 
         CloseSignalState::~CloseSignalState() noexcept
         {
-            _close_no_except(false, "Destructor called.");
+            close_no_except(false, "Destructor called.");
         }
 
         auto CloseSignalState::timer_task() -> asio::awaitable<void>
@@ -243,7 +239,7 @@ namespace cfgo
             return waiter;
         }
 
-        void CloseSignalState::_close(bool is_timeout, std::string && reason)
+        void CloseSignalState::_close_self(bool is_timeout, std::string && reason)
         {
             if (m_closed)
             {
@@ -261,99 +257,15 @@ namespace cfgo
             while (!m_waiters.empty())
             {
                 auto && waiter = m_waiters.front();
-                if (!waiter.try_write())
-                {
-                    throw cpptrace::logic_error(cfgo::THIS_IS_IMPOSSIBLE);
-                }
+                chan_must_write(waiter);
                 m_waiters.pop_front();
             }
             while (!m_stop_waiters.empty())
             {
                 auto && waiter = m_stop_waiters.front();
-                if (!waiter.try_write())
-                {
-                    throw cpptrace::logic_error(cfgo::THIS_IS_IMPOSSIBLE);
-                }
+                chan_must_write(waiter);
                 m_stop_waiters.pop_front();
             }
-            if (auto parent = m_parent.lock())
-            {
-                int i = 0;
-                bool self_unlocked = false;
-                DEFER({
-                    if (self_unlocked)
-                    {
-                        m_mutex.lock();
-                    }
-                });
-                do
-                {
-                    std::unique_lock lk(parent->m_mutex, std::try_to_lock);
-                    if (lk.owns_lock())
-                    {
-                        parent->_remove_me(this);
-                        break;
-                    }
-                    else
-                    {
-                        if (i == 6 && !self_unlocked)
-                        {
-                            m_mutex.unlock();
-                            self_unlocked = true;
-                        }
-                        std::this_thread::yield();
-                        ++i;
-                    }
-                } while (true);
-            }
-            // copy children, so when we can safely unlock in the loop
-            auto children = m_children;
-            m_children.clear();
-            for (auto && child : children)
-            {
-                int i = 0;
-                bool self_unlocked = false;
-                DEFER({
-                    if (self_unlocked)
-                    {
-                        m_mutex.lock();
-                    }
-                });
-                do
-                {
-                    std::unique_lock lk(child->m_mutex, std::try_to_lock);
-                    if (lk.owns_lock())
-                    {
-                        child->_unbind_parent();
-                        child->_close_no_except(is_timeout, std::move(reason));
-                        break;
-                    }
-                    else
-                    {
-                        if (i == 6 && !self_unlocked)
-                        {
-                            m_mutex.unlock();
-                            self_unlocked = true;
-                        }
-                        std::this_thread::yield();
-                        ++i;
-                    }
-                } while (true);
-            }
-        }
-
-        bool CloseSignalState::_close_no_except(bool is_timeout, std::string && reason) noexcept
-        {
-            try
-            {
-                _close(is_timeout, std::move(reason));
-                return true;
-            }
-            catch(...)
-            {
-                CFGO_ERROR(cfgo::what());
-            }
-            return false;
         }
 
         void CloseSignalState::close(bool is_timeout, const std::string & reason)
@@ -368,8 +280,26 @@ namespace cfgo
             {
                 return;
             }
-            std::lock_guard lock(m_mutex);
-            _close(is_timeout, std::move(reason));
+            std::string close_reason;
+            std::list<Ptr> children;
+            std::weak_ptr<CloseSignalState> weak_parent;
+            {
+                std::lock_guard lock(m_mutex);
+                _close_self(is_timeout, std::move(reason));
+                close_reason = m_close_reason;
+                weak_parent = m_parent;
+                m_parent.reset();
+                children = m_children;
+                m_children.clear();
+            }
+            if (auto parent = weak_parent.lock())
+            {
+                parent->remove_me(this);
+            }
+            for (auto & child : children)
+            {
+                child->close(is_timeout, std::move(close_reason));
+            }
         }
 
         bool CloseSignalState::close_no_except(bool is_timeout, const std::string & reason) noexcept
@@ -380,12 +310,13 @@ namespace cfgo
 
         bool CloseSignalState::close_no_except(bool is_timeout, std::string && reason) noexcept
         {
-            if (m_closed)
+            try
             {
+                close(is_timeout, std::move(reason));
                 return true;
             }
-            std::lock_guard lock(m_mutex);
-            return _close_no_except(is_timeout, std::move(reason));
+            catch(...) {}
+            return false;
         }
 
         void CloseSignalState::stop(bool stop_timer)
@@ -533,7 +464,7 @@ namespace cfgo
             {
                 auto child = std::make_shared<CloseSignalState>();
                 auto close_reason = m_close_reason;
-                child->_close_no_except(m_is_timeout, std::move(close_reason));
+                child->_close_self(m_is_timeout, std::move(close_reason));
                 return child;
             }
             else
@@ -544,17 +475,21 @@ namespace cfgo
             }
         }
 
-        void CloseSignalState::_remove_me(CloseSignalState * child)
+        void CloseSignalState::remove_me(CloseSignalState * child)
         {
+            if (m_closed)
+            {
+                return;
+            }
+            std::lock_guard g(m_mutex);
+            if (m_closed)
+            {
+                return;
+            }
             m_children.erase(
                 std::remove_if(m_children.begin(), m_children.end(), [child](auto && v) { return v.get() == child; }),
                 m_children.end()
             );
-        }
-
-        void CloseSignalState::_unbind_parent() noexcept
-        {
-            m_parent.reset();
         }
     } // namespace detail
 
