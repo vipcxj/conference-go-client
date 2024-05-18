@@ -30,7 +30,7 @@ namespace cfgo
         {
             if (auto self = cast_weak_holder<CfgoSrc>(user_data)->lock())
             {
-                self->m_logger->debug("[{}] add pad {}", GST_ELEMENT_NAME(src), GST_PAD_NAME(new_pad));
+                CFGO_SELF_DEBUG("[{}] add pad {}", GST_ELEMENT_NAME(src), GST_PAD_NAME(new_pad));
                 self->_install_pad(new_pad);
             }
         }
@@ -39,7 +39,7 @@ namespace cfgo
         {
             if (auto self = cast_weak_holder<CfgoSrc>(user_data)->lock())
             {
-                self->m_logger->debug("[{}] pad {} removed.", GST_ELEMENT_NAME(src), GST_PAD_NAME(pad));
+                CFGO_SELF_DEBUG("[{}] pad {} removed.", GST_ELEMENT_NAME(src), GST_PAD_NAME(pad));
                 self->_uninstall_pad(pad);
             }
         }
@@ -259,7 +259,7 @@ namespace cfgo
             m_sub_timeout(sub_timeout), 
             m_read_timeout(read_timeout)
         {
-            m_logger->trace("cfgosrc created");
+            CFGO_THIS_TRACE("cfgosrc created");
             cfgo_pattern_parse(pattern_json, m_pattern);
             cfgo_req_types_parse(req_types_str, m_req_types);
             auto closer = m_client->get_closer();
@@ -271,7 +271,7 @@ namespace cfgo
 
         CfgoSrc::~CfgoSrc()
         {
-            m_logger->trace("cfgosrc destructed");
+            CFGO_THIS_TRACE("cfgosrc destructed");
             m_close_ch.close_no_except("destructed");
             _detach();
         }
@@ -337,7 +337,7 @@ namespace cfgo
             {
                 return;
             }
-            m_logger->trace("_detach");
+            CFGO_THIS_TRACE("_detach");
             m_detached = true;
             for (auto && session : m_sessions)
             {
@@ -628,16 +628,16 @@ namespace cfgo
                     {
                         co_await self->_loop();
                         self->stop();
-                        self->m_logger->debug("Exit loop.");
+                        CFGO_SELF_DEBUG("Exit loop.");
                     }
                     catch(...)
                     {
-                        self->m_logger->debug("Exit loop because {}", what());
+                        CFGO_SELF_DEBUG("Exit loop because {}", what());
                     }
                 }),
                 asio::detached
             );
-            m_logger->debug("started.");
+            CFGO_THIS_DEBUG("started.");
         }
 
         void CfgoSrc::pause()
@@ -728,7 +728,7 @@ namespace cfgo
         void rtpsrc_need_data(GstAppSrc * appsrc, guint length, gpointer user_data)
         {
             auto & self = cast_shared_holder_ref<CfgoSrc>(user_data);
-            self->m_logger->trace("{} need {} bytes data", GST_ELEMENT_NAME(appsrc), length);
+            CFGO_SELF_TRACE("{} need {} bytes data", GST_ELEMENT_NAME(appsrc), length);
             std::lock_guard lock(self->m_mutex);
             for (auto && session : self->m_sessions)
             {
@@ -740,7 +740,7 @@ namespace cfgo
         {
             if (auto self = cast_weak_holder<CfgoSrc>(user_data)->lock())
             {
-                self->m_logger->trace("{} say data is enough.", GST_ELEMENT_NAME(appsrc));
+                CFGO_SELF_TRACE("{} say data is enough.", GST_ELEMENT_NAME(appsrc));
                 std::lock_guard lock(self->m_mutex);
                 for (auto && session : self->m_sessions)
                 {
@@ -753,7 +753,7 @@ namespace cfgo
         {
             if (auto self = cast_weak_holder<CfgoSrc>(user_data)->lock())
             {
-                self->m_logger->trace("{} need {} bytes data", GST_ELEMENT_NAME(appsrc), length);
+                CFGO_SELF_TRACE("{} need {} bytes data", GST_ELEMENT_NAME(appsrc), length);
                 std::lock_guard lock(self->m_mutex);
                 for (auto && session : self->m_sessions)
                 {
@@ -766,7 +766,7 @@ namespace cfgo
         {
             if (auto self = cast_weak_holder<CfgoSrc>(user_data)->lock())
             {
-                self->m_logger->trace("{} say data is enough.", GST_ELEMENT_NAME(appsrc));
+                CFGO_SELF_TRACE("{} say data is enough.", GST_ELEMENT_NAME(appsrc));
                 std::lock_guard lock(self->m_mutex);
                 for (auto && session : self->m_sessions)
                 {
@@ -779,7 +779,7 @@ namespace cfgo
         {
             if (auto self = cast_weak_holder<CfgoSrc>(user_data)->lock())
             {
-                self->m_logger->debug("[session {}] reqiest pt {}", session_id, pt);
+                CFGO_SELF_DEBUG("[session {}] reqiest pt {}", session_id, pt);
                 std::lock_guard lock(self->m_mutex);
                 auto & session = self->m_sessions[session_id];
                 return (GstCaps *) session->m_track->get_gst_caps(pt);
@@ -792,7 +792,7 @@ namespace cfgo
 
         void CfgoSrc::_create_rtp_bin(GstCfgoSrc * owner)
         {
-            m_logger->debug("Creating rtpbin.");
+            CFGO_THIS_DEBUG("Creating rtpbin.");
             m_rtp_bin = gst_element_factory_make("rtpbin", "rtpbin");
             if (!m_rtp_bin)
             {
@@ -822,12 +822,12 @@ namespace cfgo
         auto CfgoSrc::_create_session(GstCfgoSrc * owner, TrackPtr track) -> SessionPtr
         {
             auto i = m_sessions.size();
-            m_logger->debug("Creating session {}.", i);
+            CFGO_THIS_DEBUG("Creating session {}.", i);
             SessionPtr session = std::make_shared<Session>();
             session->m_id = i;
             session->m_track = track;
             string rtp_pad_name = fmt::sprintf("recv_rtp_sink_%u", i);
-            m_logger->debug("Requesting the rtp pad {}.", rtp_pad_name);
+            CFGO_THIS_DEBUG("Requesting the rtp pad {}.", rtp_pad_name);
             session->m_rtp_pad = gst_element_request_pad_simple(m_rtp_bin, rtp_pad_name.c_str());
             if (!session->m_rtp_pad)
             {
@@ -835,7 +835,7 @@ namespace cfgo
             }
             link_rtp_src(owner, session->m_rtp_pad);
             string rtcp_pad_name = fmt::sprintf("recv_rtcp_sink_%u", i);
-            m_logger->debug("Requesting the rtcp pad {}.", rtcp_pad_name);
+            CFGO_THIS_DEBUG("Requesting the rtcp pad {}.", rtcp_pad_name);
             session->m_rtcp_pad = gst_element_request_pad_simple(m_rtp_bin, rtcp_pad_name.c_str());
             if (!session->m_rtcp_pad)
             {
@@ -843,14 +843,14 @@ namespace cfgo
             }
             link_rtcp_src(owner, session->m_rtcp_pad);
             m_sessions.push_back(session);
-            m_logger->debug("Session {} created.", i);
+            CFGO_THIS_DEBUG("Session {} created.", i);
             return session;
         }
 
         auto CfgoSrc::_post_buffer(Session & session, Track::MsgType msg_type) -> asio::awaitable<void>
         {
             auto self = shared_from_this();
-            self->m_logger->debug("Start the {} data task of session {}.", msg_type, session.m_id);
+            CFGO_SELF_DEBUG("Start the {} data task of session {}.", msg_type, session.m_id);
             do
             {
                 do
@@ -867,7 +867,7 @@ namespace cfgo
                     {
                         if (try_times > 1)
                         {
-                            self->m_logger->debug("Read {} data timeout after {} ms. Tring the {} time.", msg_type, std::chrono::duration_cast<std::chrono::milliseconds>(timeout_closer.get_timeout()), Nth{try_times});
+                            CFGO_SELF_DEBUG("Read {} data timeout after {} ms. Tring the {} time.", msg_type, std::chrono::duration_cast<std::chrono::milliseconds>(timeout_closer.get_timeout()), Nth{try_times});
                         }
                         Track::MsgPtr msg_ptr = std::move(co_await track->await_msg(msg_type, timeout_closer));
                         co_return msg_ptr;
@@ -898,7 +898,7 @@ namespace cfgo
                     auto msg = std::move(msg_ptr.value());
                     if (!msg)
                     {
-                        self->m_logger->debug("It seems that the track is closed.");
+                        CFGO_SELF_DEBUG("It seems that the track is closed.");
                         co_return;
                     }
 
@@ -906,7 +906,7 @@ namespace cfgo
                     bool skip = false;
                     GstBuffer * buffer = nullptr;
                     do {
-                        self->m_logger->trace("Received {} bytes {} data.", msg->size(), msg_type);
+                        CFGO_SELF_TRACE("Received {} bytes {} data.", msg->size(), msg_type);
                         auto maybe_buffer = _safe_use_owner<GstBuffer *>([&msg](auto owner) {
                             GstBuffer *buffer = cfgosrc_buffer_allocate(GST_ELEMENT(owner));
                             if (!buffer)
@@ -952,14 +952,14 @@ namespace cfgo
                             if (msg->size() > info.maxsize)
                             {
                                 skip = true;
-                                m_logger->warn("The buffer is too small for the msg. The msg size is {}. The buffer max size is {}", msg->size(), info.maxsize);
+                                CFGO_THIS_WARN("The buffer is too small for the msg. The msg size is {}. The buffer max size is {}", msg->size(), info.maxsize);
                                 break;
                             }
                             memcpy(info.data, msg->data(), msg->size());
                             gst_buffer_unmap(buffer, &info);
                         }
                         if (!_safe_use_owner<void>([self, msg_type, buffer](auto owner) {
-                            self->m_logger->trace("Push {} bytes {} buffer.", gst_buffer_get_size(buffer), msg_type);
+                            CFGO_SELF_TRACE("Push {} bytes {} buffer.", gst_buffer_get_size(buffer), msg_type);
                             if (msg_type == Track::MsgType::RTP)
                             {
                                 push_rtp_buffer(owner, buffer);
@@ -1020,7 +1020,7 @@ namespace cfgo
             try
             {
                 auto self = shared_from_this();
-                self->m_logger->debug("Subscribing...");
+                CFGO_SELF_DEBUG("Subscribing...");
                 TryOption sub_try_option;
                 guint64 sub_timeout;
                 {
@@ -1032,10 +1032,10 @@ namespace cfgo
                 {
                     if (try_times > 1)
                     {
-                        self->m_logger->debug("Subscribing timeout after {}. Tring the {} time.", timeout_closer.get_timeout(), Nth{try_times});
+                        CFGO_SELF_DEBUG("Subscribing timeout after {}. Tring the {} time.", timeout_closer.get_timeout(), Nth{try_times});
                     }
-                    self->m_logger->trace("Arg pattern: {}", self->m_pattern);
-                    self->m_logger->trace("Arg req_types: {}", self->m_req_types);
+                    CFGO_SELF_TRACE("Arg pattern: {}", self->m_pattern);
+                    CFGO_SELF_TRACE("Arg req_types: {}", self->m_req_types);
                     auto sub = co_await self->m_client->subscribe(self->m_pattern, self->m_req_types, timeout_closer);
                     co_return sub;
                 };
@@ -1052,7 +1052,7 @@ namespace cfgo
                 {
                     if (!m_close_ch.is_closed())
                     {
-                        self->m_logger->debug("Subscribed timeout.");
+                        CFGO_SELF_DEBUG("Subscribed timeout.");
                         if (auto owner = _safe_get_owner())
                         {
                             auto error = steal_shared_g_error(create_gerror_timeout("Timeout to subscribing."));
@@ -1061,11 +1061,11 @@ namespace cfgo
                     }
                     else
                     {
-                        self->m_logger->warn("Subscribing failed.");
+                        CFGO_SELF_WARN("Subscribing failed.");
                     }
                     co_return;
                 }
-                self->m_logger->debug("Subscribed with {} tracks.", sub.value()->tracks().size());
+                CFGO_SELF_DEBUG("Subscribed with {} tracks.", sub.value()->tracks().size());
                 cfgo::AsyncTasksAll<void> tasks(m_close_ch);
                 for (auto &track : sub.value()->tracks())
                 {
@@ -1089,13 +1089,13 @@ namespace cfgo
                 }
                 catch(const cfgo::CancelError& e)
                 {
-                    self->m_logger->debug(fmt::format("The loop task is canceled because {}", e.what()));
+                    CFGO_SELF_DEBUG(fmt::format("The loop task is canceled because {}", e.what()));
                 }
                 if (auto owner = _safe_get_owner())
                 {
-                    self->m_logger->debug("Send eos event to the owner.");
+                    CFGO_SELF_DEBUG("Send eos event to the owner.");
                     gst_element_send_event(owner.get(), gst_event_new_eos());
-                    self->m_logger->debug("after send eos event");
+                    CFGO_SELF_DEBUG("after send eos event");
                 }
             }
             catch(...)

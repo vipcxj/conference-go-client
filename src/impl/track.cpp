@@ -227,13 +227,13 @@ namespace cfgo
 
         void Track::on_track_closed()
         {
-            m_logger->debug("The track is closed.");
+            CFGO_THIS_DEBUG("The track is closed.");
             chan_must_write(m_closed_notify);
         }
 
         void Track::on_track_error(std::string error)
         {
-            m_logger->error(error);
+            CFGO_THIS_ERROR("{}", error);
         }
 
         auto Track::await_open_or_closed(close_chan close_ch) -> asio::awaitable<bool>
