@@ -101,11 +101,11 @@ namespace cfgo
             }
         }
 
-        msg_ptr create_setup_message()
-        {
-            auto setup_msg = sio::object_message::create();
-            return setup_msg;
-        }
+        // msg_ptr create_setup_message()
+        // {
+        //     auto setup_msg = sio::object_message::create();
+        //     return setup_msg;
+        // }
 
         msg_ptr Client::create_auth_message() const
         {
@@ -452,12 +452,12 @@ namespace cfgo
                 //     self->m_logger->debug("timeout when open the socket.");
                 //     co_return nullptr;
                 // }
-                auto setup_ack = co_await self->emit_with_ack("setup", create_setup_message(), closer);
-                if (!setup_ack)
-                {
-                    CFGO_SELF_DEBUG("timeout when sending setup msg.");
-                    co_return nullptr;
-                }
+                // auto setup_ack = co_await self->emit_with_ack("setup", create_setup_message(), closer);
+                // if (!setup_ack)
+                // {
+                //     CFGO_SELF_DEBUG("timeout when sending setup msg.");
+                //     co_return nullptr;
+                // }
                 DEFERS_WHEN_FAIL(defers);
                 mutex cand_mux;
                 std::vector<msg_ptr> cands;
