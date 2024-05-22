@@ -157,6 +157,34 @@ namespace cfgo
             return sdp_msg;
         }
 
+        msg_ptr create_user_message(const std::string & content, const std::string & to, std::uint32_t msg_id, bool ack)
+        {
+            auto user_msg = sio::object_message::create();
+            if (!to.empty())
+            {
+                auto router_msg = sio::object_message::create();
+                router_msg->get_map()["userTo"] = sio::string_message::create(to);
+                user_msg->get_map()["router"] = router_msg;
+            }
+            user_msg->get_map()["content"] = sio::string_message::create(content);
+            user_msg->get_map()["msgId"] = sio::int_message::create(msg_id);
+            user_msg->get_map()["ack"] = sio::bool_message::create(ack);
+            return user_msg;
+        }
+
+        msg_ptr create_user_ack_message(std::uint32_t msg_id, const std::string & to)
+        {
+            auto user_ack_msg = sio::object_message::create();
+            if (!to.empty())
+            {
+                auto router_msg = sio::object_message::create();
+                router_msg->get_map()["userTo"] = sio::string_message::create(to);
+                user_ack_msg->get_map()["router"] = router_msg;
+            }
+            user_ack_msg->get_map()["msgId"] = sio::int_message::create(msg_id);
+            return user_ack_msg;
+        }
+
         void Client::update_gst_sdp()
         {
             #ifdef CFGO_SUPPORT_GSTREAMER
@@ -287,6 +315,37 @@ namespace cfgo
             }
         }
 
+        void Client::init()
+        {
+            std::lock_guard g(m_inited_mutex);
+            if (m_inited)
+            {
+                return;
+            }
+            m_inited = true;
+            m_client->set_socket_open_listener([weak_self = weak_from_this()](std::string const& nsp) {
+                if (auto self = weak_self.lock())
+                {
+                    std::weak_ptr<Client> other_weak_self = self;
+                    self->m_client->socket(nsp)->on_any([other_weak_self](sio::event& event) {
+                        if (auto self = other_weak_self.lock())
+                        {
+                            self->process_msg_cbs(event);
+                        }
+                    });
+                }
+            });
+            m_client->connect(m_config.m_signal_url, create_auth_message());
+        }
+
+        void Client::check_inited()
+        {
+            if (!m_inited)
+            {
+                throw cpptrace::runtime_error("The client is not initialized.");
+            }
+        }
+
         void Client::setup_socket_close_callback(const close_chan & closer)
         {
             m_client->set_close_listener([closer](auto reason) {
@@ -301,6 +360,37 @@ namespace cfgo
         {
             m_client->set_close_listener(nullptr);
             m_client->set_fail_listener(nullptr);
+        }
+
+        std::uint32_t Client::add_msg_cb(std::function<bool(sio::event & event)> cb)
+        {
+            std::lock_guard g(m_msg_cb_mutex);
+            auto id = m_msg_cb_next_id ++;
+            m_msg_cbs.insert(std::make_pair(id, cb));
+            return id;
+        }
+
+        void Client::remove_msg_cb(std::uint32_t cb_id)
+        {
+            std::lock_guard g(m_msg_cb_mutex);
+            m_msg_cbs.erase(cb_id);
+        }
+
+        void Client::process_msg_cbs(sio::event & event)
+        {
+            std::lock_guard g(m_msg_cb_mutex);
+            std::vector<std::uint32_t> to_removes {};
+            for (auto && [id, cb] : m_msg_cbs)
+            {
+                if (!cb(event))
+                {
+                    to_removes.push_back(id);
+                }
+            }
+            for (auto && id : to_removes)
+            {
+                m_msg_cbs.erase(id);
+            }
         }
 
         void Client::emit(const std::string &evt, msg_ptr msg)
@@ -408,8 +498,9 @@ namespace cfgo
             peer->onIceStateChange(nullptr); \
         })
 
-        auto Client::subscribe(Pattern pattern, std::vector<std::string> req_types, close_chan close_ch) -> asio::awaitable<cfgo::Subscribation::Ptr>
+        auto Client::subscribe(Pattern pattern, std::vector<std::string> req_types, const close_chan & close_ch) -> asio::awaitable<cfgo::Subscribation::Ptr>
         {
+            check_inited();
             auto self = shared_from_this();
             close_chan closer = nullptr;
             if (!close_ch && m_closer)
@@ -431,31 +522,11 @@ namespace cfgo
                 DEFER({
                     self->clean_socket_close_callback();
                 });
-                // self->m_client->socket()->on_any([self](sio::event& event) {
-                //     self->m_logger->debug("receive {} msg.", event.get_name());
-                //     if (event.need_ack())
-                //     {
-                //          event.put_ack_message(sio::message::list("ack"));
-                //     }
-                // });
-                // unique_void_chan open_ch {};
-                // m_client->set_socket_open_listener([open_ch](std::string const& nsp) {
-                //     chan_must_write(open_ch);
-                // });
-                // DEFER({
-                //     m_client->set_socket_open_listener(nullptr);
-                // });
                 m_client->connect(m_config.m_signal_url, create_auth_message());
                 // auto open_res = co_await chan_read<void>(open_ch, closer);
                 // if (!open_res)
                 // {
                 //     self->m_logger->debug("timeout when open the socket.");
-                //     co_return nullptr;
-                // }
-                // auto setup_ack = co_await self->emit_with_ack("setup", create_setup_message(), closer);
-                // if (!setup_ack)
-                // {
-                //     CFGO_SELF_DEBUG("timeout when sending setup msg.");
                 //     co_return nullptr;
                 // }
                 DEFERS_WHEN_FAIL(defers);
@@ -661,13 +732,15 @@ namespace cfgo
             }
         }
 
-        auto Client::unsubscribe(const std::string &sub_id, close_chan &close_ch) -> asio::awaitable<cancelable<void>>
+        auto Client::unsubscribe(const std::string &sub_id, const close_chan & close_ch) -> asio::awaitable<cancelable<void>>
         {
+            check_inited();
             auto closer = close_ch;
-            if (!is_valid_close_chan(closer) && is_valid_close_chan(m_closer))
+            if (!closer && m_closer)
             {
                 closer = m_closer;
             }
+            auto self = shared_from_this();
             if (co_await m_a_mutex.accquire(closer))
             {
                 DEFER({
@@ -684,6 +757,105 @@ namespace cfgo
             {
                 co_return make_canceled();
             }
+        }
+
+        auto Client::send_custom_message_with_ack(const std::string & content, const std::string & to, const close_chan & close_ch) -> asio::awaitable<cancelable<void>>
+        {
+            check_inited();
+            auto closer = close_ch;
+            if (!closer && m_closer)
+            {
+                closer = m_closer;
+            }
+            auto self = shared_from_this();
+            if (co_await m_a_mutex.accquire(closer))
+            {
+                DEFER({
+                    m_a_mutex.release(asio::get_associated_executor(m_io_context));
+                });
+                self->setup_socket_close_callback(closer);
+                DEFER({
+                    self->clean_socket_close_callback();
+                });
+                m_client->connect(m_config.m_signal_url, create_auth_message());
+                unique_void_chan ch {};
+                auto msg_id = m_custom_msg_next_id ++;
+                add_msg_cb([msg_id, ch, weak_self = self->weak_from_this()](sio::event & evt) -> bool {
+                    if (auto self = weak_self.lock())
+                    {
+                        if (evt.get_name() == "user-ack")
+                        {
+                            auto msg = evt.get_message();
+                            auto opt_msg_id = get_msg_base_field<std::int64_t>(msg, "msgId");
+                            if (opt_msg_id && *opt_msg_id == msg_id)
+                            {
+                                chan_must_write(ch);
+                                return false;
+                            }
+                        }
+                    }
+                    return true;
+                });
+                emit("user", create_user_message(content, to, msg_id, true));
+                co_return co_await chan_read<void>(ch, closer);
+            }
+            else
+            {
+                co_return make_canceled();
+            }
+        }
+
+        void Client::send_custom_message_no_ack(const std::string & content, const std::string & to)
+        {
+            check_inited();
+            m_client->connect(m_config.m_signal_url, create_auth_message());
+            auto msg_id = m_custom_msg_next_id ++;
+            emit("user", create_user_message(content, to, msg_id, false));
+        }
+
+        std::uint32_t Client::on_custom_message(std::function<bool(const std::string &, const std::string &, const std::string &, std::function<void()>)> cb)
+        {
+            return add_msg_cb([weak_self = weak_from_this(), cb = std::move(cb)](sio::event & evt) -> bool {
+                if (auto self = weak_self.lock())
+                {
+                    if (evt.get_name() == "user")
+                    {
+                        auto msg_ptr = evt.get_message();
+                        if (msg_ptr)
+                        {
+                            auto opt_msg_id = get_msg_base_field<std::int64_t>(msg_ptr, "content");
+                            if (opt_msg_id)
+                            {
+                                std::string content, from, to;
+                                std::uint32_t msg_id = opt_msg_id.value();
+                                auto router_msg_ptr = get_msg_object_field<sio::message>(msg_ptr, "router");
+                                if (router_msg_ptr)
+                                {
+                                    from = get_msg_base_field<std::string>(router_msg_ptr, "userFrom").value_or("");
+                                    to = get_msg_base_field<std::string>(router_msg_ptr, "userTo").value_or("");
+                                }
+                                content = get_msg_base_field<std::string>(msg_ptr, "content").value_or("");
+                                cb(content, from, to, [msg_id, from, weak_self = self->weak_from_this()]() {
+                                    if (auto self = weak_self.lock())
+                                    {
+                                        self->emit("user-ack", create_user_ack_message(msg_id, from));
+                                    }
+                                });
+                            }
+                        }
+                    }
+                    return true;
+                }
+                else
+                {
+                    return false;
+                }
+            });
+        }
+
+        void Client::off_custom_message(std::uint32_t cb_id)
+        {
+            remove_msg_cb(cb_id);
         }
 
         void Client::add_candidate(const msg_ptr &msg)

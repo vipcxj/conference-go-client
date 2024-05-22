@@ -13,6 +13,8 @@
 #include "asiochan/asiochan.hpp"
 #include <mutex>
 #include <optional>
+#include <map>
+#include <atomic>
 #ifdef CFGO_SUPPORT_GSTREAMER
 #include "gst/sdp/sdp.h"
 #endif
@@ -69,8 +71,14 @@ namespace cfgo {
             ~Client();
             Client(const Client&) = delete;
             Client& operator = (Client&) = delete;
-            [[nodiscard]] asio::awaitable<SubPtr> subscribe(Pattern pattern, std::vector<std::string> req_types, close_chan close_chan);
-            [[nodiscard]] asio::awaitable<cancelable<void>> unsubscribe(const std::string& sub_id, close_chan& close_chan);
+            void init();
+            [[nodiscard]] auto subscribe(Pattern pattern, std::vector<std::string> req_types, const close_chan & close_chan) -> asio::awaitable<SubPtr>;
+            [[nodiscard]] auto unsubscribe(const std::string& sub_id, const close_chan & close_chan) -> asio::awaitable<cancelable<void>>;
+            [[nodiscard]] auto send_custom_message_with_ack(const std::string & content, const std::string & to, const close_chan & close_chan) -> asio::awaitable<cancelable<void>>;
+            void send_custom_message_no_ack(const std::string & content, const std::string & to);
+            std::uint32_t on_custom_message(std::function<bool(const std::string &, const std::string &, const std::string &, std::function<void()>)> cb);
+            void off_custom_message(std::uint32_t cb_id);
+
             void set_sio_logs_default();
             void set_sio_logs_verbose();
             void set_sio_logs_quiet();
@@ -98,9 +106,23 @@ namespace cfgo {
             [[nodiscard]] asio::awaitable<cancelable<msg_ptr>> wait_for_msg(const std::string& evt, MsgChanner& msg_channer, close_chan& close_chan, std::function<bool(msg_ptr)> cond);
             void add_candidate(const msg_ptr& msg);
 
+            bool m_inited = false;
+            mutex m_inited_mutex;
+
+            void check_inited();
+
             CtxPtr m_io_context;
             const bool m_thread_safe;
             mutex m_mutex;
+
+            mutex m_msg_cb_mutex;
+            std::uint32_t m_msg_cb_next_id = 0;
+            std::map<std::uint32_t, std::function<bool(sio::event & event)>> m_msg_cbs;
+            std::uint32_t add_msg_cb(std::function<bool(sio::event & event)> cb);
+            void remove_msg_cb(std::uint32_t cb_id);
+            void process_msg_cbs(sio::event & event);
+
+            std::atomic_uint32_t m_custom_msg_next_id;
 
             Client(const Configuration& config, const CtxPtr& io_ctx, close_chan closer, bool thread_safe);
             void lock();
