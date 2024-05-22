@@ -835,7 +835,7 @@ namespace cfgo
                                     to = get_msg_base_field<std::string>(router_msg_ptr, "userTo").value_or("");
                                 }
                                 content = get_msg_base_field<std::string>(msg_ptr, "content").value_or("");
-                                cb(content, from, to, [msg_id, from, weak_self = self->weak_from_this()]() {
+                                return cb(content, from, to, [msg_id, from, weak_self = self->weak_from_this()]() {
                                     if (auto self = weak_self.lock())
                                     {
                                         self->emit("user-ack", create_user_ack_message(msg_id, from));
