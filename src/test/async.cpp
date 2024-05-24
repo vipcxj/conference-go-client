@@ -647,6 +647,54 @@ TEST(AsyncBlocker, CheckDeadLock) {
     }), true);
 }
 
+TEST(AsyncBlocker, CheckBlockedNum) {
+    using namespace cfgo;
+    AsyncBlockerManager::Configure conf {
+        .block_timeout = std::chrono::milliseconds {30},
+        .target_batch = 3,
+        .min_batch = 1,
+    };
+    AsyncBlockerManager manager {conf};
+    close_chan closer {};
+    asio::thread_pool m_pool {};
+    std::mt19937 gen(1);
+    std::uniform_int_distribution<int> distrib(-10, 10);
+    for (size_t i = 0; i < 30; i++)
+    {
+        asio::co_spawn(m_pool.get_executor(), fix_async_lambda([i, manager, closer, amp = distrib(gen)]() -> asio::awaitable<void> {
+            auto blocker = co_await manager.add_blocker(0, closer);
+            blocker.set_user_data((std::int64_t) i);
+            try
+            {
+                do
+                {
+                    co_await wait_timeout(std::chrono::milliseconds {200 + amp}, closer);
+                    if (blocker.need_block())
+                    {
+                        co_await blocker.await_unblock();
+                    }
+                } while (true);
+            }
+            catch(const CancelError& e) {}
+        }), asio::detached);
+    }
+    do_async(fix_async_lambda([manager, closer]() -> asio::awaitable<void> {
+        std::vector<AsyncBlocker> blockers {};
+        for (size_t i = 0; i < 2000; i++)
+        {
+            co_await manager.lock(closer);
+            DEFER({
+                manager.unlock();
+            });
+            manager.collect_locked_blocker(blockers);
+            EXPECT_LE(blockers.size(), 3);
+            co_await wait_timeout(std::chrono::milliseconds {5}, closer);
+        }
+        closer.close();
+        CFGO_INFO("closed");
+    }), true);
+}
+
 int main(int argc, char **argv) {
     testing::InitGoogleTest(&argc, argv);
     // cfgo::Log::instance().set_level(cfgo::Log::DEFAULT, spdlog::level::trace);

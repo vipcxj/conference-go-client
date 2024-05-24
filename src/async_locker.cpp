@@ -60,6 +60,7 @@ namespace cfgo
                 if (!co_await chan_read<void>(m_response_chan, closer))
                 {
                     unblock();
+                    co_await sync_unblock();
                     co_return false;
                 }
                 if (m_blocked)
