@@ -10,18 +10,15 @@ namespace cfgo
 {
     namespace detail
     {
+        class AsyncBlockerManager;
         class AsyncBlocker
         {
         public:
             AsyncBlocker(std::uint32_t id): m_id(id), m_user_data(nullptr) {}
             AsyncBlocker(const AsyncBlocker &) = delete;
             AsyncBlocker & operator = (const AsyncBlocker &) = delete;
-            auto request_block(close_chan closer) -> asio::awaitable<bool>;
             bool need_block() const noexcept;
             bool is_blocked() const noexcept;
-            auto await_unblock() -> asio::awaitable<void>;
-            bool unblock();
-            auto sync_unblock() -> asio::awaitable<void>;
             std::uint32_t id() const noexcept;
             void set_user_data(std::shared_ptr<void> user_data);
             void set_user_data(std::int64_t user_data);
@@ -41,33 +38,79 @@ namespace cfgo
             std::uint32_t m_id;
             bool m_block = false;
             bool m_blocked = false;
+            mutex m_mutex;
             unique_void_chan m_request_chan;
             unique_void_chan m_response_chan;
             std::variant<std::nullptr_t, std::shared_ptr<void>, std::int64_t, double, std::string> m_user_data;
+
+            bool request_block();
+            bool request_unblock();
+            auto sync(const close_chan & closer) -> asio::awaitable<bool>;
+            auto await_unblock(const close_chan & closer) -> asio::awaitable<bool>;
+
+            friend class AsyncBlockerManager;
         };
 
         // only called by manager
-        auto AsyncBlocker::request_block(close_chan closer) -> asio::awaitable<bool>
+        bool AsyncBlocker::request_block()
         {
+            std::lock_guard g(m_mutex);
             if (m_block)
             {
-                throw cpptrace::logic_error("request_block could not be called when already requested block.");
+                return false;
             }
-            
-            m_block = true;
+            else
+            {
+                m_block = true;
+                chan_maybe_write(m_request_chan);
+                return true;
+            }
+        }
+        
+        // only called by manager
+        bool AsyncBlocker::request_unblock()
+        {
+            std::lock_guard g(m_mutex);
+            if (m_block)
+            {
+                m_block = false;
+                chan_maybe_write(m_request_chan);
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+        // only called by manager
+        auto AsyncBlocker::sync(const close_chan & closer) -> asio::awaitable<bool>
+        {
             do
             {
+                {
+                    std::lock_guard g(m_mutex);
+                    if (m_block)
+                    {
+                        if (m_blocked)
+                        {
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        if (!m_blocked)
+                        {
+                            break;
+                        }
+                    }
+                }
                 if (!co_await chan_read<void>(m_response_chan, closer))
                 {
-                    unblock();
-                    co_await sync_unblock();
                     co_return false;
                 }
-                if (m_blocked)
-                {
-                    co_return true;
-                }
             } while (true);
+            co_return true;
         }
 
         bool AsyncBlocker::need_block() const noexcept
@@ -79,66 +122,41 @@ namespace cfgo
         {
             return m_blocked;
         }
-        
-        // only called by manager
-        bool AsyncBlocker::unblock()
-        {
-            if (m_block)
-            {
-                m_block = false;
-                std::ignore = m_request_chan.try_write();
-                return true;
-            }
-            else
-            {
-                return false;
-            }
-        }
 
-        // only called by manager
-        auto AsyncBlocker::sync_unblock() -> asio::awaitable<void>
+        auto AsyncBlocker::await_unblock(const close_chan & closer) -> asio::awaitable<bool>
         {
-            if (!m_block)
-            {
-                do
-                {
-                    if (!m_blocked)
-                    {
-                        co_return;
-                    }
-                    co_await m_response_chan.read();
-                } while (true);
-            }
-            else
-            {
-                co_return;
-            }
-        }
-
-        auto AsyncBlocker::await_unblock() -> asio::awaitable<void>
-        {
-            if (m_blocked)
-            {
-                throw cpptrace::logic_error("await_unblock should not be called when already blocked.");
-            }
-            
-            if (!m_block)
-            {
-                co_return;
-            }
-            m_blocked = true;
             do
             {
-                chan_maybe_write(m_response_chan);
-                co_await m_request_chan.read();
-                if (!m_block)
                 {
-                    m_blocked = false;
-                    chan_maybe_write(m_response_chan);
-                    co_return;
+                    std::lock_guard g(m_mutex);
+                    if (m_blocked)
+                    {
+                        if (!m_block)
+                        {
+                            m_blocked = false;
+                            chan_maybe_write(m_response_chan);
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        if (m_block)
+                        {
+                            m_blocked = true;
+                            chan_maybe_write(m_response_chan);
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
                 }
-                
+                if (!co_await chan_read<void>(m_request_chan, closer))
+                {
+                    co_return false;
+                }
             } while (true);
+            co_return true;
         }
 
         std::uint32_t AsyncBlocker::id() const noexcept
@@ -239,10 +257,11 @@ namespace cfgo
             AsyncBlockerManager(const AsyncBlockerManager &) = delete;
             AsyncBlockerManager & operator = (const AsyncBlockerManager &) = delete;
 
-            auto lock(close_chan closer) -> asio::awaitable<void>;
+            auto lock(const close_chan & closer) -> asio::awaitable<void>;
             void unlock();
             void collect_locked_blocker(std::vector<cfgo::AsyncBlocker> & blockers);
-            auto add_blocker(int priority, close_chan closer) -> asio::awaitable<AsyncBlockerPtr>;
+            auto add_blocker(int priority, const close_chan & closer) -> asio::awaitable<AsyncBlockerPtr>;
+            auto wait_blocker(std::uint32_t id, const close_chan & closer) -> asio::awaitable<void>;
             void remove_blocker(std::uint32_t id);
         protected:
             auto _select_and_request_block(int n, close_chan closer) -> asio::awaitable<int>;
@@ -282,7 +301,7 @@ namespace cfgo
         };
         
         AsyncBlockerManager::AsyncBlockerManager(const ScheduleConfigure & configure): m_conf(configure) {}
-        auto AsyncBlockerManager::add_blocker(int priority, close_chan closer) -> asio::awaitable<AsyncBlockerPtr>
+        auto AsyncBlockerManager::add_blocker(int priority, const close_chan & closer) -> asio::awaitable<AsyncBlockerPtr>
         {
             auto self = shared_from_this();
             AsyncBlockerPtr block_ptr = nullptr;
@@ -367,7 +386,9 @@ namespace cfgo
             }
         }
 
-        auto AsyncBlockerManager::lock(close_chan closer) -> asio::awaitable<void>
+
+
+        auto AsyncBlockerManager::lock(const close_chan & closer) -> asio::awaitable<void>
         {
             if (m_locked)
             {
@@ -437,14 +458,29 @@ namespace cfgo
                         tasks.add_task(fix_async_lambda([blocker = blocker.m_blocker, timeout = m_conf.block_timeout](close_chan closer) -> asio::awaitable<void> {
                             auto child_closer = closer.create_child();
                             child_closer.set_timeout(timeout);
-                            if (!co_await blocker->request_block(child_closer) && !child_closer.is_timeout())
+                            blocker->request_block();
+                            if (!co_await blocker->sync(child_closer))
                             {
-                                throw CancelError(child_closer);
+                                if (child_closer.is_timeout())
+                                {
+                                    blocker->request_unblock();
+                                }
+                                else
+                                {
+                                    throw CancelError(child_closer);
+                                }
                             }
                         }));
                     }
                 }
                 co_await tasks.await();
+                for (BlockerInfo & select : selects)
+                {
+                    if (!co_await select.m_blocker->sync(closer))
+                    {
+                        throw CancelError(closer);
+                    }
+                }
                 // unblock blockers exceed the plan.
                 int n_blocked = 0;
                 for (BlockerInfo & select : selects)
@@ -454,13 +490,16 @@ namespace cfgo
                     {
                         if (++n_blocked > batch)
                         {
-                            select.m_blocker->unblock();
+                            select.m_blocker->request_unblock();
                         }
                     }
                 }
                 for (BlockerInfo & select : selects)
                 {
-                    co_await select.m_blocker->sync_unblock();
+                    if (!co_await select.m_blocker->sync(closer))
+                    {
+                        throw CancelError(closer);
+                    }
                 }
             }
             catch(...)
@@ -475,12 +514,12 @@ namespace cfgo
                 std::lock_guard lk(m_mutex);
                 if (!m_locked)
                 {
-                    throw cpptrace::runtime_error("Not locked yet.");
+                    return;
                 }
                 m_locked = false;
                 for (auto && blocker : m_blockers)
                 {
-                    if (blocker.m_blocker->unblock())
+                    if (blocker.m_blocker->request_unblock())
                     {
                         ++blocker.m_epoch;
                     }
@@ -519,14 +558,33 @@ namespace cfgo
             }
         }
 
+        auto AsyncBlockerManager::wait_blocker(std::uint32_t id, const close_chan & closer) -> asio::awaitable<void>
+        {
+            AsyncBlockerPtr blocker = nullptr;
+            {
+                std::lock_guard lk(m_mutex);
+                for (auto && blocker_info : m_blockers)
+                {
+                    if (blocker_info.m_blocker->id() == id)
+                    {
+                        blocker = blocker_info.m_blocker;
+                        break;
+                    }
+                }
+            }
+            if (blocker)
+            {
+                if (!co_await blocker->await_unblock(closer))
+                {
+                    throw CancelError(closer);
+                }
+            }
+            co_return;
+        }
+
     } // namespace detail
 
     AsyncBlocker::AsyncBlocker(detail::AsyncBlockerPtr impl): ImplBy(impl) {}
-
-    auto AsyncBlocker::request_block(close_chan closer) const -> asio::awaitable<bool>
-    {
-        return impl()->request_block(std::move(closer));
-    }
 
     bool AsyncBlocker::need_block() const noexcept
     {
@@ -536,21 +594,6 @@ namespace cfgo
     bool AsyncBlocker::is_blocked() const noexcept
     {
         return impl()->is_blocked();
-    }
-
-    auto AsyncBlocker::await_unblock() const -> asio::awaitable<void>
-    {
-        return impl()->await_unblock();
-    }
-
-    void AsyncBlocker::unblock() const
-    {
-        impl()->unblock();
-    }
-
-    auto AsyncBlocker::sync_unblock() const -> asio::awaitable<void>
-    {
-        return impl()->sync_unblock();
     }
 
     std::uint32_t AsyncBlocker::id() const noexcept
@@ -642,7 +685,7 @@ namespace cfgo
 
     AsyncBlockerManager::AsyncBlockerManager(const Configure & configure): ImplBy(configure) {}
 
-    auto AsyncBlockerManager::lock(close_chan closer) const -> asio::awaitable<void>
+    auto AsyncBlockerManager::lock(const close_chan & closer) const -> asio::awaitable<void>
     {
         return impl()->lock(std::move(closer));
     }
@@ -657,7 +700,7 @@ namespace cfgo
         impl()->collect_locked_blocker(blockers);
     }
     
-    auto AsyncBlockerManager::add_blocker(int priority, close_chan closer) const -> asio::awaitable<AsyncBlocker>
+    auto AsyncBlockerManager::add_blocker(int priority, const close_chan & closer) const -> asio::awaitable<AsyncBlocker>
     {
         auto block_ptr = co_await impl()->add_blocker(priority, closer);
         co_return AsyncBlocker{block_ptr};
@@ -666,6 +709,11 @@ namespace cfgo
     void AsyncBlockerManager::remove_blocker(std::uint32_t id) const
     {
         impl()->remove_blocker(id);
+    }
+
+    auto AsyncBlockerManager::wait_blocker(std::uint32_t id, const close_chan & closer) const -> asio::awaitable<void>
+    {
+        return impl()->wait_blocker(id, closer);
     }
 } // namespace cfgo
 

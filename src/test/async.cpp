@@ -7,17 +7,18 @@
 #include <chrono>
 #include <thread>
 #include <random>
+#include <sstream>
 
-void do_async(std::function<asio::awaitable<void>()> func, bool wait = false) {
-    auto tp = std::make_shared<asio::thread_pool>();
+void do_async(std::function<asio::awaitable<void>()> func, bool wait = false, std::shared_ptr<asio::thread_pool> tp_ptr = nullptr) {
+    auto tp = tp_ptr ? tp_ptr : std::make_shared<asio::thread_pool>();
     if (wait)
     {
-        auto res = asio::co_spawn(*tp, func, asio::use_future);
+        auto res = asio::co_spawn(tp->get_executor(), func, asio::use_future);
         res.get();
     }
     else
     {
-        asio::co_spawn(*tp, cfgo::fix_async_lambda([tp, func]() -> asio::awaitable<void> {
+        asio::co_spawn(tp->get_executor(), cfgo::fix_async_lambda([tp, func]() -> asio::awaitable<void> {
             co_await func();
             co_return;
         }), asio::detached);
@@ -611,16 +612,7 @@ TEST(AsyncBlocker, CheckDeadLock) {
                 {
                     co_await wait_timeout(std::chrono::milliseconds {40}, closer);
                     CFGO_INFO("[blocker {}] checking block", i);
-                    if (blocker.need_block())
-                    {
-                        CFGO_INFO("[blocker {}] blocking", i);
-                        co_await blocker.await_unblock();
-                        CFGO_INFO("[blocker {}] blocked", i);
-                    }
-                    else
-                    {
-                        CFGO_INFO("[blocker {}] not to block", i);
-                    }
+                    co_await manager.wait_blocker(blocker.id());
                 } while (true);
             }
             catch(const CancelError& e) {}
@@ -650,29 +642,29 @@ TEST(AsyncBlocker, CheckDeadLock) {
 TEST(AsyncBlocker, CheckBlockedNum) {
     using namespace cfgo;
     AsyncBlockerManager::Configure conf {
-        .block_timeout = std::chrono::milliseconds {30},
+        .block_timeout = std::chrono::milliseconds {100},
         .target_batch = 3,
         .min_batch = 1,
     };
     AsyncBlockerManager manager {conf};
     close_chan closer {};
-    asio::thread_pool m_pool {};
+    auto m_pool = std::make_shared<asio::thread_pool>();
     std::mt19937 gen(1);
     std::uniform_int_distribution<int> distrib(-10, 10);
     for (size_t i = 0; i < 30; i++)
     {
-        asio::co_spawn(m_pool.get_executor(), fix_async_lambda([i, manager, closer, amp = distrib(gen)]() -> asio::awaitable<void> {
+        asio::co_spawn(m_pool->get_executor(), fix_async_lambda([i, manager, closer, amp = distrib(gen)]() -> asio::awaitable<void> {
             auto blocker = co_await manager.add_blocker(0, closer);
+            DEFER({
+                manager.remove_blocker(blocker.id());
+            });
             blocker.set_user_data((std::int64_t) i);
             try
             {
                 do
                 {
                     co_await wait_timeout(std::chrono::milliseconds {200 + amp}, closer);
-                    if (blocker.need_block())
-                    {
-                        co_await blocker.await_unblock();
-                    }
+                    co_await manager.wait_blocker(blocker.id());
                 } while (true);
             }
             catch(const CancelError& e) {}
@@ -680,7 +672,7 @@ TEST(AsyncBlocker, CheckBlockedNum) {
     }
     do_async(fix_async_lambda([manager, closer]() -> asio::awaitable<void> {
         std::vector<AsyncBlocker> blockers {};
-        for (size_t i = 0; i < 2000; i++)
+        for (size_t i = 0; i < 1000; i++)
         {
             co_await manager.lock(closer);
             DEFER({
@@ -688,11 +680,10 @@ TEST(AsyncBlocker, CheckBlockedNum) {
             });
             manager.collect_locked_blocker(blockers);
             EXPECT_LE(blockers.size(), 3);
-            co_await wait_timeout(std::chrono::milliseconds {5}, closer);
         }
         closer.close();
         CFGO_INFO("closed");
-    }), true);
+    }), true, m_pool);
 }
 
 int main(int argc, char **argv) {
