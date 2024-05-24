@@ -306,21 +306,34 @@ namespace cfgo
     public:
         using Ptr = std::shared_ptr<AsyncBlocker>;
         AsyncBlocker(detail::AsyncBlockerPtr impl);
-        auto request_block(close_chan closer = INVALID_CLOSE_CHAN) -> asio::awaitable<bool>;
+        /**
+         * only called by manager
+        */
+        auto request_block(close_chan closer = nullptr) const -> asio::awaitable<bool>;
         bool need_block() const noexcept;
         bool is_blocked() const noexcept;
-        auto await_unblock() -> asio::awaitable<void>;
-        void unblock();
+        /**
+         * only called by blocker
+        */
+        auto await_unblock() const -> asio::awaitable<void>;
+        /**
+         * only called by manager
+        */
+        void unblock() const;
+        /**
+         * only called by manager
+        */
+        auto sync_unblock() const -> asio::awaitable<void>;
         std::uint32_t id() const noexcept;
-        void set_user_data(std::shared_ptr<void> user_data);
-        void set_user_data(std::int64_t user_data);
-        void set_user_data(double user_data);
-        void set_user_data(const std::string & user_data);
+        void set_user_data(std::shared_ptr<void> user_data) const;
+        void set_user_data(std::int64_t user_data) const;
+        void set_user_data(double user_data) const;
+        void set_user_data(const std::string & user_data) const;
         std::shared_ptr<void> get_pointer_user_data() const;
         std::int64_t get_integer_user_data() const;
         double get_float_user_data() const;
         const std::string & get_string_user_data() const;
-        void remove_user_data();
+        void remove_user_data() const;
         bool has_user_data() const noexcept;
         bool has_ptr_data() const noexcept;
         bool has_int_data() const noexcept;

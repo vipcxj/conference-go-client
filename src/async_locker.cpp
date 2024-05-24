@@ -21,6 +21,7 @@ namespace cfgo
             bool is_blocked() const noexcept;
             auto await_unblock() -> asio::awaitable<void>;
             bool unblock();
+            auto sync_unblock() -> asio::awaitable<void>;
             std::uint32_t id() const noexcept;
             void set_user_data(std::shared_ptr<void> user_data);
             void set_user_data(std::int64_t user_data);
@@ -93,6 +94,26 @@ namespace cfgo
             }
         }
 
+        // only called by manager
+        auto AsyncBlocker::sync_unblock() -> asio::awaitable<void>
+        {
+            if (!m_block)
+            {
+                do
+                {
+                    if (!m_blocked)
+                    {
+                        co_return;
+                    }
+                    co_await m_response_chan.read();
+                } while (true);
+            }
+            else
+            {
+                co_return;
+            }
+        }
+
         auto AsyncBlocker::await_unblock() -> asio::awaitable<void>
         {
             if (m_blocked)
@@ -107,11 +128,12 @@ namespace cfgo
             m_blocked = true;
             do
             {
-                std::ignore = m_response_chan.try_write();
+                chan_maybe_write(m_response_chan);
                 co_await m_request_chan.read();
                 if (!m_block)
                 {
                     m_blocked = false;
+                    chan_maybe_write(m_response_chan);
                     co_return;
                 }
                 
@@ -423,7 +445,6 @@ namespace cfgo
                 }
                 co_await tasks.await();
                 // unblock blockers exceed the plan.
-
                 int n_blocked = 0;
                 for (BlockerInfo & select : selects)
                 {
@@ -435,6 +456,10 @@ namespace cfgo
                             select.m_blocker->unblock();
                         }
                     }
+                }
+                for (BlockerInfo & select : selects)
+                {
+                    co_await select.m_blocker->sync_unblock();
                 }
             }
             catch(...)
@@ -497,7 +522,7 @@ namespace cfgo
 
     AsyncBlocker::AsyncBlocker(detail::AsyncBlockerPtr impl): ImplBy(impl) {}
 
-    auto AsyncBlocker::request_block(close_chan closer) -> asio::awaitable<bool>
+    auto AsyncBlocker::request_block(close_chan closer) const -> asio::awaitable<bool>
     {
         return impl()->request_block(std::move(closer));
     }
@@ -512,14 +537,19 @@ namespace cfgo
         return impl()->is_blocked();
     }
 
-    auto AsyncBlocker::await_unblock() -> asio::awaitable<void>
+    auto AsyncBlocker::await_unblock() const -> asio::awaitable<void>
     {
         return impl()->await_unblock();
     }
 
-    void AsyncBlocker::unblock()
+    void AsyncBlocker::unblock() const
     {
         impl()->unblock();
+    }
+
+    auto AsyncBlocker::sync_unblock() const -> asio::awaitable<void>
+    {
+        return impl()->sync_unblock();
     }
 
     std::uint32_t AsyncBlocker::id() const noexcept
@@ -527,22 +557,22 @@ namespace cfgo
         return impl()->id();
     }
 
-    void AsyncBlocker::set_user_data(std::shared_ptr<void> user_data)
+    void AsyncBlocker::set_user_data(std::shared_ptr<void> user_data) const
     {
         impl()->set_user_data(user_data);
     }
 
-    void AsyncBlocker::set_user_data(std::int64_t user_data)
+    void AsyncBlocker::set_user_data(std::int64_t user_data) const
     {
         impl()->set_user_data(user_data);
     }
     
-    void AsyncBlocker::set_user_data(double user_data)
+    void AsyncBlocker::set_user_data(double user_data) const
     {
         impl()->set_user_data(user_data);
     }
     
-    void AsyncBlocker::set_user_data(const std::string & user_data)
+    void AsyncBlocker::set_user_data(const std::string & user_data) const
     {
         impl()->set_user_data(user_data);
     }
@@ -567,7 +597,7 @@ namespace cfgo
         return impl()->get_string_user_data();
     }
 
-    void AsyncBlocker::remove_user_data()
+    void AsyncBlocker::remove_user_data() const
     {
         impl()->remove_user_data();
     }
