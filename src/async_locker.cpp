@@ -373,9 +373,10 @@ namespace cfgo
             try
             {
                 AsyncTasksSome<void> tasks(batch, closer);
+                // After locked (m_locked == true), no blocker should be added to or removed from m_blockers, so we can copy refs of m_blockers outside of lock.
+                std::vector<std::reference_wrapper<BlockerInfo>> selects(m_blockers.begin(), m_blockers.end());
                 {
                     std::lock_guard lk(m_mutex);
-                    std::vector<std::reference_wrapper<BlockerInfo>> selects(m_blockers.begin(), m_blockers.end());
                     std::sort(selects.begin(), selects.end(), [](const BlockerInfo & b1, const BlockerInfo & b2) -> bool {
                         if (b1.m_epoch == b2.m_epoch)
                         {
@@ -421,6 +422,20 @@ namespace cfgo
                     }
                 }
                 co_await tasks.await();
+                // unblock blockers exceed the plan.
+
+                int n_blocked = 0;
+                for (BlockerInfo & select : selects)
+                {
+                    std::lock_guard lk(m_mutex);
+                    if (select.m_blocker->is_blocked())
+                    {
+                        if (++n_blocked > batch)
+                        {
+                            select.m_blocker->unblock();
+                        }
+                    }
+                }
             }
             catch(...)
             {

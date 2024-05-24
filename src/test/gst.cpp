@@ -19,11 +19,11 @@
 #include <cuda.h>
 #include "cuda_fp16.h"
 #include "cuda/api.hpp"
-#include "opencv2/core.hpp"
-#include "opencv2/core/cuda.hpp"
-#include "opencv2/core/cuda_stream_accessor.hpp"
-#include "opencv2/imgcodecs.hpp"
-#include "opencv2/imgproc.hpp"
+// #include "opencv2/core.hpp"
+// #include "opencv2/core/cuda.hpp"
+// #include "opencv2/core/cuda_stream_accessor.hpp"
+// #include "opencv2/imgcodecs.hpp"
+// #include "opencv2/imgproc.hpp"
 #include "gst/cuda/gstcuda.h"
 #include "cuda/gst-cu.cuh"
 #include "onnxruntime_cxx_api.h"
@@ -82,46 +82,46 @@ auto get_token() -> std::string {
     return std::string{ std::istreambuf_iterator<char>(rs), std::istreambuf_iterator<char>() };
 }
 
-std::string cv_type2str(int type)
-{
-    std::string r;
+// std::string cv_type2str(int type)
+// {
+//     std::string r;
 
-    uchar depth = type & CV_MAT_DEPTH_MASK;
-    uchar chans = 1 + (type >> CV_CN_SHIFT);
+//     uchar depth = type & CV_MAT_DEPTH_MASK;
+//     uchar chans = 1 + (type >> CV_CN_SHIFT);
 
-    switch (depth)
-    {
-    case CV_8U:
-        r = "8U";
-        break;
-    case CV_8S:
-        r = "8S";
-        break;
-    case CV_16U:
-        r = "16U";
-        break;
-    case CV_16S:
-        r = "16S";
-        break;
-    case CV_32S:
-        r = "32S";
-        break;
-    case CV_32F:
-        r = "32F";
-        break;
-    case CV_64F:
-        r = "64F";
-        break;
-    default:
-        r = "User";
-        break;
-    }
+//     switch (depth)
+//     {
+//     case CV_8U:
+//         r = "8U";
+//         break;
+//     case CV_8S:
+//         r = "8S";
+//         break;
+//     case CV_16U:
+//         r = "16U";
+//         break;
+//     case CV_16S:
+//         r = "16S";
+//         break;
+//     case CV_32S:
+//         r = "32S";
+//         break;
+//     case CV_32F:
+//         r = "32F";
+//         break;
+//     case CV_64F:
+//         r = "64F";
+//         break;
+//     default:
+//         r = "User";
+//         break;
+//     }
 
-    r += "C";
-    r += (chans + '0');
+//     r += "C";
+//     r += (chans + '0');
 
-    return r;
-}
+//     return r;
+// }
 
 GstBuffer * allocate_buffer(GstElement * element, gpointer user_data)
 {

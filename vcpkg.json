@@ -16,10 +16,6 @@
     "yamc",
     "cuda",
     "cuda-api-wrappers",
-    {
-      "name": "opencv",
-      "features": ["cuda"]
-    },
     "fmt",
     "cpptrace",
     "spdlog",
