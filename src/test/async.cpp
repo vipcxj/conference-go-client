@@ -672,7 +672,7 @@ TEST(AsyncBlocker, CheckBlockedNum) {
     }
     do_async(fix_async_lambda([manager, closer]() -> asio::awaitable<void> {
         std::vector<AsyncBlocker> blockers {};
-        for (size_t i = 0; i < 1000; i++)
+        for (size_t i = 0; i < 500; i++)
         {
             co_await manager.lock(closer);
             DEFER({

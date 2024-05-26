@@ -416,7 +416,7 @@ namespace cfgo
             } while (true);
             try
             {
-                AsyncTasksSome<void> tasks(batch, closer);
+                AsyncTasksAll<void> tasks(closer);
                 // After locked (m_locked == true), no blocker should be added to or removed from m_blockers, so we can copy refs of m_blockers outside of lock.
                 std::vector<std::reference_wrapper<BlockerInfo>> selects(m_blockers.begin(), m_blockers.end());
                 {
@@ -461,14 +461,7 @@ namespace cfgo
                             blocker->request_block();
                             if (!co_await blocker->sync(child_closer))
                             {
-                                if (child_closer.is_timeout())
-                                {
-                                    blocker->request_unblock();
-                                }
-                                else
-                                {
-                                    throw CancelError(child_closer);
-                                }
+                                blocker->request_unblock();
                             }
                         }));
                     }
