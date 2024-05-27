@@ -3,6 +3,7 @@
 
 #include "gst/gst.h"
 #include "gst/app/gstappsrc.h"
+#include "cfgo/gst/boxed.h"
 
 typedef struct _GstCfgoSrc GstCfgoSrc;
 
@@ -23,6 +24,7 @@ namespace cfgo
         void cfgosrc_decodebin_will_destroyed(GstElement * cfgosrc, GstElement * decodebin);
         void cfgosrc_parsebin_will_destroyed(GstElement * cfgosrc, GstElement * parsebin);
         GstBuffer * cfgosrc_buffer_allocate(GstElement * cfgosrc);
+        void cfgosrc_on_track(GstElement * cfgosrc, CfgoBoxedTrack * track);
     } // namespace gst
     
 } // namespace cfgo

@@ -3,6 +3,7 @@
 
 #include <gst/gst.h>
 #include "cfgo/exports.h"
+#include "cfgo/gst/boxed.h"
 
 G_BEGIN_DECLS
 
@@ -53,6 +54,7 @@ struct _GstCfgoSrcClass
     void (*decodebin_created) (GstElement * element, GstElement * decodebin);
     void (*parsebin_created) (GstElement * element, GstElement * decodebin);
     GstBuffer * (*buffer_allocate) (GstElement * element);
+    void (*on_track) (GstElement * element, CfgoBoxedTrack * track);
 };
 
 GType gst_cfgosrc_get_type(void);

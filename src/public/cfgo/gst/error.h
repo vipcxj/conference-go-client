@@ -4,7 +4,9 @@
 #include "glib.h"
 #include "gst/gst.h"
 
-G_BEGIN_DECLS
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 typedef enum
 {
@@ -24,6 +26,8 @@ void cfgo_error_submit (GstElement * src, GError * error);
 void cfgo_error_submit_timeout (GstElement * src, const gchar * message, gboolean log, gboolean trace);
 void cfgo_error_submit_general (GstElement * src, const gchar * message, gboolean log, gboolean trace);
 
-G_END_DECLS
+#ifdef __cplusplus
+}
+#endif
 
 #endif

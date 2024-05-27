@@ -36,7 +36,7 @@ namespace cfgo
             RTCP,
             ALL
         };
-
+        Track(std::nullptr_t);
         Track(const msg_ptr & msg, int cache_capicity = DEFAULT_TRACK_CACHE_CAPICITY);
 
         const std::string& type() const noexcept;
@@ -53,34 +53,34 @@ namespace cfgo
         /**
          * wait until track open or closed. return false if close_ch is closed.
         */
-        auto await_open_or_closed(const close_chan &  close_ch = INVALID_CLOSE_CHAN) -> asio::awaitable<bool>;
+        auto await_open_or_closed(const close_chan &  close_ch = INVALID_CLOSE_CHAN) const -> asio::awaitable<bool>;
         /**
          * wait until a msg is available. return nullptr when close_ch is closed or track is closed.
         */
-        auto await_msg(MsgType msg_type, const close_chan &  close_ch = INVALID_CLOSE_CHAN) -> asio::awaitable<MsgPtr>;
+        auto await_msg(MsgType msg_type, const close_chan &  close_ch = INVALID_CLOSE_CHAN) const -> asio::awaitable<MsgPtr>;
         /**
          * immediately return a msg or nullptr if no msg available.
         */
-        MsgPtr receive_msg(MsgType msg_type);
+        MsgPtr receive_msg(MsgType msg_type) const;
 
-        std::uint64_t get_rtp_drops_bytes() noexcept;
-        std::uint32_t get_rtp_drops_packets() noexcept;
-        std::uint64_t get_rtp_receives_bytes() noexcept;
-        std::uint32_t get_rtp_receives_packets() noexcept;
-        float get_rtp_drop_bytes_rate() noexcept;
-        float get_rtp_drop_packets_rate() noexcept;
-        std::uint32_t get_rtp_packet_mean_size() noexcept;
-        void reset_rtp_data() noexcept;
-        std::uint64_t get_rtcp_drops_bytes() noexcept;
-        std::uint32_t get_rtcp_drops_packets() noexcept;
-        std::uint64_t get_rtcp_receives_bytes() noexcept;
-        std::uint32_t get_rtcp_receives_packets() noexcept;
-        float get_rtcp_drop_bytes_rate() noexcept;
-        float get_rtcp_drop_packets_rate() noexcept;
-        std::uint32_t get_rtcp_packet_mean_size() noexcept;
-        void reset_rtcp_data() noexcept;
-        float get_drop_bytes_rate() noexcept;
-        float get_drop_packets_rate() noexcept;
+        std::uint64_t get_rtp_drops_bytes() const noexcept;
+        std::uint32_t get_rtp_drops_packets() const noexcept;
+        std::uint64_t get_rtp_receives_bytes() const noexcept;
+        std::uint32_t get_rtp_receives_packets() const noexcept;
+        float get_rtp_drop_bytes_rate() const noexcept;
+        float get_rtp_drop_packets_rate() const noexcept;
+        std::uint32_t get_rtp_packet_mean_size() const noexcept;
+        void reset_rtp_data() const noexcept;
+        std::uint64_t get_rtcp_drops_bytes() const noexcept;
+        std::uint32_t get_rtcp_drops_packets() const noexcept;
+        std::uint64_t get_rtcp_receives_bytes() const noexcept;
+        std::uint32_t get_rtcp_receives_packets() const noexcept;
+        float get_rtcp_drop_bytes_rate() const noexcept;
+        float get_rtcp_drop_packets_rate() const noexcept;
+        std::uint32_t get_rtcp_packet_mean_size() const noexcept;
+        void reset_rtcp_data() const noexcept;
+        float get_drop_bytes_rate() const noexcept;
+        float get_drop_packets_rate() const noexcept;
 
         friend class impl::Client;
     };

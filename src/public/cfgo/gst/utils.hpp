@@ -60,5 +60,38 @@ namespace cfgo
     } // namespace gst
 } // namespace cfgo
 
+#define _CFGO_DECLARE_BOXED_PTR_LIKE(TYPE, Type, type) \
+    typedef struct { \
+        TYPE ptr = nullptr; \
+    } CfgoBoxed ## Type; \
+    CfgoBoxed ## Type * cfgo_boxed_ ## type ## _make(const TYPE & inst); \
+    GType cfgo_boxed_ ## type ## _get_type(void); \
+    CfgoBoxed ## Type * cfgo_boxed_ ## type ## _copy(CfgoBoxed ## Type * ptr); \
+    void cfgo_boxed_ ## type ## _free(CfgoBoxed ## Type * ptr);
+#define CFGO_DECLARE_BOXED_PTR_LIKE(TYPE, Type, type) _CFGO_DECLARE_BOXED_PTR_LIKE(TYPE, Type, type)
+
+#define _CFGO_DEFINE_BOXED_PTR_LIKE(TYPE, Type, type) \
+    CfgoBoxed ## Type * cfgo_boxed_ ## type ## _make(const TYPE & inst) \
+    { \
+        CfgoBoxed ## Type * copy_ptr = new CfgoBoxed ## Type(); \
+        copy_ptr->ptr = inst; \
+        return copy_ptr; \
+    } \
+    CfgoBoxed ## Type * cfgo_boxed_ ## type ## _copy(CfgoBoxed ## Type * ptr) \
+    { \
+        CfgoBoxed ## Type * copy_ptr = new CfgoBoxed ## Type(); \
+        copy_ptr->ptr = ptr->ptr; \
+        return copy_ptr; \
+    } \
+    void cfgo_boxed_ ## type ## _free(CfgoBoxed ## Type * ptr) \
+    { \
+        if (ptr) \
+        { \
+            delete ptr; \
+        } \
+    } \
+    G_DEFINE_BOXED_TYPE(CfgoBoxed ## Type, cfgo_boxed_ ## type, cfgo_boxed_ ## type ## _copy, cfgo_boxed_ ## type ## _free)
+#define CFGO_DEFINE_BOXED_PTR_LIKE(TYPE, Type, type) _CFGO_DEFINE_BOXED_PTR_LIKE(TYPE, Type, type)
+
 
 #endif

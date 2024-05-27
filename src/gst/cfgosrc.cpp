@@ -1070,7 +1070,9 @@ namespace cfgo
                 for (auto &track : sub.value()->tracks())
                 {
                     auto session = _safe_use_owner<SessionPtr>([this, track](auto owner) {
-                        return _create_session(owner, track);
+                        auto session = _create_session(owner, track);
+                        cfgosrc_on_track(GST_ELEMENT(owner), cfgo_boxed_track_make(*track));
+                        return session;
                     });
                     if (!session)
                     {
@@ -1100,6 +1102,7 @@ namespace cfgo
             }
             catch(...)
             {
+                CFGO_ERROR("{}", what());
                 if (auto owner = _safe_get_owner())
                 {
                     auto error = steal_shared_g_error(create_gerror_from_except(std::current_exception(), true));

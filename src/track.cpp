@@ -3,6 +3,7 @@
 
 namespace cfgo
 {
+    Track::Track(std::nullptr_t state): ImplBy(std::shared_ptr<impl::Track>(nullptr)) {}
     Track::Track(const msg_ptr & msg, int cache_capicity): ImplBy<impl::Track>(msg, cache_capicity) {}
 
     const std::string& Track::type() const noexcept {
@@ -35,90 +36,90 @@ namespace cfgo
     const std::shared_ptr<rtc::Track> & Track::track() const noexcept {
         return impl()->track;
     }
-    auto Track::await_open_or_closed(const close_chan & close_ch) -> asio::awaitable<bool>
+    auto Track::await_open_or_closed(const close_chan & close_ch) const -> asio::awaitable<bool>
     {
         return impl()->await_open_or_closed(close_ch);
     }
-    auto Track::await_msg(MsgType msg_type, const close_chan &  close_ch) -> asio::awaitable<MsgPtr>
+    auto Track::await_msg(MsgType msg_type, const close_chan &  close_ch) const -> asio::awaitable<MsgPtr>
     {
         return impl()->await_msg(msg_type, close_ch);
     }
-    Track::MsgPtr Track::receive_msg(MsgType msg_type) {
+    Track::MsgPtr Track::receive_msg(MsgType msg_type) const {
         return impl()->receive_msg(msg_type);
     }
     void * Track::get_gst_caps(int pt) const
     {
         return impl()->get_gst_caps(pt);
     }
-    std::uint64_t Track::get_rtp_drops_bytes() noexcept
+    std::uint64_t Track::get_rtp_drops_bytes() const noexcept
     {
         return impl()->get_rtp_drops_bytes();
     }
-    std::uint32_t Track::get_rtp_drops_packets() noexcept
+    std::uint32_t Track::get_rtp_drops_packets() const noexcept
     {
         return impl()->get_rtp_drops_packets();
     }
-    std::uint64_t Track::get_rtp_receives_bytes() noexcept
+    std::uint64_t Track::get_rtp_receives_bytes() const noexcept
     {
         return impl()->get_rtp_receives_bytes();
     }
-    std::uint32_t Track::get_rtp_receives_packets() noexcept
+    std::uint32_t Track::get_rtp_receives_packets() const noexcept
     {
         return impl()->get_rtp_receives_packets();
     }
-    float Track::get_rtp_drop_bytes_rate() noexcept
+    float Track::get_rtp_drop_bytes_rate() const noexcept
     {
         return impl()->get_rtp_drop_bytes_rate();
     }
-    float Track::get_rtp_drop_packets_rate() noexcept
+    float Track::get_rtp_drop_packets_rate() const noexcept
     {
         return impl()->get_rtp_drop_packets_rate();
     }
-    std::uint32_t Track::get_rtp_packet_mean_size() noexcept
+    std::uint32_t Track::get_rtp_packet_mean_size() const noexcept
     {
         return impl()->get_rtp_packet_mean_size();
     }
-    void Track::reset_rtp_data() noexcept
+    void Track::reset_rtp_data() const noexcept
     {
         impl()->reset_rtp_data();
     }
-    std::uint64_t Track::get_rtcp_drops_bytes() noexcept
+    std::uint64_t Track::get_rtcp_drops_bytes() const noexcept
     {
         return impl()->get_rtcp_drops_bytes();
     }
-    std::uint32_t Track::get_rtcp_drops_packets() noexcept
+    std::uint32_t Track::get_rtcp_drops_packets() const noexcept
     {
         return impl()->get_rtcp_drops_packets();
     }
-    std::uint64_t Track::get_rtcp_receives_bytes() noexcept
+    std::uint64_t Track::get_rtcp_receives_bytes() const noexcept
     {
         return impl()->get_rtcp_receives_bytes();
     }
-    std::uint32_t Track::get_rtcp_receives_packets() noexcept
+    std::uint32_t Track::get_rtcp_receives_packets() const noexcept
     {
         return impl()->get_rtcp_receives_packets();
     }
-    float Track::get_rtcp_drop_bytes_rate() noexcept
+    float Track::get_rtcp_drop_bytes_rate() const noexcept
     {
         return impl()->get_rtcp_drop_bytes_rate();
     }
-    float Track::get_rtcp_drop_packets_rate() noexcept
+    float Track::get_rtcp_drop_packets_rate() const noexcept
     {
         return impl()->get_rtcp_drop_packets_rate();
     }
-    std::uint32_t Track::get_rtcp_packet_mean_size() noexcept
+    std::uint32_t Track::get_rtcp_packet_mean_size() const noexcept
     {
         return impl()->get_rtcp_packet_mean_size();
     }
-    void Track::reset_rtcp_data() noexcept
+    void Track::reset_rtcp_data() const noexcept
     {
         impl()->reset_rtcp_data();
     }
-    float Track::get_drop_bytes_rate() noexcept
+    float Track::get_drop_bytes_rate() const noexcept
     {
         return impl()->get_drop_bytes_rate();
     }
-    float Track::get_drop_packets_rate() noexcept
+    float Track::get_drop_packets_rate() const noexcept
     {
         return impl()->get_drop_packets_rate();
     }

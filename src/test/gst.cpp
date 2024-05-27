@@ -129,14 +129,45 @@ GstBuffer * allocate_buffer(GstElement * element, gpointer user_data)
     return self->acquire_buffer();
 }
 
+struct track_data
+{
+    cfgo::Client::CtxPtr exec_ctx;
+    cfgo::close_chan closer;
+    cfgo::Track::Ptr track;
+};
+
+void on_track(GstElement * element, CfgoBoxedTrack * track, gpointer user_data)
+{
+    auto & data = cfgo::cast_shared_holder_ref<track_data>(user_data);
+    asio::co_spawn(
+        asio::get_associated_executor(*data->exec_ctx), 
+        cfgo::fix_async_lambda([closer = data->closer, track = track->ptr]() -> asio::awaitable<void> {
+            auto begin = std::chrono::high_resolution_clock::now();
+            while (true)
+            {
+                co_await cfgo::wait_timeout(std::chrono::seconds {1}, closer);
+                auto elapse = std::chrono::high_resolution_clock::now() - begin;
+                auto rtp_rec_speed = track.get_rtp_receives_bytes() * 1.0 / 1024 * 1000 * 1000 * 1000 / elapse.count();
+                auto rtp_drop_speed = track.get_rtp_drops_bytes() * 1.0 / 1024 * 1000 * 1000 * 1000 / elapse.count();
+                CFGO_INFO("rtp received: {:.1} KB/s; rtp droped: {:.1} KB/s", rtp_rec_speed, rtp_drop_speed);
+            }
+        }), 
+        asio::detached
+    );
+}
+
 auto main_task(cfgo::Client::CtxPtr exec_ctx, const std::string & token, cfgo::close_chan closer) -> asio::awaitable<void> {
     using namespace cfgo;
     cfgo::Configuration conf { "http://localhost:8080", token };
     auto client_ptr = std::make_shared<Client>(conf, exec_ctx, closer);
+    client_ptr->init();
     gst::Pipeline pipeline("test pipeline", exec_ctx);
     pipeline.add_node("cfgosrc", "cfgosrc");
     auto decode_caps = gst_caps_from_string("video/x-raw(memory:CUDAMemory)");
     std::shared_ptr<gst::BufferPool> buffer_pool = std::make_shared<gst::BufferPool>(1600, 16, 48);
+    std::shared_ptr<track_data> track_data_ptr = std::make_shared<track_data>();
+    track_data_ptr->exec_ctx = exec_ctx;
+    track_data_ptr->closer = closer;
     g_object_set(
         pipeline.require_node("cfgosrc").get(),
         "client",
@@ -169,7 +200,18 @@ auto main_task(cfgo::Client::CtxPtr exec_ctx, const std::string & token, cfgo::c
         cfgo::make_shared_holder(buffer_pool), [](gpointer data, GClosure *closure) {
             cfgo::destroy_shared_holder<gst::BufferPool>(data);
         },
-    GConnectFlags::G_CONNECT_DEFAULT);
+        GConnectFlags::G_CONNECT_DEFAULT
+    );
+    CfgoBoxedTrack * track_ptr = new CfgoBoxedTrack();
+    g_signal_connect_data(
+        pipeline.require_node("cfgosrc").get(),
+        "on-track",
+        G_CALLBACK(on_track),
+        cfgo::make_shared_holder(track_data_ptr), [](gpointer data, GClosure *closure) {
+            cfgo::destroy_shared_holder<track_data>(data);
+        },
+        GConnectFlags::G_CONNECT_DEFAULT
+    );
     pipeline.add_node("cudaconvertscale", "cudaconvertscale");
     g_object_set(
         pipeline.require_node("cudaconvertscale").get(),
@@ -426,7 +468,7 @@ auto main_task(cfgo::Client::CtxPtr exec_ctx, const std::string & token, cfgo::c
             try
             {
                 int frame = 0;
-                AsyncBlocker blocker = co_await blocker_manager.add_blocker(0);
+                AsyncBlocker blocker = co_await blocker_manager.add_blocker(0, closer);
                 blocker.set_user_data((std::int64_t) 0);
                 manually_ptr<unique_void_chan> * sync_ch_ptr = make_manually_ptr<unique_void_chan>();
                 DEFER({
@@ -434,7 +476,7 @@ auto main_task(cfgo::Client::CtxPtr exec_ctx, const std::string & token, cfgo::c
                 });
                 do
                 {
-                    cfgo::gst::GstSampleSPtr sample = co_await appsink.pull_sample();
+                    cfgo::gst::GstSampleSPtr sample = co_await appsink.pull_sample(closer);
                     if (!sample)
                     {
                         spdlog::debug("no sample, so eos.");
@@ -513,9 +555,9 @@ auto main_task(cfgo::Client::CtxPtr exec_ctx, const std::string & token, cfgo::c
                     cudaEventDestroy(end);
                     spdlog::debug("copy frame use {} ms", used);
 
-                    if (blocker.need_block() && frame >= 16)
+                    if (frame >= 16)
                     {
-                        co_await blocker.await_unblock();
+                        co_await blocker_manager.wait_blocker(blocker.id(), closer);
                     }
                     ++frame;
                 } while (true);

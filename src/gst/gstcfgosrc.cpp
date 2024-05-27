@@ -93,6 +93,7 @@ enum
   SIGNAL_DECODEBIN_CREATED,
   SIGNAL_PARSEBIN_CREATED,
   SIGNAL_BUFFER_ALLOCATE,
+  SIGNAL_ON_TRACK,
   LAST_SIGNAL
 };
 
@@ -272,6 +273,11 @@ namespace cfgo
             g_signal_emit(G_OBJECT(cfgosrc), gst_cfgosrc_signals[SIGNAL_BUFFER_ALLOCATE], 0, &buffer);
             return buffer;
         }
+
+        void cfgosrc_on_track(GstElement * cfgosrc, CfgoBoxedTrack * track)
+        {
+            g_signal_emit(G_OBJECT(cfgosrc), gst_cfgosrc_signals[SIGNAL_ON_TRACK], 0, track);
+        }
     } // namespace gst
     
 } // namespace cfgo
@@ -320,6 +326,13 @@ gst_cfgosrc_class_init(GstCfgoSrcClass *klass)
         G_STRUCT_OFFSET(GstCfgoSrcClass, buffer_allocate),
         _gst_buffer_accumulator, NULL, NULL,
         GST_TYPE_BUFFER, 0
+    );
+
+    gst_cfgosrc_signals[SIGNAL_ON_TRACK] = g_signal_new(
+        "on-track", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST,
+        G_STRUCT_OFFSET(GstCfgoSrcClass, on_track),
+        NULL, NULL, NULL,
+        G_TYPE_NONE, 1, CFGO_TYPE_BOXED_TRACK
     );
 
     g_object_class_install_property(
