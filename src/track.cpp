@@ -51,6 +51,14 @@ namespace cfgo
     {
         return impl()->get_gst_caps(pt);
     }
+    void Track::set_on_data(const OnDataCb & cb) const
+    {
+        impl()->set_on_data(cb);
+    }
+    void Track::unset_on_data() const noexcept
+    {
+        impl()->unset_on_data();
+    }
     std::uint64_t Track::get_rtp_drops_bytes() const noexcept
     {
         return impl()->get_rtp_drops_bytes();

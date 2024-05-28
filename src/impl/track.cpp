@@ -215,6 +215,10 @@ namespace cfgo
                         ++m_statistics.m_rtp_drops_packets;
                     }
                 }
+                if (m_on_data)
+                {
+                    m_on_data(data, !is_rtcp);
+                }
                 cache.push_back(std::make_pair(++m_seq, std::make_unique<rtc::binary>(std::move(data))));
             }
             chan_maybe_write(m_msg_notify);
@@ -391,6 +395,18 @@ namespace cfgo
 #else
             throw cpptrace::logic_error("The gstreamer support is disabled, so to_gst_caps method is not supported. Please enable gstreamer support by set cmake GSTREAMER_SUPPORT option to ON.");
 #endif
+        }
+
+        void Track::set_on_data(const OnDataCb & cb)
+        {
+            std::lock_guard g(m_lock);
+            m_on_data = cb;
+        }
+
+        void Track::unset_on_data() noexcept
+        {
+            std::lock_guard g(m_lock);
+            m_on_data = nullptr;
         }
 
         std::uint64_t Track::get_rtp_drops_bytes() noexcept

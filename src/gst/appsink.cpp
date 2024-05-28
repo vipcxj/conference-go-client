@@ -14,16 +14,20 @@ namespace cfgo
             {
             public:
                 using SampleBuffer = boost::circular_buffer<std::pair<std::uint32_t, GstSampleSPtr>>;
+                using OnSampleCb = gst::AppSink::OnSampleCb;
                 AppSink(GstAppSink * sink, int cache_capicity);
                 ~AppSink();
 
                 void init();
                 auto pull_sample(close_chan closer) -> asio::awaitable<GstSampleSPtr>;
+                void set_on_sample(const OnSampleCb & cb);
+                void unset_on_sample() noexcept;
             private:
                 GstAppSink * m_sink;
                 SampleBuffer m_cache;
                 unique_void_chan m_sample_notify;
                 unique_void_chan m_eos_notify;
+                OnSampleCb m_on_sample;
                 mutex m_mutex;
                 std::uint32_t m_seq;
                 bool m_eos;
@@ -102,6 +106,10 @@ namespace cfgo
                     auto sample = gst_app_sink_pull_sample(appsink);
                     if (sample)
                     {
+                        if (self->m_on_sample)
+                        {
+                            self->m_on_sample(sample);
+                        }
                         self->m_cache.push_back(std::make_pair(self->m_seq++, steal_shared_gst_sample(sample)));
                         chan_maybe_write(self->m_sample_notify);
                     }
@@ -172,18 +180,40 @@ namespace cfgo
                 co_return sample_ptr;
             }
 
+            void AppSink::set_on_sample(const OnSampleCb & cb)
+            {
+                std::lock_guard lk(m_mutex);
+                m_on_sample = cb;
+            }
+
+            void AppSink::unset_on_sample() noexcept
+            {
+                std::lock_guard lk(m_mutex);
+                m_on_sample = nullptr;
+            }
+
         } // namespace detail
 
         AppSink::AppSink(GstAppSink *sink, int cache_capicity) : ImplBy(sink, cache_capicity) {}
 
-        void AppSink::init()
+        void AppSink::init() const
         {
             impl()->init();
         }
 
-        auto AppSink::pull_sample(close_chan closer) -> asio::awaitable<GstSampleSPtr>
+        auto AppSink::pull_sample(close_chan closer) const -> asio::awaitable<GstSampleSPtr>
         {
             return impl()->pull_sample(std::move(closer));
+        }
+
+        void AppSink::set_on_sample(const OnSampleCb & cb) const
+        {
+            impl()->set_on_sample(cb);
+        }
+
+        void AppSink::unset_on_sample() const noexcept
+        {
+            impl()->unset_on_sample();
         }
 
     } // namespace gst

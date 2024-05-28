@@ -30,6 +30,7 @@ namespace cfgo
         using Ptr = std::shared_ptr<Track>;
         using MsgPtr = std::unique_ptr<rtc::binary>;
         using MsgSharedPtr = std::shared_ptr<rtc::binary>;
+        using OnDataCb = std::function<void(const rtc::binary &, bool)>;
         enum MsgType
         {
             RTP,
@@ -50,6 +51,8 @@ namespace cfgo
         std::shared_ptr<rtc::Track> & track() noexcept;
         const std::shared_ptr<rtc::Track> & track() const noexcept;
         void * get_gst_caps(int pt) const;
+        void set_on_data(const OnDataCb & cb) const;
+        void unset_on_data() const noexcept;
         /**
          * wait until track open or closed. return false if close_ch is closed.
         */
