@@ -32,7 +32,9 @@ namespace cfgo
             using Ptr = std::shared_ptr<Track>;
             using MsgBuffer = boost::circular_buffer<std::pair<std::uint32_t, cfgo::Track::MsgPtr>>;
             using OnDataCb = cfgo::Track::OnDataCb;
+            using OnDataCbMoveOnly = cfgo::Track::OnDataCbMoveOnly;
             using OnStatCb = cfgo::Track::OnStatCb;
+            using OnStatCbMoveOnly = cfgo::Track::OnStatCbMoveOnly;
             using Statistics = cfgo::Track::Statistics;
             
             std::string type;
@@ -50,9 +52,9 @@ namespace cfgo
             MsgBuffer m_rtp_cache;
             MsgBuffer m_rtcp_cache;
             uint32_t m_seq;
-            OnDataCb m_on_data = nullptr;
+            OnDataCbMoveOnly m_on_data = nullptr;
             Statistics m_statistics;
-            OnStatCb m_on_stat = nullptr;
+            OnStatCbMoveOnly m_on_stat = nullptr;
             std::shared_ptr<Client> m_client;
             asiochan::channel<void, 1> m_msg_notify;
             asiochan::channel<void, 1> m_open_notify;
@@ -76,8 +78,10 @@ namespace cfgo
             void bind_client(std::shared_ptr<Client> client);
             void * get_gst_caps(int pt) const;
             void set_on_data(const OnDataCb & cb);
+            void set_on_data(OnDataCbMoveOnly && cb);
             void unset_on_data() noexcept;
             void set_on_stat(const OnStatCb & cb);
+            void set_on_stat(OnStatCbMoveOnly && cb);
             void unset_on_stat() noexcept;
             std::uint64_t get_rtp_drops_bytes() noexcept;
             std::uint32_t get_rtp_drops_packets() noexcept;

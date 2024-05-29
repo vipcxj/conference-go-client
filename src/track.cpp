@@ -55,6 +55,10 @@ namespace cfgo
     {
         impl()->set_on_data(cb);
     }
+    void Track::set_on_data(OnDataCbMoveOnly && cb) const
+    {
+        impl()->set_on_data(std::move(cb));
+    }
     void Track::unset_on_data() const noexcept
     {
         impl()->unset_on_data();
@@ -62,6 +66,10 @@ namespace cfgo
     void Track::set_on_stat(const OnStatCb & cb) const
     {
         impl()->set_on_stat(cb);
+    }
+    void Track::set_on_stat(OnStatCbMoveOnly && cb) const
+    {
+        impl()->set_on_stat(std::move(cb));
     }
     void Track::unset_on_stat() const noexcept
     {

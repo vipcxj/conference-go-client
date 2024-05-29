@@ -7,6 +7,7 @@
 #include "cfgo/alias.hpp"
 #include "cfgo/async.hpp"
 #include "cfgo/utils.hpp"
+#include "cfgo/move_only_function.hpp"
 #include "rtc/track.hpp"
 #include "asio/awaitable.hpp"
 
@@ -141,7 +142,9 @@ namespace cfgo
         using MsgPtr = std::unique_ptr<rtc::binary>;
         using MsgSharedPtr = std::shared_ptr<rtc::binary>;
         using OnDataCb = std::function<void(const rtc::binary &, bool)>;
+        using OnDataCbMoveOnly = unique_function<void(const rtc::binary &, bool)>;
         using OnStatCb = std::function<void(const Statistics &)>;
+        using OnStatCbMoveOnly = unique_function<void(const Statistics &)>;
         enum MsgType
         {
             RTP,
@@ -163,8 +166,10 @@ namespace cfgo
         const std::shared_ptr<rtc::Track> & track() const noexcept;
         void * get_gst_caps(int pt) const;
         void set_on_data(const OnDataCb & cb) const;
+        void set_on_data(OnDataCbMoveOnly && cb) const;
         void unset_on_data() const noexcept;
         void set_on_stat(const OnStatCb & cb) const;
+        void set_on_stat(OnStatCbMoveOnly && cb) const;
         void unset_on_stat() const noexcept;
         /**
          * wait until track open or closed. return false if close_ch is closed.
