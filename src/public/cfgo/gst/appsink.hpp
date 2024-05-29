@@ -5,7 +5,6 @@
 #include "cfgo/async.hpp"
 #include "cfgo/utils.hpp"
 #include "cfgo/gst/utils.hpp"
-#include "cfgo/move_only_function.hpp"
 
 namespace cfgo
 {

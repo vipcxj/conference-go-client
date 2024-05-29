@@ -7,7 +7,6 @@
 #include "cfgo/alias.hpp"
 #include "cfgo/async.hpp"
 #include "cfgo/utils.hpp"
-#include "cfgo/move_only_function.hpp"
 #include "rtc/track.hpp"
 #include "asio/awaitable.hpp"
 
