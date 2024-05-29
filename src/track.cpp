@@ -59,6 +59,14 @@ namespace cfgo
     {
         impl()->unset_on_data();
     }
+    void Track::set_on_stat(const OnStatCb & cb) const
+    {
+        impl()->set_on_stat(cb);
+    }
+    void Track::unset_on_stat() const noexcept
+    {
+        impl()->unset_on_stat();
+    }
     std::uint64_t Track::get_rtp_drops_bytes() const noexcept
     {
         return impl()->get_rtp_drops_bytes();

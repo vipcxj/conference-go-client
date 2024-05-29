@@ -19,7 +19,52 @@ namespace cfgo
         class AppSink : public ImplBy<detail::AppSink>
         {
         public:
+            struct Statistics
+            {
+                std::uint64_t m_droped_bytes = 0;
+                std::uint32_t m_droped_samples = 0;
+                std::uint64_t m_received_bytes = 0;
+                std::uint32_t m_received_samples = 0;
+
+                inline float droped_bytes_rate() const noexcept
+                {
+                    if (m_received_bytes > 0)
+                    {
+                        return 1.0f * m_droped_bytes / m_received_bytes;
+                    }
+                    else
+                    {
+                        return 0.0f;
+                    }
+                }
+
+                inline double droped_samples_rate() const noexcept
+                {
+                    if (m_received_samples > 0)
+                    {
+                        return 1.0f * m_droped_samples / m_received_samples;
+                    }
+                    else
+                    {
+                        return 0.0f;
+                    }
+                }
+
+                inline std::uint32_t samples_mean_size() const noexcept
+                {
+                    if (m_received_samples > 0)
+                    {
+                        return static_cast<std::uint32_t>(m_received_bytes / m_received_samples);
+                    }
+                    else
+                    {
+                        return 0;
+                    }
+                }
+            };
+
             using OnSampleCb = std::function<void(GstSample *)>;
+            using OnStatCb = std::function<void(const Statistics &)>;
             AppSink(GstAppSink * sink, int cache_capicity);
             void init() const;
             /**
@@ -28,6 +73,8 @@ namespace cfgo
             auto pull_sample(close_chan closer = INVALID_CLOSE_CHAN) const -> asio::awaitable<GstSampleSPtr>;
             void set_on_sample(const OnSampleCb & cb) const;
             void unset_on_sample() const noexcept;
+            void set_on_stat(const OnStatCb & cb) const;
+            void unset_on_stat() const noexcept;
         };
     } // namespace gst
     

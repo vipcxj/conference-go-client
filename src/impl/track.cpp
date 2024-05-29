@@ -201,7 +201,7 @@ namespace cfgo
                     ++m_statistics.m_rtcp_receives_packets;
                     if (cache.full())
                     {
-                        m_statistics.m_rtcp_drops_bytes += data.size();
+                        m_statistics.m_rtcp_drops_bytes += cache.front().second->size();
                         ++m_statistics.m_rtcp_drops_packets;
                     }
                 }
@@ -211,13 +211,17 @@ namespace cfgo
                     ++m_statistics.m_rtp_receives_packets;
                     if (cache.full())
                     {
-                        m_statistics.m_rtp_drops_bytes += data.size();
+                        m_statistics.m_rtp_drops_bytes += cache.front().second->size();
                         ++m_statistics.m_rtp_drops_packets;
                     }
                 }
                 if (m_on_data)
                 {
                     m_on_data(data, !is_rtcp);
+                }
+                if (m_on_stat)
+                {
+                    m_on_stat(m_statistics);
                 }
                 cache.push_back(std::make_pair(++m_seq, std::make_unique<rtc::binary>(std::move(data))));
             }
@@ -409,6 +413,18 @@ namespace cfgo
             m_on_data = nullptr;
         }
 
+        void Track::set_on_stat(const OnStatCb & cb)
+        {
+            std::lock_guard g(m_lock);
+            m_on_stat = cb;
+        }
+
+        void Track::unset_on_stat() noexcept
+        {
+            std::lock_guard g(m_lock);
+            m_on_stat = nullptr;
+        }
+
         std::uint64_t Track::get_rtp_drops_bytes() noexcept
         {
             std::lock_guard g(m_lock);
@@ -436,40 +452,19 @@ namespace cfgo
         float Track::get_rtp_drop_bytes_rate() noexcept
         {
             std::lock_guard g(m_lock);
-            if (m_statistics.m_rtp_receives_bytes > 0)
-            {
-                return 1.0f * m_statistics.m_rtp_drops_bytes / m_statistics.m_rtp_receives_bytes;
-            }
-            else
-            {
-                return 0.0f;
-            }
+            return m_statistics.rtp_drop_bytes_rate();
         }
 
         float Track::get_rtp_drop_packets_rate() noexcept
         {
             std::lock_guard g(m_lock);
-            if (m_statistics.m_rtp_receives_packets > 0)
-            {
-                return 1.0f * m_statistics.m_rtp_drops_packets / m_statistics.m_rtp_receives_packets;
-            }
-            else
-            {
-                return 0.0f;
-            }
+            return m_statistics.rtp_drop_packets_rate();
         }
 
         std::uint32_t Track::get_rtp_packet_mean_size() noexcept
         {
             std::lock_guard g(m_lock);
-            if (m_statistics.m_rtp_receives_packets > 0)
-            {
-                return static_cast<std::uint32_t>(m_statistics.m_rtp_receives_bytes / m_statistics.m_rtp_receives_packets);
-            }
-            else
-            {
-                return 0;
-            }
+            return m_statistics.rtp_packet_mean_size();
         }
 
         void Track::reset_rtp_data() noexcept
@@ -508,40 +503,19 @@ namespace cfgo
         float Track::get_rtcp_drop_bytes_rate() noexcept
         {
             std::lock_guard g(m_lock);
-            if (m_statistics.m_rtcp_receives_bytes > 0)
-            {
-                return 1.0f * m_statistics.m_rtcp_drops_bytes / m_statistics.m_rtcp_receives_bytes;
-            }
-            else
-            {
-                return 0.0f;
-            }
+            return m_statistics.rtcp_drop_bytes_rate();
         }
 
         float Track::get_rtcp_drop_packets_rate() noexcept
         {
             std::lock_guard g(m_lock);
-            if (m_statistics.m_rtcp_receives_packets > 0)
-            {
-                return 1.0f * m_statistics.m_rtcp_drops_packets / m_statistics.m_rtcp_receives_packets;
-            }
-            else
-            {
-                return 0.0f;
-            }
+            return m_statistics.rtcp_drop_packets_rate();
         }
 
         std::uint32_t Track::get_rtcp_packet_mean_size() noexcept
         {
             std::lock_guard g(m_lock);
-            if (m_statistics.m_rtcp_receives_packets > 0)
-            {
-                return static_cast<std::uint32_t>(m_statistics.m_rtcp_receives_bytes / m_statistics.m_rtcp_receives_packets);
-            }
-            else
-            {
-                return 0;
-            }
+            return m_statistics.rtcp_packet_mean_size();
         }
 
         void Track::reset_rtcp_data() noexcept
@@ -556,29 +530,13 @@ namespace cfgo
         float Track::get_drop_bytes_rate() noexcept
         {
             std::lock_guard g(m_lock);
-            if (m_statistics.m_rtp_receives_bytes > 0 || m_statistics.m_rtcp_receives_bytes)
-            {
-                return 1.0f * (m_statistics.m_rtp_drops_bytes + m_statistics.m_rtcp_drops_bytes) 
-                    / (m_statistics.m_rtp_receives_bytes + m_statistics.m_rtcp_receives_bytes);
-            }
-            else
-            {
-                return 0.0f;
-            }
+            return m_statistics.drop_bytes_rate();
         }
 
         float Track::get_drop_packets_rate() noexcept
         {
             std::lock_guard g(m_lock);
-            if (m_statistics.m_rtp_receives_packets > 0 || m_statistics.m_rtcp_receives_packets)
-            {
-                return 1.0f * (m_statistics.m_rtp_drops_packets + m_statistics.m_rtcp_drops_packets) 
-                    / (m_statistics.m_rtp_receives_packets + m_statistics.m_rtcp_receives_packets);
-            }
-            else
-            {
-                return 0.0f;
-            }
+            return m_statistics.drop_packets_rate();
         }
     } // namespace impl
     

@@ -27,10 +27,121 @@ namespace cfgo
     
     struct Track : ImplBy<impl::Track>
     {
+        struct Statistics
+        {
+            std::uint64_t m_rtp_drops_bytes = 0;
+            std::uint32_t m_rtp_drops_packets = 0;
+            std::uint64_t m_rtp_receives_bytes = 0;
+            std::uint32_t m_rtp_receives_packets = 0;
+            std::uint64_t m_rtcp_drops_bytes = 0;
+            std::uint32_t m_rtcp_drops_packets = 0;
+            std::uint64_t m_rtcp_receives_bytes = 0;
+            std::uint32_t m_rtcp_receives_packets = 0;
+
+            inline float rtp_drop_bytes_rate() const noexcept
+            {
+                if (m_rtp_receives_bytes > 0)
+                {
+                    return 1.0f * m_rtp_drops_bytes / m_rtp_receives_bytes;
+                }
+                else
+                {
+                    return 0.0f;
+                }
+            }
+
+            inline double rtp_drop_packets_rate() const noexcept
+            {
+                if (m_rtp_receives_packets > 0)
+                {
+                    return 1.0f * m_rtp_drops_packets / m_rtp_receives_packets;
+                }
+                else
+                {
+                    return 0.0f;
+                }
+            }
+
+            inline std::uint32_t rtp_packet_mean_size() const noexcept
+            {
+                if (m_rtp_receives_packets > 0)
+                {
+                    return static_cast<std::uint32_t>(m_rtp_receives_bytes / m_rtp_receives_packets);
+                }
+                else
+                {
+                    return 0;
+                }
+            }
+
+            inline float rtcp_drop_bytes_rate() const noexcept
+            {
+                if (m_rtcp_receives_bytes > 0)
+                {
+                    return 1.0f * m_rtcp_drops_bytes / m_rtcp_receives_bytes;
+                }
+                else
+                {
+                    return 0.0f;
+                }
+            }
+
+            inline float rtcp_drop_packets_rate() const noexcept
+            {
+                if (m_rtcp_receives_packets > 0)
+                {
+                    return 1.0f * m_rtcp_drops_packets / m_rtcp_receives_packets;
+                }
+                else
+                {
+                    return 0.0f;
+                }
+            }
+
+            inline std::uint32_t rtcp_packet_mean_size() const noexcept
+            {
+                if (m_rtcp_receives_packets > 0)
+                {
+                    return static_cast<std::uint32_t>(m_rtcp_receives_bytes / m_rtcp_receives_packets);
+                }
+                else
+                {
+                    return 0;
+                }
+            }
+
+            inline float drop_bytes_rate() const noexcept
+            {
+                if (m_rtp_receives_bytes > 0 || m_rtcp_receives_bytes > 0)
+                {
+                    return 1.0f * (m_rtp_drops_bytes + m_rtcp_drops_bytes) 
+                        / (m_rtp_receives_bytes + m_rtcp_receives_bytes);
+                }
+                else
+                {
+                    return 0.0f;
+                }
+            }
+
+            float drop_packets_rate() const noexcept
+            {
+                if (m_rtp_receives_packets > 0 || m_rtcp_receives_packets > 0)
+                {
+                    return 1.0f * (m_rtp_drops_packets + m_rtcp_drops_packets) 
+                        / (m_rtp_receives_packets + m_rtcp_receives_packets);
+                }
+                else
+                {
+                    return 0.0f;
+                }
+            }
+        };
+
         using Ptr = std::shared_ptr<Track>;
         using MsgPtr = std::unique_ptr<rtc::binary>;
         using MsgSharedPtr = std::shared_ptr<rtc::binary>;
         using OnDataCb = std::function<void(const rtc::binary &, bool)>;
+        using OnStatCb = std::function<void(const Statistics &)>;
         enum MsgType
         {
             RTP,
@@ -53,6 +164,8 @@ namespace cfgo
         void * get_gst_caps(int pt) const;
         void set_on_data(const OnDataCb & cb) const;
         void unset_on_data() const noexcept;
+        void set_on_stat(const OnStatCb & cb) const;
+        void unset_on_stat() const noexcept;
         /**
          * wait until track open or closed. return false if close_ch is closed.
         */

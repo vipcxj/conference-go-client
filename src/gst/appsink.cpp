@@ -14,7 +14,9 @@ namespace cfgo
             {
             public:
                 using SampleBuffer = boost::circular_buffer<std::pair<std::uint32_t, GstSampleSPtr>>;
+                using Statistics = gst::AppSink::Statistics;
                 using OnSampleCb = gst::AppSink::OnSampleCb;
+                using OnStatCb = gst::AppSink::OnStatCb;
                 AppSink(GstAppSink * sink, int cache_capicity);
                 ~AppSink();
 
@@ -22,12 +24,16 @@ namespace cfgo
                 auto pull_sample(close_chan closer) -> asio::awaitable<GstSampleSPtr>;
                 void set_on_sample(const OnSampleCb & cb);
                 void unset_on_sample() noexcept;
+                void set_on_stat(const OnStatCb & cb);
+                void unset_on_stat() noexcept;
             private:
                 GstAppSink * m_sink;
                 SampleBuffer m_cache;
                 unique_void_chan m_sample_notify;
                 unique_void_chan m_eos_notify;
                 OnSampleCb m_on_sample;
+                Statistics m_stat;
+                OnStatCb m_on_stat;
                 mutex m_mutex;
                 std::uint32_t m_seq;
                 bool m_eos;
@@ -106,9 +112,22 @@ namespace cfgo
                     auto sample = gst_app_sink_pull_sample(appsink);
                     if (sample)
                     {
+                        auto sample_size = gst_buffer_get_size(gst_sample_get_buffer(sample));
+                        self->m_stat.m_received_bytes += sample_size;
+                        ++ self->m_stat.m_received_samples;
+                        if (self->m_cache.full())
+                        {
+                            auto sample_size = gst_buffer_get_size(gst_sample_get_buffer(self->m_cache.front().second.get()));
+                            self->m_stat.m_droped_bytes += sample_size;
+                            ++ self->m_stat.m_droped_samples;
+                        }
                         if (self->m_on_sample)
                         {
                             self->m_on_sample(sample);
+                        }
+                        if (self->m_on_stat)
+                        {
+                            self->m_on_stat(self->m_stat);
                         }
                         self->m_cache.push_back(std::make_pair(self->m_seq++, steal_shared_gst_sample(sample)));
                         chan_maybe_write(self->m_sample_notify);
@@ -192,6 +211,18 @@ namespace cfgo
                 m_on_sample = nullptr;
             }
 
+            void AppSink::set_on_stat(const OnStatCb & cb)
+            {
+                std::lock_guard lk(m_mutex);
+                m_on_stat = cb;
+            }
+
+            void AppSink::unset_on_stat() noexcept
+            {
+                std::lock_guard lk(m_mutex);
+                m_on_stat = nullptr;
+            }
+
         } // namespace detail
 
         AppSink::AppSink(GstAppSink *sink, int cache_capicity) : ImplBy(sink, cache_capicity) {}
@@ -214,6 +245,16 @@ namespace cfgo
         void AppSink::unset_on_sample() const noexcept
         {
             impl()->unset_on_sample();
+        }
+
+        void AppSink::set_on_stat(const OnStatCb & cb) const
+        {
+            impl()->set_on_stat(cb);
+        }
+
+        void AppSink::unset_on_stat() const noexcept
+        {
+            impl()->unset_on_stat();
         }
 
     } // namespace gst
