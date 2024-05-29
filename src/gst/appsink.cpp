@@ -16,28 +16,26 @@ namespace cfgo
                 using SampleBuffer = boost::circular_buffer<std::pair<std::uint32_t, GstSampleSPtr>>;
                 using Statistics = gst::AppSink::Statistics;
                 using OnSampleCb = gst::AppSink::OnSampleCb;
-                using OnSampleCbUnique = gst::AppSink::OnSampleCbUnique;
                 using OnStatCb = gst::AppSink::OnStatCb;
-                using OnStatCbUnique = gst::AppSink::OnStatCbUnique;
                 AppSink(GstAppSink * sink, int cache_capicity);
                 ~AppSink();
 
                 void init();
                 auto pull_sample(close_chan closer) -> asio::awaitable<GstSampleSPtr>;
                 void set_on_sample(const OnSampleCb & cb);
-                void set_on_sample(OnSampleCbUnique && cb);
+                void set_on_sample(OnSampleCb && cb);
                 void unset_on_sample() noexcept;
                 void set_on_stat(const OnStatCb & cb);
-                void set_on_stat(OnStatCbUnique && cb);
+                void set_on_stat(OnStatCb && cb);
                 void unset_on_stat() noexcept;
             private:
                 GstAppSink * m_sink;
                 SampleBuffer m_cache;
                 unique_void_chan m_sample_notify;
                 unique_void_chan m_eos_notify;
-                OnSampleCbUnique m_on_sample;
+                OnSampleCb m_on_sample;
                 Statistics m_stat;
-                OnStatCbUnique m_on_stat;
+                OnStatCb m_on_stat;
                 mutex m_mutex;
                 std::uint32_t m_seq;
                 bool m_eos;
@@ -209,7 +207,7 @@ namespace cfgo
                 m_on_sample = cb;
             }
 
-            void AppSink::set_on_sample(OnSampleCbUnique && cb)
+            void AppSink::set_on_sample(OnSampleCb && cb)
             {
                 std::lock_guard lk(m_mutex);
                 m_on_sample = std::move(cb);
@@ -227,7 +225,7 @@ namespace cfgo
                 m_on_stat = cb;
             }
 
-            void AppSink::set_on_stat(OnStatCbUnique && cb)
+            void AppSink::set_on_stat(OnStatCb && cb)
             {
                 std::lock_guard lk(m_mutex);
                 m_on_stat = std::move(cb);
@@ -258,7 +256,7 @@ namespace cfgo
             impl()->set_on_sample(cb);
         }
 
-        void AppSink::set_on_sample(OnSampleCbUnique && cb) const
+        void AppSink::set_on_sample(OnSampleCb && cb) const
         {
             impl()->set_on_sample(std::move(cb));
         }
@@ -273,7 +271,7 @@ namespace cfgo
             impl()->set_on_stat(cb);
         }
 
-        void AppSink::set_on_stat(OnStatCbUnique && cb) const
+        void AppSink::set_on_stat(OnStatCb && cb) const
         {
             impl()->set_on_stat(std::move(cb));
         }

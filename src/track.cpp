@@ -55,7 +55,7 @@ namespace cfgo
     {
         impl()->set_on_data(cb);
     }
-    void Track::set_on_data(OnDataCbMoveOnly && cb) const
+    void Track::set_on_data(OnDataCb && cb) const
     {
         impl()->set_on_data(std::move(cb));
     }
@@ -67,7 +67,7 @@ namespace cfgo
     {
         impl()->set_on_stat(cb);
     }
-    void Track::set_on_stat(OnStatCbMoveOnly && cb) const
+    void Track::set_on_stat(OnStatCb && cb) const
     {
         impl()->set_on_stat(std::move(cb));
     }

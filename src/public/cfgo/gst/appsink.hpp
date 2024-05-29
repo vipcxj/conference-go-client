@@ -65,9 +65,7 @@ namespace cfgo
             };
 
             using OnSampleCb = std::function<void(GstSample *)>;
-            using OnSampleCbUnique = unique_function<void(GstSample *)>;
             using OnStatCb = std::function<void(const Statistics &)>;
-            using OnStatCbUnique = unique_function<void(const Statistics &)>;
             AppSink(GstAppSink * sink, int cache_capicity);
             void init() const;
             /**
@@ -75,10 +73,10 @@ namespace cfgo
             */
             auto pull_sample(close_chan closer = INVALID_CLOSE_CHAN) const -> asio::awaitable<GstSampleSPtr>;
             void set_on_sample(const OnSampleCb & cb) const;
-            void set_on_sample(OnSampleCbUnique && cb) const;
+            void set_on_sample(OnSampleCb && cb) const;
             void unset_on_sample() const noexcept;
             void set_on_stat(const OnStatCb & cb) const;
-            void set_on_stat(OnStatCbUnique && cb) const;
+            void set_on_stat(OnStatCb && cb) const;
             void unset_on_stat() const noexcept;
         };
     } // namespace gst

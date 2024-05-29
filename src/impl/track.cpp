@@ -407,7 +407,7 @@ namespace cfgo
             m_on_data = cb;
         }
 
-        void Track::set_on_data(OnDataCbMoveOnly && cb)
+        void Track::set_on_data(OnDataCb && cb)
         {
             std::lock_guard g(m_lock);
             m_on_data = std::move(cb);
@@ -425,7 +425,7 @@ namespace cfgo
             m_on_stat = cb;
         }
 
-        void Track::set_on_stat(OnStatCbMoveOnly && cb)
+        void Track::set_on_stat(OnStatCb && cb)
         {
             std::lock_guard g(m_lock);
             m_on_stat = std::move(cb);
