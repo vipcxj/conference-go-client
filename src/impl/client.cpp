@@ -349,6 +349,7 @@ namespace cfgo
         void Client::setup_socket_close_callback(const close_chan & closer)
         {
             m_client->set_close_listener([closer](auto reason) {
+                
                 closer.close();
             });
             m_client->set_fail_listener([closer]() {
@@ -783,7 +784,7 @@ namespace cfgo
                 add_msg_cb([msg_id, ch, weak_self = self->weak_from_this()](sio::event & evt) -> bool {
                     if (auto self = weak_self.lock())
                     {
-                        if (evt.get_name() == "user-ack")
+                        if (evt.get_name() == "custom-ack")
                         {
                             auto msg = evt.get_message();
                             auto opt_msg_id = get_msg_base_field<std::int64_t>(msg, "msgId");
@@ -796,7 +797,7 @@ namespace cfgo
                     }
                     return true;
                 });
-                emit("user", create_user_message(content, to, msg_id, true));
+                emit("custom", create_user_message(content, to, msg_id, true));
                 co_return co_await chan_read<void>(ch, closer);
             }
             else
@@ -810,7 +811,7 @@ namespace cfgo
             check_inited();
             m_client->connect(m_config.m_signal_url, create_auth_message());
             auto msg_id = m_custom_msg_next_id ++;
-            emit("user", create_user_message(content, to, msg_id, false));
+            emit("custom", create_user_message(content, to, msg_id, false));
         }
 
         std::uint32_t Client::on_custom_message(std::function<bool(const std::string &, const std::string &, const std::string &, std::function<void()>)> cb)
@@ -818,7 +819,7 @@ namespace cfgo
             return add_msg_cb([weak_self = weak_from_this(), cb = std::move(cb)](sio::event & evt) -> bool {
                 if (auto self = weak_self.lock())
                 {
-                    if (evt.get_name() == "user")
+                    if (evt.get_name() == "custom")
                     {
                         auto msg_ptr = evt.get_message();
                         if (msg_ptr)
@@ -838,7 +839,7 @@ namespace cfgo
                                 return cb(content, from, to, [msg_id, from, weak_self = self->weak_from_this()]() {
                                     if (auto self = weak_self.lock())
                                     {
-                                        self->emit("user-ack", create_user_ack_message(msg_id, from));
+                                        self->emit("custom-ack", create_user_ack_message(msg_id, from));
                                     }
                                 });
                             }
