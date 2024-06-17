@@ -409,11 +409,15 @@ endif()
 
 vcpkg_fixup_pkgconfig()
 
-if(EXISTS "${CURRENT_PACKAGES_DIR}/lib/pkgconfig/gstreamer-gl-1.0.pc")
-    vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/lib/pkgconfig/gstreamer-gl-1.0.pc" "\"-I\${libdir}/gstreamer-1.0/include\"" "")
-endif()
-if(EXISTS "${CURRENT_PACKAGES_DIR}/debug/lib/pkgconfig/gstreamer-gl-1.0.pc")
-    vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/debug/lib/pkgconfig/gstreamer-gl-1.0.pc" "\"-I\${libdir}/gstreamer-1.0/include\"" "")
-endif()
+
+file(GLOB pc_files "${CURRENT_PACKAGES_DIR}/lib/pkgconfig/*.pc")
+foreach(pc_file ${pc_files})
+    vcpkg_replace_string("${pc_file}" "\"-I\${libdir}/gstreamer-1.0/include\"" "")
+endforeach()
+
+file(GLOB pc_files_dbg "${CURRENT_PACKAGES_DIR}/debug/lib/pkgconfig/*.pc")
+foreach(pc_file_dbg ${pc_files_dbg})
+    vcpkg_replace_string("${pc_file_dbg}" "\"-I\${libdir}/gstreamer-1.0/include\"" "")
+endforeach()
 
 vcpkg_install_copyright(FILE_LIST "${SOURCE_PATH}/LICENSE")

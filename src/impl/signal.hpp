@@ -11,7 +11,11 @@
 
 namespace cfgo
 {
+    class WSMsg;
+    class WSAck;
     using SignalRawMsg = std::vector<std::byte>;
+    using WSMsgCb = std::function<bool(const WSMsg&)>;
+    using WSAckCb = std::function<void(const WSAck&)>;
     namespace spec
     {
         struct RoomedSignal;
@@ -35,6 +39,8 @@ namespace cfgo
 
     namespace impl
     {
+        class WSMsg;
+        class WSAck;
         class WebsocketSignal;
     } // namespace impl
 
@@ -43,6 +49,24 @@ namespace cfgo
         std::string token;
         duration_t ready_timeout;
     };
+
+    class WSMsg : public ImplBy<impl::WSMsg> {
+    public:
+        using ImplBy::ImplBy;
+        std::uint64_t msg_id() const noexcept;
+        std::string_view evt() const noexcept;
+        const nlohmann::json & payload() const noexcept;
+        bool ack() const noexcept;
+        void consume() const noexcept;
+        bool recyclable() const noexcept;
+    }
+
+    class WSAck : public ImplBy<impl::WSAck> {
+    public:
+        using ImplBy::ImplBy;
+        const nlohmann::json & payload() const noexcept;
+        bool err() const noexcept;
+    }
 
     class RoomedWebsocketSignal;
     class WebsocketSignal : public ImplBy<impl::WebsocketSignal> {
