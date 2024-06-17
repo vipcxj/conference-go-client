@@ -9,6 +9,6 @@ set(SRC_PATH "${CMAKE_CURRENT_SOURCE_DIR}")
 
 add_library(cfgo-cuda "${SRC_PATH}/gst-cu.cu" "${SRC_PATH}/gst-cu.cuh")
 target_include_directories(cfgo-cuda PRIVATE "${SRC_PATH}")
-#set_target_properties(cfgo-cuda PROPERTIES CUDA_ARCHITECTURES "89")
+set_target_properties(cfgo-cuda PROPERTIES CUDA_ARCHITECTURES native)
 target_link_libraries(cfgo-cuda PRIVATE CUDA::cudart)
 target_link_libraries(cfgo-cuda PRIVATE cuda-api-wrappers::runtime-and-driver)
