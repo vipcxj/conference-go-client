@@ -1,7 +1,4 @@
-#include "asio/io_context.hpp"
-#include "asio/steady_timer.hpp"
-#include "asio/thread.hpp"
-#include "asio/use_awaitable.hpp"
+#include "cfgo/asio.hpp"
 #include <chrono>
 #include <iostream>
 #include <thread>

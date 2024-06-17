@@ -3,16 +3,14 @@
   "name": "cgclient",
   "version": "0.1.0",
   "dependencies": [
-    {
-      "name": "asio",
-      "features": [
-        "coroutine"
-      ]
-    },
     "asiochan",
+    "proxy",
+    "boost-asio",
+    "boost-beast",
     "boost-uuid",
     "boost-circular-buffer",
     "boost-algorithm",
+    "boost-url",
     "yamc",
     "cuda",
     "cuda-api-wrappers",
@@ -28,7 +26,6 @@
       "name": "gstreamer",
       "features": ["plugins-good", "nvcodec"]
     },
-    "socket-io-client",
     "gtest",
     "poco",
     {

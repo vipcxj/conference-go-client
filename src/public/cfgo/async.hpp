@@ -5,14 +5,12 @@
 #include <mutex>
 #include <vector>
 #include <set>
+#include "cfgo/asio.hpp"
 #include "cfgo/alias.hpp"
 #include "cfgo/common.hpp"
 #include "cfgo/black_magic.hpp"
 #include "cfgo/utils.hpp"
 #include "cfgo/log.hpp"
-#include "asio/awaitable.hpp"
-#include "asio/steady_timer.hpp"
-#include "asiochan/asiochan.hpp"
 #include "cpptrace/cpptrace.hpp"
 
 namespace cfgo
@@ -21,7 +19,6 @@ namespace cfgo
     using close_chan = CloseSignal;
     using close_chan_ptr = std::shared_ptr<close_chan>;
     extern close_chan INVALID_CLOSE_CHAN;
-    using duration_t = std::chrono::steady_clock::duration;
     template<typename T>
     using unique_chan = asiochan::channel<T, 1>;
     using unique_void_chan = unique_chan<void>;

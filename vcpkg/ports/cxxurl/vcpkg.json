@@ -1,0 +1,17 @@
+{
+  "name": "cxxurl",
+  "version-date": "2022-05-04",
+  "description": "C++ URL handling class with a simple API, and with lazy URL parsing and building",
+  "homepage": "https://github.com/chmike/CxxUrl",
+  "license": "MIT",
+  "dependencies": [
+    {
+      "name": "vcpkg-cmake",
+      "host": true
+    },
+    {
+      "name": "vcpkg-cmake-config",
+      "host": true
+    }
+  ]
+}

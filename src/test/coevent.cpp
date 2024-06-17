@@ -1,5 +1,4 @@
 #include "cfgo/coevent.hpp"
-#include "asio.hpp"
 #include <iostream>
 #include <thread>
 #include "gmock/gmock.h"

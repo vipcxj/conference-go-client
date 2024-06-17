@@ -3,14 +3,13 @@
 
 #include "cfgo/config/configuration.h"
 #include "cfgo/alias.hpp"
+#include "cfgo/asio.hpp"
 #include "cfgo/async.hpp"
 #include "cfgo/configuration.hpp"
 #include "cfgo/log.hpp"
 #include "cfgo/pattern.hpp"
 #include "cfgo/utils.hpp"
 #include "sio_client.h"
-#include "asio.hpp"
-#include "asiochan/asiochan.hpp"
 #include <mutex>
 #include <optional>
 #include <map>

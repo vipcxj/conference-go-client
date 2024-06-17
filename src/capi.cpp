@@ -5,11 +5,7 @@
 #include "cfgo/log.hpp"
 #include "cpptrace/cpptrace.hpp"
 #include "spdlog/spdlog.h"
-#include "asio/io_context.hpp"
-#include "asio/thread_pool.hpp"
-#include "asio/co_spawn.hpp"
-#include "asio/associated_executor.hpp"
-#include "asio/detached.hpp"
+#include "cfgo/asio.hpp"
 #include "boost/algorithm/string.hpp"
 
 #include <exception>

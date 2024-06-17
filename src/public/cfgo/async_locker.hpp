@@ -1,8 +1,8 @@
 #ifndef _CFGO_ASYNC_LOCKER_HPP_
 #define _CFGO_ASYNC_LOCKER_HPP_
 
-#include "asio/awaitable.hpp"
 #include "cfgo/utils.hpp"
+#include "cfgo/asio.hpp"
 #include "cfgo/async.hpp"
 #include "cfgo/coroutine_concepts.hpp"
 #include <mutex>

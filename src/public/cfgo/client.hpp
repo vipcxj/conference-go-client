@@ -1,14 +1,13 @@
 #ifndef _CFGO_CLIENT_HPP_
 #define _CFGO_CLIENT_HPP_
 
+#include "cfgo/asio.hpp"
 #include "cfgo/alias.hpp"
 #include "cfgo/async.hpp"
 #include "cfgo/configuration.hpp"
 #include "cfgo/pattern.hpp"
 #include "cfgo/utils.hpp"
-#include "asio.hpp"
 #include "rtc/rtc.hpp"
-#include "asiochan/asiochan.hpp"
 namespace cfgo {
     namespace impl {
         struct Client;

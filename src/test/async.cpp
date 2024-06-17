@@ -2,7 +2,6 @@
 #include "cfgo/async_locker.hpp"
 #include "cfgo/defer.hpp"
 #include "cfgo/log.hpp"
-#include "asio.hpp"
 #include "gtest/gtest.h"
 #include <chrono>
 #include <thread>

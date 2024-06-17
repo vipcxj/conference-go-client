@@ -3,8 +3,8 @@
 
 #include <string>
 #include <vector>
-#include "nlohmann/json.hpp"
-#include "sio_message.h"
+#include "cfgo/json.hpp"
+// #include "sio_message.h"
 
 namespace cfgo {
     struct Pattern
@@ -29,23 +29,23 @@ namespace cfgo {
         std::vector<std::string> args;
         std::vector<Pattern> children;
 
-        sio::message::ptr create_message() const {
-            auto msg = sio::object_message::create();
-            msg->get_map()["op"] = sio::int_message::create(op);
-            auto args_msg = sio::array_message::create();
-            for (auto &&arg : args)
-            {
-                args_msg->get_vector().push_back(sio::string_message::create(arg));
-            }
-            msg->get_map()["args"] = args_msg;
-            auto children_msg = sio::array_message::create();
-            for (auto &&child : children)
-            {
-                children_msg->get_vector().push_back(child.create_message());
-            }
-            msg->get_map()["children"] = children_msg;
-            return msg;
-        }
+        // sio::message::ptr create_message() const {
+        //     auto msg = sio::object_message::create();
+        //     msg->get_map()["op"] = sio::int_message::create(op);
+        //     auto args_msg = sio::array_message::create();
+        //     for (auto &&arg : args)
+        //     {
+        //         args_msg->get_vector().push_back(sio::string_message::create(arg));
+        //     }
+        //     msg->get_map()["args"] = args_msg;
+        //     auto children_msg = sio::array_message::create();
+        //     for (auto &&child : children)
+        //     {
+        //         children_msg->get_vector().push_back(child.create_message());
+        //     }
+        //     msg->get_map()["children"] = children_msg;
+        //     return msg;
+        // }
     };
     
     NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Pattern, op, args, children)

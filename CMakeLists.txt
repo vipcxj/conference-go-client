@@ -10,7 +10,7 @@ set(WIN_TARGET_VER 0x0601)
 
 option(GSTREAMER_SUPPORT "gstreamer support")
 option(USE_GSTREAMER_FULL_STATIC "use gstreamer full static" ON)
-option(STANDALONE_ASIO "using standalone asio instead of boost-asio" ON)
+option(STANDALONE_ASIO "using standalone asio instead of boost-asio" OFF)
 option(ENABLE_TEST "enable testing" ON)
 if(GSTREAMER_SUPPORT)
     set(SUPPORT_GSTREAMER 1)
@@ -28,9 +28,11 @@ configure_file("${H_PUBLIC_PATH}/config/configuration.h.in" "${H_PUBLIC_PATH}/co
 
 message(STATUS "set src files")
 set(MY_PUBLIC_HEADERS
+    "${H_PUBLIC_PATH}/asio.hpp"
     "${H_PUBLIC_PATH}/config/configuration.h"
     "${H_PUBLIC_PATH}/configuration.hpp"
     "${H_PUBLIC_PATH}/client.hpp"
+    "${H_PUBLIC_PATH}/common.hpp"
     "${H_PUBLIC_PATH}/subscribation.hpp"
     "${H_PUBLIC_PATH}/track.hpp"
     "${H_PUBLIC_PATH}/alias.hpp"
@@ -41,9 +43,9 @@ set(MY_PUBLIC_HEADERS
     "${H_PUBLIC_PATH}/defer.hpp"
     "${H_PUBLIC_PATH}/pattern.hpp"
     "${H_PUBLIC_PATH}/exports.h"
-    "${H_PUBLIC_PATH}/common.hpp"
-    "${H_PUBLIC_PATH}/utils.hpp"
+    "${H_PUBLIC_PATH}/fmt_helper.hpp"
     "${H_PUBLIC_PATH}/fmt.hpp"
+    "${H_PUBLIC_PATH}/json.hpp"
     "${H_PUBLIC_PATH}/log.hpp"
     "${H_PUBLIC_PATH}/macros.h"
     "${H_PUBLIC_PATH}/move_only_function.hpp"
@@ -54,6 +56,12 @@ set(MY_PUBLIC_HEADERS
     "${H_PUBLIC_PATH}/cbridge.hpp"
     "${H_PUBLIC_PATH}/capi.h"
     "${H_PUBLIC_PATH}/cfgo.hpp"
+    "${H_PUBLIC_PATH}/utils.hpp"
+)
+set(MY_PRECOMPILE_HEADERS
+    "${H_PUBLIC_PATH}/asio.hpp"
+    "${H_PUBLIC_PATH}/fmt.hpp"
+    "${H_PUBLIC_PATH}/json.hpp"
 )
 set(MY_GST_PLUGIN_PUBLIC_HEADERS
     "${H_PUBLIC_PATH}/gst/boxed.h"
@@ -78,6 +86,7 @@ set(MY_PRIVATE_HEADERS
     "${H_PRIVATE_PATH}/rtc_helper.hpp"
     "${H_IMPL}/client.hpp"
     "${H_IMPL}/track.hpp"
+    "${H_IMPL}/signal.hpp"
     "${H_IMPL}/subscribation.hpp"
 )
 set(MY_GST_PLUGIN_PRIVATE_HEADERS
@@ -103,6 +112,7 @@ set(MY_SOURCES
     "${SRC_PATH}/capi.cpp"
     "${H_IMPL}/client.cpp"
     "${H_IMPL}/track.cpp"
+    "${H_IMPL}/signal.cpp"
     "${H_IMPL}/subscribation.cpp"
 )
 set(MY_GST_PLUGIN_SOURCES
@@ -130,13 +140,14 @@ if(GSTREAMER_SUPPORT)
 endif()
 
 message(STATUS "find packages")
-find_package(asio CONFIG REQUIRED)
 find_path(ASIOCHAN_INCLUDE_DIRS "asiochan/asiochan.hpp")
+find_package(proxy CONFIG REQUIRED)
 find_package(Boost REQUIRED)
+#find_package(CxxUrl CONFIG REQUIRED)
 find_package(cpptrace CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(fmt CONFIG REQUIRED)
-find_package(sioclient CONFIG REQUIRED)
+#find_package(sioclient CONFIG REQUIRED)
 find_package(LibDataChannel CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(yamc CONFIG REQUIRED)
@@ -202,17 +213,20 @@ endfunction()
 message(STATUS "add library cfgoclient")
 add_library(cfgoclient ${MY_SOURCES} ${MY_PUBLIC_HEADERS} ${MY_PRIVATE_HEADERS})
 target_compile_definitions(cfgoclient PRIVATE BUILDING_CFGO)
+target_precompile_headers(cfgoclient PRIVATE ${MY_PRECOMPILE_HEADERS})
 target_include_directories(cfgoclient PUBLIC
     $<BUILD_INTERFACE:${H_PUBLIC}>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 target_include_directories(cfgoclient PRIVATE ${H_PRIVATE} ${SRC_PATH})
 target_link_libraries(cfgoclient PUBLIC yamc)
+target_link_libraries(cfgoclient PRIVATE msft_proxy)
+#target_link_libraries(cfgoclient PRIVATE chmike::CxxUrl)
 fix_win_version_warn(cfgoclient)
 link_common_libs(cfgoclient)
 include_asiochan(cfgoclient)
 target_include_directories(cfgoclient PRIVATE ${Boost_INCLUDE_DIRS})
-target_link_libraries(cfgoclient PRIVATE sioclient::sioclient sioclient::sioclient_tls)
+#target_link_libraries(cfgoclient PRIVATE sioclient::sioclient sioclient::sioclient_tls)
 target_link_libraries(cfgoclient PRIVATE nlohmann_json::nlohmann_json)
 if(TARGET LibDataChannel::LibDataChannel)
     target_link_libraries(cfgoclient PRIVATE LibDataChannel::LibDataChannel)
@@ -251,15 +265,15 @@ if(ENABLE_TEST)
     add_executable(test-coevent "${MY_TEST_PATH}/coevent.cpp" "${SRC_PATH}/coevent.cpp" "${H_PRIVATE_PATH}/coevent.hpp")
     target_include_directories(test-coevent PRIVATE "${H_PUBLIC}")
     target_include_directories(test-coevent PRIVATE "${H_PRIVATE}")
-    find_package(asio CONFIG REQUIRED)
-    target_link_libraries(test-coevent PRIVATE asio::asio)
+    #find_package(asio CONFIG REQUIRED)
+    #target_link_libraries(test-coevent PRIVATE asio::asio)
     target_link_libraries(test-coevent PRIVATE GTest::gtest GTest::gtest_main GTest::gmock GTest::gmock_main)
     add_test(NAME test-coevent COMMAND test-coevent)
 
     add_executable(test-async "${MY_TEST_PATH}/async.cpp")
     include_asiochan(test-async)
     fix_win_version_warn(test-async)
-    target_link_libraries(test-async PRIVATE asio::asio cfgoclient)
+    target_link_libraries(test-async PRIVATE cfgoclient)
     target_link_libraries(test-async PRIVATE GTest::gtest GTest::gtest_main GTest::gmock GTest::gmock_main)
     add_test(NAME test-async COMMAND test-async)
 
@@ -327,7 +341,7 @@ if(ENABLE_TEST)
         link_gstreamer(test-gstreamer true)
         find_package(Poco REQUIRED COMPONENTS Net Foundation)
         target_link_libraries(test-gstreamer PRIVATE Poco::Foundation Poco::Net)
-        target_link_libraries(test-gstreamer PRIVATE asio::asio cfgoclient cfgogst)
+        target_link_libraries(test-gstreamer PRIVATE cfgoclient cfgogst)
     endif()
 endif()
 
@@ -370,7 +384,7 @@ file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_PROJECT_NAME}-config.cmake"
     "find_dependency(cpptrace CONFIG REQUIRED)\n"
     "find_dependency(spdlog CONFIG REQUIRED)\n"
     "find_dependency(fmt CONFIG REQUIRED)\n"
-    "find_dependency(sioclient CONFIG REQUIRED)\n"
+    #"find_dependency(sioclient CONFIG REQUIRED)\n"
     "find_dependency(LibDataChannel CONFIG REQUIRED)\n"
     "find_dependency(nlohmann_json CONFIG REQUIRED)\n"
     "find_dependency(yamc CONFIG REQUIRED)\n"

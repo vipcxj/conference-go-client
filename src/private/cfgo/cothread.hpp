@@ -1,7 +1,7 @@
 #ifndef _CFGO_COTHREAD_HPP_
 #define _CFGO_COTHREAD_HPP_
 
-#include "asio.hpp"
+#include "cfgo/asio.hpp"
 
 namespace cfgo {
     
