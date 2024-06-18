@@ -36,13 +36,20 @@ namespace cfgo
             nlohmann::json m_payload;
             bool m_ack;
             bool m_consumed {false};
-        public:
             WSMsg(std::uint64_t msg_id, const std::string_view & evt, nlohmann::json && payload, bool ack):
                 m_msg_id(msg_id),
                 m_evt(evt),
                 m_payload(std::move(payload)),
                 m_ack(ack)
             {}
+        public:
+            static auto create(std::uint64_t msg_id, const std::string_view & evt, nlohmann::json && payload, bool ack) -> pro::proxy<spec::RawSigMsg> {
+                struct make_unique_enabler : public WSMsg {
+                    using WSMsg::WSMsg;
+                };
+                pro::proxy<spec::RawSigMsg> p = std::make_shared<make_unique_enabler>(msg_id, evt, std::move(payload), ack);
+                return p;
+            }
             std::uint64_t msg_id() const noexcept {
                 return m_msg_id;
             }
@@ -86,34 +93,39 @@ namespace cfgo
             }
         };
 
-        class WebsocketSignal : public std::enable_shared_from_this<WebsocketSignal> {
+        class WebsocketRawSignal : public std::enable_shared_from_this<WebsocketRawSignal> {
         private:
             using WSMsgChan = asiochan::channel<std::shared_ptr<WSMsg>, 1>;
             using WSMsgChans = std::vector<WSMsgChan>;
-            using WSAckChan = unique_chan<cfgo::WSAck>;
+            using WSAckChan = unique_chan<WSAck>;
 
             WebsocketSignalConfigure m_config;
             const std::string m_id {boost::uuids::to_string(boost::uuids::random_generator()())};
             std::optional<Websocket> m_ws {std::nullopt};
             std::uint64_t m_next_msg_id {1};
-            std::uint32_t m_next_custom_msg_id {0};
             std::uint64_t m_next_msg_cb_id {0};
-            std::unordered_map<std::uint64_t, WSMsgCb> m_msg_cbs {};
+            std::unordered_map<std::uint64_t, spec::RawSigMsgCb> m_msg_cbs {};
             std::unordered_map<std::uint64_t, WSAckChan> m_ack_chs {};
 
-            auto make_sure_connect() -> asio::awaitable<void>;
-        public:
-            WebsocketSignal(const WebsocketSignalConfigure & conf):
+            WebsocketRawSignal(const WebsocketSignalConfigure & conf):
                 m_config(conf)
             {}
+            auto make_sure_connect() -> asio::awaitable<void>;
+        public:
+            static auto create(const WebsocketSignalConfigure & conf) -> pro::proxy<spec::RawSignal> {
+                struct make_unique_enabler : public WebsocketRawSignal {
+                    using WebsocketRawSignal::WebsocketRawSignal;
+                };
+                pro::proxy<spec::RawSignal> p = std::make_shared<make_unique_enabler>(conf);
+                return p;
+            }
             auto run() -> asio::awaitable<void>;
             auto send(close_chan closer, bool ack, std::string evt, nlohmann::json payload) -> asio::awaitable<nlohmann::json>;
-            std::uint64_t on_msg(WSMsgCb cb);
+            std::uint64_t on_msg(spec::RawSigMsgCb cb);
             void off_msg(std::uint64_t id);
-            auto send_custom(close_chan closer, bool ack, std::string evt, nlohmann::json payload, std::string room, std::string to) -> asio::awaitable<nlohmann::json>;
         };
 
-        auto WebsocketSignal::make_sure_connect() -> asio::awaitable<void> {
+        auto WebsocketRawSignal::make_sure_connect() -> asio::awaitable<void> {
             auto self = shared_from_this();
             if (!m_ws || !m_ws->is_open())
             {
@@ -175,44 +187,6 @@ namespace cfgo
             co_await ws.async_handshake(parsed_url.encoded_host_and_port(), parsed_url.path());
         }
 
-
-
-        auto WebsocketSignal::run() -> asio::awaitable<void> {
-            auto self = shared_from_this();
-            co_await make_sure_connect();
-            while (true) {
-                beast::flat_buffer buffer;
-                co_await m_ws->async_read(buffer);
-                std::string_view evt;
-                std::uint64_t msg_id;
-                WsMsgFlag flag;
-                std::string_view svPayload;
-                decodeWsTextData(buffer, evt, msg_id, flag, svPayload);
-                auto payload = nlohmann::json::parse(svPayload);
-                if (flag == WS_MSG_FLAG_IS_ACK_ERR || flag == WS_MSG_FLAG_IS_ACK_NORMAL) {
-                    cfgo::WSAck msg(std::move(payload), flag == WS_MSG_FLAG_IS_ACK_ERR);
-                    auto ch_iter = m_ack_chs.find(msg_id);
-                    if (ch_iter != m_ack_chs.end()) {
-                        chan_must_write(ch_iter->second, msg);
-                        m_ack_chs.erase(ch_iter);
-                    }
-                } else {
-                    cfgo::WSMsg msg(msg_id, evt, std::move(payload), flag == WS_MSG_FLAG_NEED_ACK);
-                    for(auto it = m_msg_cbs.begin(); it != m_msg_cbs.end();) {
-                        if (!it->second(msg)) {
-                            it = m_msg_cbs.erase(it);
-                        } else {
-                            ++ it;
-                        }
-                        if (msg.is_consumed())
-                        {
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
         asio::const_buffer encodeWsTextData(const std::string & evt, const std::uint64_t & msg_id, WsMsgFlag flag, const std::string_view & payload) {
             return asio::buffer(fmt::format("{};{};{};{}", evt, msg_id, (int)flag, payload));
         }
@@ -255,7 +229,43 @@ namespace cfgo
              }
         }
 
-        auto WebsocketSignal::send(close_chan closer, bool ack, std::string evt, nlohmann::json payload) -> asio::awaitable<nlohmann::json> {
+        auto WebsocketRawSignal::run() -> asio::awaitable<void> {
+            auto self = shared_from_this();
+            co_await make_sure_connect();
+            while (true) {
+                beast::flat_buffer buffer;
+                co_await m_ws->async_read(buffer);
+                std::string_view evt;
+                std::uint64_t msg_id;
+                WsMsgFlag flag;
+                std::string_view svPayload;
+                decodeWsTextData(buffer, evt, msg_id, flag, svPayload);
+                auto payload = nlohmann::json::parse(svPayload);
+                if (flag == WS_MSG_FLAG_IS_ACK_ERR || flag == WS_MSG_FLAG_IS_ACK_NORMAL) {
+                    WSAck msg(std::move(payload), flag == WS_MSG_FLAG_IS_ACK_ERR);
+                    auto ch_iter = m_ack_chs.find(msg_id);
+                    if (ch_iter != m_ack_chs.end()) {
+                        chan_must_write(ch_iter->second, std::move(msg));
+                        m_ack_chs.erase(ch_iter);
+                    }
+                } else {
+                    auto msg = WSMsg::create(msg_id, evt, std::move(payload), flag == WS_MSG_FLAG_NEED_ACK);
+                    for(auto it = m_msg_cbs.begin(); it != m_msg_cbs.end();) {
+                        if (!it->second(msg)) {
+                            it = m_msg_cbs.erase(it);
+                        } else {
+                            ++ it;
+                        }
+                        if (msg.is_consumed())
+                        {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        auto WebsocketRawSignal::send(close_chan closer, bool ack, std::string evt, nlohmann::json payload) -> asio::awaitable<nlohmann::json> {
             auto self = shared_from_this();
             make_sure_connect();
             m_next_msg_id += 2;
@@ -268,7 +278,7 @@ namespace cfgo
             }
             co_await m_ws->async_write(buffer);
             if (ack) {
-                auto ack = co_await chan_read_or_throw<cfgo::WSAck>(ch, closer);
+                auto && ack = co_await chan_read_or_throw<WSAck>(ch, closer);
                 if (ack.err()) {
                     ServerErrorObject error {};
                     nlohmann::from_json(ack.consume(), error);
@@ -281,17 +291,25 @@ namespace cfgo
             }
         }
 
-        std::uint64_t WebsocketSignal::on_msg(WSMsgCb cb) {
+        std::uint64_t WebsocketRawSignal::on_msg(spec::RawSigMsgCb cb) {
             auto cb_id = m_next_msg_cb_id;
             m_next_msg_cb_id ++;
             m_msg_cbs.insert(std::make_pair(cb_id, std::move(cb)));
         }
 
-        void WebsocketSignal::off_msg(std::uint64_t id) {
+        void WebsocketRawSignal::off_msg(std::uint64_t id) {
             m_msg_cbs.erase(id);
         }
 
-        auto WebsocketSignal::send_custom(close_chan closer, bool ack, std::string evt, nlohmann::json payload, std::string room, std::string to) -> asio::awaitable<nlohmann::json> {
+        class Signal : public std::enable_shared_from_this<Signal> {
+        private:
+            pro::proxy<spec::RawSignal> m_raw_signal;
+            std::uint32_t m_next_custom_msg_id {0};
+        public:
+            auto send_message(close_chan closer, bool ack, std::string evt, nlohmann::json payload, std::string room, std::string to) -> asio::awaitable<nlohmann::json>;
+        };
+
+        auto Signal::send_message(close_chan closer, bool ack, std::string evt, nlohmann::json payload, std::string room, std::string to) -> asio::awaitable<nlohmann::json> {
             auto self = shared_from_this();
             auto msg_id = m_next_custom_msg_id;
             m_next_custom_msg_id ++;
@@ -304,7 +322,7 @@ namespace cfgo
             nlohmann::json js_msg;
             nlohmann::to_json(js_msg, msg);
             unique_chan<nlohmann::json> ack_ch {};
-            on_msg([msg_id, ack_ch](const cfgo::WSMsg & msg) -> bool {
+            m_raw_signal.on_msg([msg_id, ack_ch](pro::proxy<spec::RawSigMsg> msg) -> bool {
                 if (msg.evt() == "custom-ack" && msg.msg_id() == msg_id)
                 {
                     chan_must_write(ack_ch, msg.consume());
@@ -312,7 +330,7 @@ namespace cfgo
                 }
                 return false;
             });
-            co_await send(closer, false, "custom:" + evt, js_msg);
+            co_await m_raw_signal.send(closer, false, "custom:" + evt, std::move(js_msg));
             if (ack) {
                 co_return co_await chan_read_or_throw<nlohmann::json>(ack_ch, closer);
             } else {
@@ -321,44 +339,8 @@ namespace cfgo
         }
     } // namespace impl
 
-    std::uint64_t WSMsg::msg_id() const noexcept {
-        return impl()->msg_id();
-    }
-
-    std::string_view WSMsg::evt() const noexcept {
-        return impl()->evt();
-    }
-
-    const nlohmann::json & WSMsg::payload() const noexcept {
-        return impl()->payload();
-    }
-
-    nlohmann::json && WSMsg::consume() const noexcept {
-        return impl()->consume();
-    }
-
-    bool WSMsg::ack() const noexcept {
-        return impl()->ack();
-    }
-
-    bool WSMsg::is_consumed() const noexcept {
-        return impl()->is_consumed();
-    }
-
-    const nlohmann::json & WSAck::payload() const noexcept {
-        return impl()->payload();
-    }
-
-    nlohmann::json && WSAck::consume() const noexcept {
-        return impl()->consume();
-    }
-
-    bool WSAck::err() const noexcept {
-        return impl()->err();
-    }
-
-    bool WSAck::is_consumed() const noexcept {
-        return impl()->is_consumed();
+    auto make_websocket_raw_signal(const WebsocketSignalConfigure & conf) -> pro::proxy<spec::RawSignal> {
+        return impl::WebsocketRawSignal::create(conf);
     }
     
 } // namespace cfgo

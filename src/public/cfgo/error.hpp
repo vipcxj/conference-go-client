@@ -4,15 +4,16 @@
 
 #include <system_error>
 #include <type_traits>
+#include "cfgo/json.hpp"
 #include "cpptrace/cpptrace.hpp"
 
 namespace cfgo {
 
     struct CallFrame
     {
-        std::string filename;
-        int line;
-        std::string funcname;
+        std::string filename {};
+        int line {0};
+        std::string funcname {};
 
         NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(CallFrame, filename, line, funcname)
     };

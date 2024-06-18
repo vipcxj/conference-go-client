@@ -19,36 +19,45 @@ namespace cfgo
     namespace spec
     {
 
-        namespace msg
-        {
-            PRO_DEF_MEMBER_DISPATCH(msg_id, std::uint64_t() noexcept);
-            PRO_DEF_MEMBER_DISPATCH(evt, std::string_view() noexcept);
-            PRO_DEF_MEMBER_DISPATCH(payload, const nlohmann::json & () noexcept);
-            PRO_DEF_MEMBER_DISPATCH(consume, nlohmann::json && () noexcept);
-            PRO_DEF_MEMBER_DISPATCH(is_consumed, bool() noexcept);
-            PRO_DEF_MEMBER_DISPATCH(ack, bool() noexcept);
-        } // namespace msg
-
-        PRO_DEF_FACADE(SigMsg, PRO_MAKE_DISPATCH_PACK(msg::msg_id, msg::evt, msg::payload, msg::consume, msg::is_consumed, msg::ack));
-
-        using SigMsgCb = std::function<bool(pro::proxy<SigMsg> msg)>;
-
         namespace signal
-        {   
-            PRO_DEF_MEMBER_DISPATCH(send, asio::awaitable<nlohmann::json>(const close_chan & closer, bool ack, const std::string & evt, nlohmann::json && payload));
-            PRO_DEF_MEMBER_DISPATCH(on_msg, std::uint64_t(SigMsgCb cb));
+        {
+            namespace raw {
+                namespace msg
+                {
+                    PRO_DEF_MEMBER_DISPATCH(msg_id, std::uint64_t() noexcept);
+                    PRO_DEF_MEMBER_DISPATCH(evt, std::string_view() noexcept);
+                    PRO_DEF_MEMBER_DISPATCH(payload, const nlohmann::json & () noexcept);
+                    PRO_DEF_MEMBER_DISPATCH(consume, nlohmann::json && () noexcept);
+                    PRO_DEF_MEMBER_DISPATCH(is_consumed, bool() noexcept);
+                    PRO_DEF_MEMBER_DISPATCH(ack, bool() noexcept);
+                } // namespace msg
+            } // namespace raw
         } // namespace signal
 
-        PRO_DEF_FACADE(Signal, PRO_MAKE_DISPATCH_PACK(signal::send, signal::on_msg));
+        PRO_DEF_FACADE(RawSigMsg, PRO_MAKE_DISPATCH_PACK(
+            signal::raw::msg::msg_id, 
+            signal::raw::msg::evt, 
+            signal::raw::msg::payload, 
+            signal::raw::msg::consume, 
+            signal::raw::msg::is_consumed, 
+            signal::raw::msg::ack
+        ), pro::copyable_ptr_constraints);
+
+        using RawSigMsgCb = std::function<bool(pro::proxy<RawSigMsg> msg)>;
+
+        namespace signal {
+            namespace raw {
+                PRO_DEF_MEMBER_DISPATCH(send, asio::awaitable<nlohmann::json>(const close_chan & closer, bool ack, const std::string & evt, nlohmann::json && payload));
+                PRO_DEF_MEMBER_DISPATCH(on_msg, std::uint64_t(RawSigMsgCb cb));
+            }
+        }
+
+        PRO_DEF_FACADE(RawSignal, PRO_MAKE_DISPATCH_PACK(
+            signal::raw::send, 
+            signal::raw::on_msg
+        ), pro::copyable_ptr_constraints);
 
     } // namespace spec
-
-    namespace impl
-    {
-        class WSMsg;
-        class WSAck;
-        class WebsocketSignal;
-    } // namespace impl
 
     struct WebsocketSignalConfigure {
         std::string url;
@@ -56,40 +65,9 @@ namespace cfgo
         duration_t ready_timeout;
     };
 
-    auto make_websocket_signal() -> pro::proxy<spec::Signal>;
+    auto make_websocket_raw_signal(const WebsocketSignalConfigure & conf) -> pro::proxy<spec::RawSignal>;
 
-    class WSMsg : public ImplBy<impl::WSMsg> {
-    public:
-        using ImplBy::ImplBy;
-        std::uint64_t msg_id() const noexcept;
-        std::string_view evt() const noexcept;
-        const nlohmann::json & payload() const noexcept;
-        nlohmann::json && consume() const noexcept;
-        bool ack() const noexcept;
-        bool is_consumed() const noexcept;
-    };
-
-    class WSAck : public ImplBy<impl::WSAck> {
-    public:
-        using ImplBy::ImplBy;
-        const nlohmann::json & payload() const noexcept;
-        nlohmann::json && consume() const noexcept;
-        bool err() const noexcept;
-        bool is_consumed() const noexcept;
-    };
-
-    class RoomedWebsocketSignal;
-    class WebsocketSignal : public ImplBy<impl::WebsocketSignal> {
-    private:
-        WebsocketSignal(const WebsocketSignalConfigure & conf);
-    public:
-        WebsocketSignal(std::nullptr_t): ImplBy(std::shared_ptr<impl::WebsocketSignal>(nullptr)) {};
-        static auto create(const WebsocketSignalConfigure & conf) {
-            return pro::make_proxy<spec::Signal>(WebsocketSignal(conf));
-        }
-        auto send(const close_chan & closer, bool ack, const std::string & evt, nlohmann::json && payload) -> asio::awaitable<nlohmann::json>;
-        std::uint64_t on_msg(WSMsgCb && cb);
-    };
+    
 
 } // namespace cfgo
 
