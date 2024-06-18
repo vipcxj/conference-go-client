@@ -86,6 +86,7 @@ set(MY_PRIVATE_HEADERS
     "${H_PRIVATE_PATH}/rtc_helper.hpp"
     "${H_IMPL}/client.hpp"
     "${H_IMPL}/track.hpp"
+    "${H_IMPL}/message.hpp"
     "${H_IMPL}/signal.hpp"
     "${H_IMPL}/subscribation.hpp"
 )
@@ -112,6 +113,7 @@ set(MY_SOURCES
     "${SRC_PATH}/capi.cpp"
     "${H_IMPL}/client.cpp"
     "${H_IMPL}/track.cpp"
+    "${H_IMPL}/message.cpp"
     "${H_IMPL}/signal.cpp"
     "${H_IMPL}/subscribation.cpp"
 )

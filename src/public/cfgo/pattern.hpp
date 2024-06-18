@@ -25,9 +25,9 @@ namespace cfgo {
             TRACK_LABEL_NONE_HAS = 12,
             TRACK_TYPE = 13
         };
-        Op op;
-        std::vector<std::string> args;
-        std::vector<Pattern> children;
+        Op op {SOME};
+        std::vector<std::string> args {};
+        std::vector<Pattern> children {};
 
         // sio::message::ptr create_message() const {
         //     auto msg = sio::object_message::create();

@@ -1,4 +1,5 @@
 #include "cfgo/error.hpp"
+#include "cfgo/json.hpp"
 
 namespace cfgo {
 

@@ -6,6 +6,8 @@
 #include "boost/uuid/uuid_generators.hpp"
 #include "boost/url.hpp"
 #include "cfgo/fmt.hpp"
+#include "cfgo/error.hpp"
+#include "impl/message.hpp"
 
 #include <deque>
 
@@ -33,6 +35,7 @@ namespace cfgo
             std::string m_evt;
             nlohmann::json m_payload;
             bool m_ack;
+            bool m_consumed {false};
         public:
             WSMsg(std::uint64_t msg_id, const std::string_view & evt, nlohmann::json && payload, bool ack):
                 m_msg_id(msg_id),
@@ -49,14 +52,21 @@ namespace cfgo
             const nlohmann::json & payload() const noexcept {
                 return m_payload;
             }
+            nlohmann::json && consume() noexcept {
+                m_consumed = true;
+                return std::move(m_payload);
+            }
             bool ack() const noexcept {
                 return m_ack;
+            }
+            bool is_consumed() const noexcept {
+                return m_consumed;
             }
         };
 
         class WSAck {
         private:
-            std::string m_payload;
+            nlohmann::json m_payload;
             bool m_err;
             bool m_consumed {false};
         public:
@@ -64,8 +74,15 @@ namespace cfgo
             const nlohmann::json & payload() const noexcept {
                 return m_payload;
             }
+            nlohmann::json && consume() noexcept {
+                m_consumed = true;
+                return std::move(m_payload);
+            }
             bool err() const noexcept {
                 return m_err;
+            }
+            bool is_consumed() const noexcept {
+                return m_consumed;
             }
         };
 
@@ -73,12 +90,14 @@ namespace cfgo
         private:
             using WSMsgChan = asiochan::channel<std::shared_ptr<WSMsg>, 1>;
             using WSMsgChans = std::vector<WSMsgChan>;
-            using WSAckChan = asiochan::channel<WSAck, 1>;
+            using WSAckChan = unique_chan<cfgo::WSAck>;
 
             WebsocketSignalConfigure m_config;
             const std::string m_id {boost::uuids::to_string(boost::uuids::random_generator()())};
             std::optional<Websocket> m_ws {std::nullopt};
             std::uint64_t m_next_msg_id {1};
+            std::uint32_t m_next_custom_msg_id {0};
+            std::uint64_t m_next_msg_cb_id {0};
             std::unordered_map<std::uint64_t, WSMsgCb> m_msg_cbs {};
             std::unordered_map<std::uint64_t, WSAckChan> m_ack_chs {};
 
@@ -167,22 +186,27 @@ namespace cfgo
                 std::string_view evt;
                 std::uint64_t msg_id;
                 WsMsgFlag flag;
-                std::string_view payload;
-                decodeWsTextData(buffer, evt, msg_id, flag, payload);
+                std::string_view svPayload;
+                decodeWsTextData(buffer, evt, msg_id, flag, svPayload);
+                auto payload = nlohmann::json::parse(svPayload);
                 if (flag == WS_MSG_FLAG_IS_ACK_ERR || flag == WS_MSG_FLAG_IS_ACK_NORMAL) {
-                    cfgo::WSAck msg(std::string(payload), flag == WS_MSG_FLAG_IS_ACK_ERR);
+                    cfgo::WSAck msg(std::move(payload), flag == WS_MSG_FLAG_IS_ACK_ERR);
                     auto ch_iter = m_ack_chs.find(msg_id);
                     if (ch_iter != m_ack_chs.end()) {
                         chan_must_write(ch_iter->second, msg);
                         m_ack_chs.erase(ch_iter);
                     }
                 } else {
-                    auto msg = std::make_shared<WSMsg>(msg_id, std::string(payload), flag == WS_MSG_FLAG_NEED_ACK, false, std::chrono::steady_clock::now());
-                    for(auto it = m_msg_cbs.begin(); it != m_msg_cbs.end()) {
+                    cfgo::WSMsg msg(msg_id, evt, std::move(payload), flag == WS_MSG_FLAG_NEED_ACK);
+                    for(auto it = m_msg_cbs.begin(); it != m_msg_cbs.end();) {
                         if (!it->second(msg)) {
                             it = m_msg_cbs.erase(it);
                         } else {
                             ++ it;
+                        }
+                        if (msg.is_consumed())
+                        {
+                            break;
                         }
                     }
                 }
@@ -231,23 +255,69 @@ namespace cfgo
              }
         }
 
-        auto WebsocketSignal::send(close_chan closer, bool ack, std::string evt, std::string payload) -> asio::awaitable<std::optional<std::string>> {
+        auto WebsocketSignal::send(close_chan closer, bool ack, std::string evt, nlohmann::json payload) -> asio::awaitable<nlohmann::json> {
             auto self = shared_from_this();
             make_sure_connect();
             m_next_msg_id += 2;
             auto msg_id = m_next_msg_id;
-            auto buffer = encodeWsTextData(evt, msg_id, ack ? WS_MSG_FLAG_NEED_ACK : WS_MSG_FLAG_NO_ACK, payload);
+            auto payload_str = payload.dump();
+            auto buffer = encodeWsTextData(evt, msg_id, ack ? WS_MSG_FLAG_NEED_ACK : WS_MSG_FLAG_NO_ACK, payload_str);
             WSAckChan ch {};
             if (ack) {
                 m_ack_chs.insert(std::make_pair(msg_id, ch));
             }
             co_await m_ws->async_write(buffer);
-            if (ack)
-            {
-                auto ack = co_await chan_read_or_throw<WSAck>(ch, closer);
-                
+            if (ack) {
+                auto ack = co_await chan_read_or_throw<cfgo::WSAck>(ch, closer);
+                if (ack.err()) {
+                    ServerErrorObject error {};
+                    nlohmann::from_json(ack.consume(), error);
+                    throw ServerError(std::move(error));
+                } else {
+                    co_return ack.consume();
+                }
+            } else {
+                co_return nlohmann::json {nullptr};
             }
-            
+        }
+
+        std::uint64_t WebsocketSignal::on_msg(WSMsgCb cb) {
+            auto cb_id = m_next_msg_cb_id;
+            m_next_msg_cb_id ++;
+            m_msg_cbs.insert(std::make_pair(cb_id, std::move(cb)));
+        }
+
+        void WebsocketSignal::off_msg(std::uint64_t id) {
+            m_msg_cbs.erase(id);
+        }
+
+        auto WebsocketSignal::send_custom(close_chan closer, bool ack, std::string evt, nlohmann::json payload, std::string room, std::string to) -> asio::awaitable<nlohmann::json> {
+            auto self = shared_from_this();
+            auto msg_id = m_next_custom_msg_id;
+            m_next_custom_msg_id ++;
+            msg::CustomMessage msg {
+                .router = msg::Router {.room = room, .userTo = to},
+                .content = payload.dump(),
+                .msgId = msg_id,
+                .ack = ack,
+            };
+            nlohmann::json js_msg;
+            nlohmann::to_json(js_msg, msg);
+            unique_chan<nlohmann::json> ack_ch {};
+            on_msg([msg_id, ack_ch](const cfgo::WSMsg & msg) -> bool {
+                if (msg.evt() == "custom-ack" && msg.msg_id() == msg_id)
+                {
+                    chan_must_write(ack_ch, msg.consume());
+                    return true;
+                }
+                return false;
+            });
+            co_await send(closer, false, "custom:" + evt, js_msg);
+            if (ack) {
+                co_return co_await chan_read_or_throw<nlohmann::json>(ack_ch, closer);
+            } else {
+                co_return nlohmann::json { nullptr };
+            }
         }
     } // namespace impl
 
@@ -263,15 +333,32 @@ namespace cfgo
         return impl()->payload();
     }
 
+    nlohmann::json && WSMsg::consume() const noexcept {
+        return impl()->consume();
+    }
+
     bool WSMsg::ack() const noexcept {
         return impl()->ack();
+    }
+
+    bool WSMsg::is_consumed() const noexcept {
+        return impl()->is_consumed();
     }
 
     const nlohmann::json & WSAck::payload() const noexcept {
         return impl()->payload();
     }
+
+    nlohmann::json && WSAck::consume() const noexcept {
+        return impl()->consume();
+    }
+
     bool WSAck::err() const noexcept {
         return impl()->err();
+    }
+
+    bool WSAck::is_consumed() const noexcept {
+        return impl()->is_consumed();
     }
     
 } // namespace cfgo

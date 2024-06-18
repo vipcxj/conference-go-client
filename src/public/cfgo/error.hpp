@@ -4,8 +4,44 @@
 
 #include <system_error>
 #include <type_traits>
+#include "cpptrace/cpptrace.hpp"
 
 namespace cfgo {
+
+    struct CallFrame
+    {
+        std::string filename;
+        int line;
+        std::string funcname;
+
+        NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(CallFrame, filename, line, funcname)
+    };
+    
+
+    struct ServerErrorObject {
+        int code = 0;
+        std::string msg {};
+        nlohmann::json data {nullptr};
+        std::vector<CallFrame> callFrames {};
+        std::string cause {};
+
+        NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(ServerErrorObject, code, msg, data, callFrames, cause)
+    };
+
+    class ServerError : public cpptrace::exception_with_message {
+    private:
+        ServerErrorObject m_seo;
+    public:
+        ServerError(ServerErrorObject && seo, bool trace = true) noexcept:
+            m_seo(std::move(seo)),
+            cpptrace::exception_with_message(std::string(m_seo.msg), trace ? cpptrace::detail::get_raw_trace_and_absorb() : cpptrace::raw_trace{})
+        {}
+
+        const ServerErrorObject & data() const noexcept {
+            return m_seo;
+        }
+    };
+
     enum signal_error
     {
         connect_failed = 1

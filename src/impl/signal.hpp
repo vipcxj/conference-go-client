@@ -14,26 +14,32 @@ namespace cfgo
     class WSMsg;
     class WSAck;
     using SignalRawMsg = std::vector<std::byte>;
-    using WSMsgCb = std::function<bool(const WSMsg&)>;
-    using WSAckCb = std::function<void(const WSAck&)>;
+    using WSMsgCb = std::function<bool(WSMsg&)>;
+    using WSAckCb = std::function<void(WSAck&)>;
     namespace spec
     {
-        struct RoomedSignal;
-        namespace signal
+
+        namespace msg
         {
-            PRO_DEF_MEMBER_DISPATCH(roomed, pro::proxy<RoomedSignal>(const std::string & room));
-            PRO_DEF_MEMBER_DISPATCH(send, asio::awaitable<std::optional<SignalRawMsg>>(const close_chan & closer, bool ack, const std::string & evt, const SignalRawMsg & payload));
-            PRO_DEF_MEMBER_DISPATCH(sendCustom, asio::awaitable<void>(const close_chan & closer, bool ack, const std::string & evt, const std::string & payload, const std::string & room, const std::string & to));
+            PRO_DEF_MEMBER_DISPATCH(msg_id, std::uint64_t() noexcept);
+            PRO_DEF_MEMBER_DISPATCH(evt, std::string_view() noexcept);
+            PRO_DEF_MEMBER_DISPATCH(payload, const nlohmann::json & () noexcept);
+            PRO_DEF_MEMBER_DISPATCH(consume, nlohmann::json && () noexcept);
+            PRO_DEF_MEMBER_DISPATCH(is_consumed, bool() noexcept);
+            PRO_DEF_MEMBER_DISPATCH(ack, bool() noexcept);
+        } // namespace msg
+
+        PRO_DEF_FACADE(SigMsg, PRO_MAKE_DISPATCH_PACK(msg::msg_id, msg::evt, msg::payload, msg::consume, msg::is_consumed, msg::ack));
+
+        using SigMsgCb = std::function<bool(pro::proxy<SigMsg> msg)>;
+
+        namespace signal
+        {   
+            PRO_DEF_MEMBER_DISPATCH(send, asio::awaitable<nlohmann::json>(const close_chan & closer, bool ack, const std::string & evt, nlohmann::json && payload));
+            PRO_DEF_MEMBER_DISPATCH(on_msg, std::uint64_t(SigMsgCb cb));
         } // namespace signal
 
-        namespace rsignal
-        {
-            PRO_DEF_MEMBER_DISPATCH(sendCustom, asio::awaitable<void>(const close_chan & closer, bool ack, const std::string & evt, const std::string & payload, const std::string & to));
-        } // namespace rsignal
-
-        PRO_DEF_FACADE(Signal, PRO_MAKE_DISPATCH_PACK(signal::roomed, signal::sendCustom));
-
-        PRO_DEF_FACADE(RoomedSignal, PRO_MAKE_DISPATCH_PACK(rsignal::sendCustom));
+        PRO_DEF_FACADE(Signal, PRO_MAKE_DISPATCH_PACK(signal::send, signal::on_msg));
 
     } // namespace spec
 
@@ -50,44 +56,39 @@ namespace cfgo
         duration_t ready_timeout;
     };
 
+    auto make_websocket_signal() -> pro::proxy<spec::Signal>;
+
     class WSMsg : public ImplBy<impl::WSMsg> {
     public:
         using ImplBy::ImplBy;
         std::uint64_t msg_id() const noexcept;
         std::string_view evt() const noexcept;
         const nlohmann::json & payload() const noexcept;
+        nlohmann::json && consume() const noexcept;
         bool ack() const noexcept;
-        void consume() const noexcept;
-        bool recyclable() const noexcept;
-    }
+        bool is_consumed() const noexcept;
+    };
 
     class WSAck : public ImplBy<impl::WSAck> {
     public:
         using ImplBy::ImplBy;
         const nlohmann::json & payload() const noexcept;
+        nlohmann::json && consume() const noexcept;
         bool err() const noexcept;
-    }
+        bool is_consumed() const noexcept;
+    };
 
     class RoomedWebsocketSignal;
     class WebsocketSignal : public ImplBy<impl::WebsocketSignal> {
-    public:
-        WebsocketSignal(const WebsocketSignalConfigure & conf);
-        inline auto roomed(const std::string & room) -> pro::proxy<spec::RoomedSignal> {
-            return pro::make_proxy<spec::RoomedSignal>(RoomedWebsocketSignal { room, *this });
-        }
-        auto send(const close_chan & closer, bool ack, const std::string & evt, const SignalRawMsg & payload) -> asio::awaitable<std::optional<SignalRawMsg>>;
-        auto sendCustom(const close_chan & closer, bool ack, const std::string & evt, const std::string & payload, const std::string & room, const std::string & to) -> asio::awaitable<void>;
-    };
-
-    class RoomedWebsocketSignal {
     private:
-        std::string m_room;
-        WebsocketSignal m_signal;
+        WebsocketSignal(const WebsocketSignalConfigure & conf);
     public:
-        RoomedWebsocketSignal(const std::string & room, const WebsocketSignal & signal): m_room(room), m_signal(signal) {}
-        inline auto sendCustom(const close_chan & closer, bool ack, const std::string & evt, const std::string & payload, const std::string & room, const std::string & to) -> asio::awaitable<void> {
-            return this->m_signal.sendCustom(closer, ack, evt, payload, this->m_room, to);
+        WebsocketSignal(std::nullptr_t): ImplBy(std::shared_ptr<impl::WebsocketSignal>(nullptr)) {};
+        static auto create(const WebsocketSignalConfigure & conf) {
+            return pro::make_proxy<spec::Signal>(WebsocketSignal(conf));
         }
+        auto send(const close_chan & closer, bool ack, const std::string & evt, nlohmann::json && payload) -> asio::awaitable<nlohmann::json>;
+        std::uint64_t on_msg(WSMsgCb && cb);
     };
 
 } // namespace cfgo
