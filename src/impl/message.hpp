@@ -171,6 +171,15 @@ namespace cfgo
             bool err {false};
             NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(CustomAckMessage, router, msgId, content, err)
         };
+
+        struct UserInfoMessage {
+            std::string key {};
+            std::string userId {};
+            std::string userName {};
+            std::string role {};
+            std::vector<std::string> rooms {};
+            NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(UserInfoMessage, key, userId, userName, role, rooms)
+        };
         
     } // namespace msg
     

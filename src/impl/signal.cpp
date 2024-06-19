@@ -188,7 +188,6 @@ namespace cfgo
             std::uint64_t m_next_msg_cb_id {0};
             std::unordered_map<std::uint64_t, spec::RawSigMsgCb> m_msg_cbs {};
             std::unordered_map<std::uint64_t, WSAckChan> m_ack_chs {};
-            auto make_sure_connect() -> asio::awaitable<void>;
         public:
             WebsocketRawSignal(const WebsocketSignalConfigure & conf):
                 m_config(conf)
@@ -202,6 +201,7 @@ namespace cfgo
                 m_next_msg_id += 2;
                 return WSMsg::create(msg_id, evt, std::move(payload), ack);
             }
+            auto connect(close_chan closer) -> asio::awaitable<void>;
             auto run(close_chan closer) -> asio::awaitable<void>;
             auto send(close_chan closer, pro::proxy<spec::RawSigMsg> msg) -> asio::awaitable<nlohmann::json>;
             std::uint64_t on_msg(spec::RawSigMsgCb cb);
@@ -210,7 +210,7 @@ namespace cfgo
             friend class WSAcker;
         };
 
-        auto WebsocketRawSignal::make_sure_connect() -> asio::awaitable<void> {
+        auto WebsocketRawSignal::connect(close_chan closer) -> asio::awaitable<void> {
             auto self = shared_from_this();
             if (!m_ws || !m_ws->is_open())
             {
@@ -274,7 +274,6 @@ namespace cfgo
 
         auto WebsocketRawSignal::run(close_chan closer) -> asio::awaitable<void> {
             auto self = shared_from_this();
-            co_await make_sure_connect();
             auto executor = co_await asio::this_coro::executor;
             closer = closer.create_child();
             asio::co_spawn(executor, fix_async_lambda([closer, weak_self = weak_from_this()]() -> asio::awaitable<void> {
@@ -317,7 +316,6 @@ namespace cfgo
 
         auto WebsocketRawSignal::send(close_chan closer, pro::proxy<spec::RawSigMsg> msg) -> asio::awaitable<nlohmann::json> {
             auto self = shared_from_this();
-            make_sure_connect();
             auto payload_str = msg.payload().dump();
             auto buffer = encodeWsTextData(msg.evt(), msg.msg_id(), msg.ack() ? WS_MSG_FLAG_NEED_ACK : WS_MSG_FLAG_NO_ACK, payload_str);
             WSAckChan ch {};
@@ -446,19 +444,34 @@ namespace cfgo
             }
         };
 
+        struct CustomAckKey {
+            std::uint64_t id;
+            std::string room;
+            std::string user;
+        };
+
         class Signal : public std::enable_shared_from_this<Signal> {
         private:
+            using CustomAckMessagePtr = std::unique_ptr<msg::CustomAckMessage>;
+            using UserInfoPtr = std::unique_ptr<msg::UserInfoMessage>;
             pro::proxy<spec::RawSignal> m_raw_signal;
+            UserInfoPtr m_user_info {nullptr};
             std::uint32_t m_next_custom_msg_id {0};
             std::uint64_t m_next_custom_cb_id {0};
             std::unordered_map<std::uint64_t, cfgo::SigMsgCb> m_custom_msg_cbs {};
+            std::unordered_map<CustomAckKey, unique_chan<CustomAckMessagePtr>> m_custom_ack_chans {};
         public:
+            auto connect(close_chan closer) -> asio::awaitable<void>;
             auto run(close_chan closer) -> asio::awaitable<void>;
             auto send_message(close_chan closer, bool ack, std::string evt, std::string payload, std::string room, std::string to) -> asio::awaitable<std::string>;
-            std::uint64_t on_message(cfgo::SigMsgCb cb) {
+            std::uint64_t on_message(cfgo::SigMsgCb && cb) {
                 auto cb_id = m_next_custom_cb_id;
                 m_next_custom_cb_id ++;
                 m_custom_msg_cbs.insert(std::make_pair(cb_id, std::move(cb)));
+            }
+            std::uint64_t on_message(const cfgo::SigMsgCb & cb) {
+                auto cb_copy = cb;
+                return on_message(std::move(cb));
             }
             void off_message(std::uint64_t id) {
                 m_custom_msg_cbs.erase(id);
@@ -466,11 +479,22 @@ namespace cfgo
             friend class SignalAcker;
         };
 
-        auto Signal::run(close_chan closer) -> asio::awaitable<void> {
+        auto Signal::connect(close_chan closer) -> asio::awaitable<void> {
+            auto self = shared_from_this();
             m_raw_signal.on_msg([weak_self = weak_from_this()](pro::proxy<spec::RawSigMsg> msg, pro::proxy<spec::RawSigAcker> acker) -> bool {
                 if (auto self = weak_self.lock()) {
                     auto evt = msg.evt();
-                    if (evt.starts_with("custom:")) {
+                    if (evt == "custom-ack") {
+                        auto cam = std::make_unique<msg::CustomAckMessage>();
+                        nlohmann::from_json(msg.payload(), *cam);
+                        CustomAckKey key {.id = cam->msgId, .room = cam->router.room, .user = cam->router.userFrom};
+                        auto ch_iter = self->m_custom_ack_chans.find(key);
+                        if (ch_iter != self->m_custom_ack_chans.end())
+                        {
+                            chan_must_write(ch_iter->second, std::move(cam));
+                            self->m_custom_ack_chans.erase(ch_iter);
+                        }
+                    } else if (evt.starts_with("custom:")) {
                         auto cevt = evt.substr(7);
                         msg::CustomMessage cm;
                         nlohmann::from_json(msg.payload(), cm);
@@ -487,54 +511,65 @@ namespace cfgo
                 }
                 return true;
             });
-            co_await m_raw_signal.run(std::move(closer));
+            unique_chan<UserInfoPtr> ready_ch {};
+            auto cb_id = m_raw_signal.on_msg([weak_self = weak_from_this(), ready_ch](pro::proxy<spec::RawSigMsg> msg, pro::proxy<spec::RawSigAcker> acker) -> bool {
+                if (msg.evt() == "ready")
+                {
+                    auto ready_msg = std::make_unique<msg::UserInfoMessage>();
+                    nlohmann::from_json(msg.payload(), *ready_msg);
+                    chan_must_write(ready_ch, std::move(ready_msg));
+                    return false;
+                }
+                return true;
+            });
+            co_await m_raw_signal.connect(closer);
+            self->m_user_info = co_await chan_read_or_throw<UserInfoPtr>(ready_ch, closer);
+            auto executor = co_await asio::this_coro::executor;
+            asio::co_spawn(executor, fix_async_lambda([self, closer]() -> asio::awaitable<void> {
+                co_await self->m_raw_signal.run(closer);
+            }), asio::detached);
         }
 
         uint32_t get_custom_msg_id(const nlohmann::json & payload) {
             return payload.value("msgId", 0);
         }
 
-        auto Signal::send_message(close_chan closer, bool ack, std::string evt, nlohmann::json payload, std::string room, std::string to) -> asio::awaitable<nlohmann::json> {
+        auto Signal::send_message(close_chan closer, bool ack, std::string evt, std::string payload, std::string room, std::string to) -> asio::awaitable<std::string> {
             auto self = shared_from_this();
             auto msg_id = m_next_custom_msg_id;
             m_next_custom_msg_id ++;
             msg::CustomMessage msg {
                 .router = msg::Router {.room = room, .userTo = to},
-                .content = payload.dump(),
+                .content = payload,
                 .msgId = msg_id,
                 .ack = ack,
             };
+            CustomAckKey key {
+                .id = msg_id,
+                .room = room,
+                .user = to,
+            };
             nlohmann::json js_msg;
             nlohmann::to_json(js_msg, msg);
-            unique_chan<std::unique_ptr<msg::CustomAckMessage>> ack_ch {};
-            m_raw_signal.on_msg([msg_id, room, to, ack_ch](pro::proxy<spec::RawSigMsg> msg, pro::proxy<spec::RawSigAcker> acker) -> bool {
-                if (msg.evt() == "custom-ack" && get_custom_msg_id(msg.payload()) == msg_id) {
-                    auto ack_msg = std::make_unique<msg::CustomAckMessage>();
-                    nlohmann::from_json(msg.payload(), *ack_msg);
-                    if (ack_msg->router.room == room && ack_msg->router.userFrom == to)
-                    {
-                        chan_must_write(ack_ch, std::move(ack_msg));
-                        return true;
-                    } else {
-                        return false;
-                    }
-                }
-                return false;
-            });
+            unique_chan<CustomAckMessagePtr> ack_ch {};
+            if (ack)
+            {
+                m_custom_ack_chans.insert(std::make_pair(key, ack_ch));
+            }
             co_await m_raw_signal.send(closer, m_raw_signal.create_msg("custom:" + evt, std::move(js_msg), false));
             if (ack) {
                 auto ack_msg = co_await chan_read_or_throw<std::unique_ptr<msg::CustomAckMessage>>(ack_ch, closer);
-                auto ack_js = nlohmann::json::parse(ack_msg->content);
                 if (ack_msg->err)
                 {
+                    auto ack_js = nlohmann::json::parse(ack_msg->content);
                     ServerErrorObject eo {};
                     nlohmann::from_json(ack_js, eo);
                     throw ServerError(std::move(eo));
                 } else {
-                    co_return ack_js;
+                    co_return ack_msg->content;
                 }
             } else {
-                co_return nlohmann::json {nullptr};
+                co_return "";
             }
         }
     } // namespace impl
@@ -565,8 +600,20 @@ namespace cfgo
         return impl::WebsocketRawSignal::create(conf);
     }
 
+    auto Signal::connect(close_chan closer) -> asio::awaitable<void> {
+        return impl()->connect(std::move(closer));
+    }
+
     auto Signal::send_message(const close_chan & closer, SignalMsg && msg) -> asio::awaitable<std::string> {
-        return impl()->send_message(closer, msg.ack(), std::string(msg.evt()), msg.consume(), std::string(msg.room()), std::string(msg.to()));
+        return impl()->send_message(closer, msg.ack(), std::string(msg.evt()), msg.consume(), std::string(msg.room()), std::string(msg.user()));
+    }
+
+    std::uint64_t Signal::on_message(const SigMsgCb & cb) {
+        return impl()->on_message(cb);
+    }
+
+    void Signal::off_message(std::uint64_t id) {
+        impl()->off_message(id);
     }
     
 } // namespace cfgo

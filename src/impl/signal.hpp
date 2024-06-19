@@ -49,6 +49,7 @@ namespace cfgo
 
         namespace signal {
             namespace raw {
+                PRO_DEF_MEMBER_DISPATCH(connect, asio::awaitable<void>(close_chan closer));
                 PRO_DEF_MEMBER_DISPATCH(run, asio::awaitable<void>(close_chan closer));
                 PRO_DEF_MEMBER_DISPATCH(send, asio::awaitable<nlohmann::json>(const close_chan & closer, pro::proxy<spec::RawSigMsg> msg));
                 PRO_DEF_MEMBER_DISPATCH(on_msg, std::uint64_t(RawSigMsgCb cb));
@@ -57,6 +58,7 @@ namespace cfgo
         }
 
         PRO_DEF_FACADE(RawSignal, PRO_MAKE_DISPATCH_PACK(
+            signal::raw::connect,
             signal::raw::run,
             signal::raw::send, 
             signal::raw::on_msg,
@@ -103,8 +105,11 @@ namespace cfgo
 
     class Signal : public ImplBy<impl::Signal> {
     public:
+        auto connect(close_chan closer) -> asio::awaitable<void>;
         auto send_message(const close_chan & closer, SignalMsg && msg) -> asio::awaitable<std::string>;
-        std::uint64_t on_message(SigMsgCb cb);
+        std::uint64_t on_message(const SigMsgCb & cb);
+        std::uint64_t on_message(SigMsgCb && cb);
+        void off_message(std::uint64_t id);
     };
 
 } // namespace cfgo
