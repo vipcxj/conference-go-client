@@ -101,13 +101,13 @@ namespace cfgo
         };
 
         struct JoinMessage {
-            std::vector<std::string> rooms;
+            std::vector<std::string> rooms {};
 
             NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(JoinMessage, rooms)
         };
 
         struct LeaveMessage {
-            std::vector<std::string> rooms;
+            std::vector<std::string> rooms {};
 
             NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(LeaveMessage, rooms)
         };
@@ -141,7 +141,7 @@ namespace cfgo
         };
 
         struct SubscribeResultMessage {
-            std::string id;
+            std::string id {};
 
             NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(SubscribeResultMessage, id)
         };
@@ -156,19 +156,20 @@ namespace cfgo
         };
 
         struct CustomMessage {
-            Router router;
-            std::string content;
-            std::uint32_t msgId;
-            bool ack;
+            Router router {};
+            std::string content {};
+            std::uint32_t msgId {0};
+            bool ack {false};
 
             NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(CustomMessage, router, content, msgId, ack)
         };
 
         struct CustomAckMessage {
-            Router router;
-            std::uint32_t msgId;
-
-            NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(CustomAckMessage, router, msgId)
+            Router router {};
+            std::uint32_t msgId {0};
+            std::string content {};
+            bool err {false};
+            NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(CustomAckMessage, router, msgId, content, err)
         };
         
     } // namespace msg
