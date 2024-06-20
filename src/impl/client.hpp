@@ -9,7 +9,7 @@
 #include "cfgo/log.hpp"
 #include "cfgo/pattern.hpp"
 #include "cfgo/utils.hpp"
-#include "sio_client.h"
+#include "impl/signal.hpp"
 #include <mutex>
 #include <optional>
 #include <map>
@@ -54,7 +54,7 @@ namespace cfgo {
         private:
             Logger m_logger;
             Configuration m_config;
-            std::unique_ptr<sio::client> m_client;
+            cfgo::Signal m_signal;
             std::shared_ptr<rtc::PeerConnection> m_peer;
             close_chan m_closer;
             const std::string m_id;

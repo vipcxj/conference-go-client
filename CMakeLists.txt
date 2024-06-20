@@ -90,6 +90,7 @@ set(MY_PRIVATE_HEADERS
     "${H_IMPL}/message.hpp"
     "${H_IMPL}/signal.hpp"
     "${H_IMPL}/subscribation.hpp"
+    "${H_IMPL}/webrtc.hpp"
 )
 set(MY_GST_PLUGIN_PRIVATE_HEADERS
     "${H_PRIVATE_PATH}/gst/cfgosrc.hpp"
@@ -117,6 +118,7 @@ set(MY_SOURCES
     "${H_IMPL}/message.cpp"
     "${H_IMPL}/signal.cpp"
     "${H_IMPL}/subscribation.cpp"
+    "${H_IMPL}/webrtc.cpp"
 )
 set(MY_GST_PLUGIN_SOURCES
     "${SRC_PATH}/gst/boxed.cpp"

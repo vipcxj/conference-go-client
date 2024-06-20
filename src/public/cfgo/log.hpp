@@ -24,6 +24,8 @@ namespace cfgo
         enum Category {
             DEFAULT,
             CLIENT,
+            SIGNAL,
+            WEBRTC,
             CFGOSRC,
             TRACK
         };

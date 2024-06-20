@@ -6,10 +6,34 @@
 #include "boost/uuid/uuid_generators.hpp"
 #include "boost/url.hpp"
 #include "cfgo/fmt.hpp"
-#include "cfgo/error.hpp"
-#include "impl/message.hpp"
+#include "cfgo/async.hpp"
 
 #include <deque>
+
+namespace cfgo
+{
+    namespace impl
+    {
+        struct CustomAckKey {
+            std::uint64_t id;
+            std::string room;
+            std::string user;
+
+            bool operator==(const CustomAckKey &other) const = default;
+        };
+    } // namespace impl
+    
+} // namespace cfgo
+
+template<>
+struct ::std::hash<cfgo::impl::CustomAckKey> {
+
+    std::size_t operator()(const cfgo::impl::CustomAckKey& k) const {
+        using std::hash;
+        using std::string;
+        return ((hash<std::int64_t>()(k.id) ^ (hash<string>()(k.room) << 1)) >> 1) ^ (hash<string>()(k.user) << 1);
+    }
+};
 
 namespace cfgo
 {
@@ -389,12 +413,12 @@ namespace cfgo
         class SignalAcker : public std::enable_shared_from_this<SignalAcker> {
             std::weak_ptr<Signal> m_signal;
             SignalMsg m_msg;
-        private:
+        public:
             SignalAcker(std::weak_ptr<Signal> signal, SignalMsg msg):
                 m_signal(std::move(signal)),
                 m_msg(std::move(msg))
             {}
-            auto ack(close_chan closer, std::string payload) const -> asio::awaitable<void> {
+            auto async_ack(close_chan closer, std::string payload) const -> asio::awaitable<void> {
                 auto self = shared_from_this();
                 if (!self->m_msg.ack())
                 {
@@ -417,7 +441,16 @@ namespace cfgo
                     co_await signal->m_raw_signal.send(closer, m_msg.evt(), std::move(raw_msg));
                 }
             }
-            auto ack_err(close_chan closer, std::unique_ptr<ServerErrorObject> err) const -> asio::awaitable<void> {
+            template<typename Executor>
+            void ack(Executor executor, close_chan closer, std::string payload) const {
+                if (auto signal = self->m_signal.lock())
+                {
+                    asio::co_spawn(executor, fix_async_lambda(log_error([self = *this, closer = std::move(closer), payload = std::move(payload)]() -> {
+                        co_await self->async_ack(std::move(closer), std::move(payload));
+                    }, signal->m_logger)), asio::detached);
+                }
+            }
+            auto async_ack_err(close_chan closer, std::unique_ptr<ServerErrorObject> err) const -> asio::awaitable<void> {
                 auto self = shared_from_this();
                 if (!self->m_msg.ack())
                 {
@@ -442,31 +475,64 @@ namespace cfgo
                     co_await signal->m_raw_signal.send(closer, m_msg.evt(), std::move(raw_msg));
                 }
             }
-        };
-
-        struct CustomAckKey {
-            std::uint64_t id;
-            std::string room;
-            std::string user;
+            template<typename Executor>
+            void ack_err(Executor executor, close_chan closer, std::unique_ptr<ServerErrorObject> err) const {
+                if (auto signal = self->m_signal.lock())
+                {
+                    asio::co_spawn(executor, fix_async_lambda(log_error([self = *this, closer = std::move(closer), err = std::move(err)]() -> {
+                        co_await self->async_ack_err(std::move(closer), std::move(err));
+                    }, signal->m_logger)), asio::detached);
+                }
+            }
         };
 
         class Signal : public std::enable_shared_from_this<Signal> {
         private:
             using CustomAckMessagePtr = std::unique_ptr<msg::CustomAckMessage>;
             using UserInfoPtr = std::unique_ptr<msg::UserInfoMessage>;
+            using CandMsgPtr = cfgo::Signal::CandMsgPtr;
+            using CandCb = cfgo::Signal::CandCb;
+            using SdpMsgPtr = cfgo::Signal::SdpMsgPtr;
+            using SdpCb = cfgo::Signal::SdpCb;
+            using SubscribeMsgPtr = cfgo::Signal::SubscribeMsgPtr;
+            using SubscribeResultPtr = cfgo::Signal::SubscribeResultPtr;
+            using SubscribedMsgPtr = cfgo::Signal::SubscribedMsgPtr;
+            Logger m_logger = Log::instance().create_logger(Log::Category::SIGNAL);
             pro::proxy<spec::RawSignal> m_raw_signal;
             UserInfoPtr m_user_info {nullptr};
+            std::uint64_t m_next_cb_id {0};
             std::uint32_t m_next_custom_msg_id {0};
-            std::uint64_t m_next_custom_cb_id {0};
+            std::unordered_map<std::uint64_t, CandCb> m_cand_cbs {};
+            std::unordered_map<std::uint64_t, SdpCb> m_sdp_cbs {};
             std::unordered_map<std::uint64_t, cfgo::SigMsgCb> m_custom_msg_cbs {};
             std::unordered_map<CustomAckKey, unique_chan<CustomAckMessagePtr>> m_custom_ack_chans {};
+            std::unordered_map<std::string, std::shared_ptr<LazyBox<SubscribedMsgPtr>>> m_subscribed_msgs {};
         public:
             auto connect(close_chan closer) -> asio::awaitable<void>;
-            auto run(close_chan closer) -> asio::awaitable<void>;
+            auto send_candidate(close_chan closer, CandMsgPtr msg) -> asio::awaitable<void>;
+            std::uint64_t on_candidate(CandCb cb) {
+                auto cb_id = m_next_cb_id;
+                m_next_cb_id ++;
+                m_cand_cbs.insert(std::make_pair(cb_id, std::move(cb)));
+            }
+            void off_candidate(std::uint64_t id) {
+                m_cand_cbs.erase(id);
+            }
+            auto send_sdp(close_chan closer, SdpMsgPtr msg) -> asio::awaitable<void>;
+            std::uint64_t on_sdp(SdpCb cb) {
+                auto cb_id = m_next_cb_id;
+                m_next_cb_id ++;
+                m_sdp_cbs.insert(std::make_pair(cb_id, std::move(cb)));
+            }
+            void off_sdp(std::uint64_t id) {
+                m_sdp_cbs.erase(id);
+            }
+            auto subsrcibe(close_chan closer, SubscribeMsgPtr msg) -> asio::awaitable<SubscribeResultPtr>;
+            auto wait_subscribed(close_chan closer, SubscribeResultPtr sub) -> asio::awaitable<SubscribedMsgPtr>;
             auto send_message(close_chan closer, bool ack, std::string evt, std::string payload, std::string room, std::string to) -> asio::awaitable<std::string>;
             std::uint64_t on_message(cfgo::SigMsgCb && cb) {
-                auto cb_id = m_next_custom_cb_id;
-                m_next_custom_cb_id ++;
+                auto cb_id = m_next_cb_id;
+                m_next_cb_id ++;
                 m_custom_msg_cbs.insert(std::make_pair(cb_id, std::move(cb)));
             }
             std::uint64_t on_message(const cfgo::SigMsgCb & cb) {
@@ -481,17 +547,46 @@ namespace cfgo
 
         auto Signal::connect(close_chan closer) -> asio::awaitable<void> {
             auto self = shared_from_this();
-            m_raw_signal.on_msg([weak_self = weak_from_this()](pro::proxy<spec::RawSigMsg> msg, pro::proxy<spec::RawSigAcker> acker) -> bool {
+            auto executor = co_await asio::this_coro::executor;
+            m_raw_signal.on_msg([weak_self = weak_from_this(), executor](pro::proxy<spec::RawSigMsg> msg, pro::proxy<spec::RawSigAcker> acker) -> bool {
                 if (auto self = weak_self.lock()) {
+                    asio::co_spawn(executor, fix_async_lambda(log_error([acker = std::move(acker)]() -> asio::awaitable<void> {
+                        co_await acker.ack();
+                    }, self->m_logger)), asio::detached);
                     auto evt = msg.evt();
-                    if (evt == "custom-ack") {
-                        auto cam = std::make_unique<msg::CustomAckMessage>();
-                        nlohmann::from_json(msg.payload(), *cam);
-                        CustomAckKey key {.id = cam->msgId, .room = cam->router.room, .user = cam->router.userFrom};
+                    if (evt == "candidate")
+                    {
+                        auto sm = std::make_shared<msg::CandidateMessage>();
+                        nlohmann::from_json(msg.payload(), *sm);
+                        for (auto iter = self->m_cand_cbs.begin(); iter != self->m_cand_cbs.end();)
+                        {
+                            if (!iter->second(sm))
+                            {
+                                iter = self->m_cand_cbs.erase(iter);
+                            } else {
+                                ++iter;
+                            }
+                        }
+                    } else if (evt == "sdp") {
+                        auto sm = std::make_shared<msg::SdpMessage>();
+                        nlohmann::from_json(msg.payload(), *sm);
+                        for (auto iter = self->m_sdp_cbs.begin(); iter != self->m_sdp_cbs.end();)
+                        {
+                            if (!iter->second(sm))
+                            {
+                                iter = self->m_sdp_cbs.erase(iter);
+                            } else {
+                                ++iter;
+                            }
+                        }
+                    } else if (evt == "custom-ack") {
+                        auto sm = std::make_unique<msg::CustomAckMessage>();
+                        nlohmann::from_json(msg.payload(), *sm);
+                        CustomAckKey key {.id = sm->msgId, .room = sm->router.room, .user = sm->router.userFrom};
                         auto ch_iter = self->m_custom_ack_chans.find(key);
                         if (ch_iter != self->m_custom_ack_chans.end())
                         {
-                            chan_must_write(ch_iter->second, std::move(cam));
+                            chan_must_write(ch_iter->second, std::move(sm));
                             self->m_custom_ack_chans.erase(ch_iter);
                         }
                     } else if (evt.starts_with("custom:")) {
@@ -524,14 +619,73 @@ namespace cfgo
             });
             co_await m_raw_signal.connect(closer);
             self->m_user_info = co_await chan_read_or_throw<UserInfoPtr>(ready_ch, closer);
-            auto executor = co_await asio::this_coro::executor;
             asio::co_spawn(executor, fix_async_lambda([self, closer]() -> asio::awaitable<void> {
                 co_await self->m_raw_signal.run(closer);
             }), asio::detached);
         }
 
-        uint32_t get_custom_msg_id(const nlohmann::json & payload) {
-            return payload.value("msgId", 0);
+        auto Signal::send_sdp(close_chan closer, SdpMsgPtr msg) -> asio::awaitable<void> {
+            nlohmann::json js_msg;
+            nlohmann::to_json(js_msg, *msg);
+            co_await m_raw_signal.send(closer, m_raw_signal.create_msg("sdp", std::move(js_msg), true));
+        }
+
+        auto Signal::subsrcibe(close_chan closer, SubscribeMsgPtr msg) -> asio::awaitable<SubscribeResultPtr> {
+            auto self = shared_from_this();
+            std::shared_ptr<LazyBox<std::uint64_t>> lazy_cb_id = LazyBox<std::uint64_t>::create();
+            std::shared_ptr<LazyBox<std::string>> lazy_sub_id = LazyBox<std::string>::create();
+            auto executor = co_await asio::this_coro::executor;
+            auto cb_id = self->m_raw_signal.on_msg([self, lazy_cb_id, lazy_sub_id, closer, executor = std::move(executor)](pro::proxy<spec::RawSigMsg> msg, pro::proxy<spec::RawSigAcker> acker) -> bool {
+                if (msg.evt() == "subscribed")
+                {
+                    asio::co_spawn(executor, fix_async_lambda([
+                        self = std::move(self), 
+                        msg = std::move(msg), 
+                        acker = std::move(acker), 
+                        closer = std::move(closer), 
+                        lazy_cb_id = std::move(lazy_cb_id), 
+                        lazy_sub_id = std::move(lazy_sub_id)
+                    ]() -> asio::awaitable<void> {
+                        try
+                        {
+                            auto cb_id = co_await lazy_cb_id->get(closer);
+                            auto sub_id = co_await lazy_sub_id->get(closer);
+                            if (msg.payload().value("subId", "") == sub_id)
+                            {
+                                self->m_raw_signal.off_msg(cb_id);
+                                auto sub_msg_iter = self->m_subscribed_msgs.find(sub_id);
+                                if (sub_msg_iter != self->m_subscribed_msgs.end())
+                                {
+                                    sub_msg_iter->second.init(std::move(msg));
+                                }
+                            }
+                        }
+                        catch(...)
+                        {}                        
+                    }), asio::detached);
+                }
+                return true;
+            });
+            lazy_cb_id->init(cb_id);
+            nlohmann::json js_msg;
+            nlohmann::to_json(js_msg, *msg);
+            auto res = co_await m_raw_signal.send(closer, m_raw_signal.create_msg("subscribe", std::move(js_msg), true));
+            auto sub_res_msg = std::make_unique<msg::SubscribeResultMessage>();
+            nlohmann::from_json(res, *sub_res_msg);
+            m_subscribed_msgs.emplace(std::make_pair(sub_res_msg->id, LazyBox<SubscribedMsgPtr>::create()));
+            lazy_sub_id->init(sub_res_msg->id);
+            co_return sub_res_msg;
+        }
+
+        auto Signal::wait_subscribed(close_chan closer, SubscribeResultPtr sub) -> asio::awaitable<SubscribedMsgPtr> {
+            auto self = shared_from_this();
+            auto lazy_sub_msg_iter = self->m_subscribed_msgs.find(sub->id);
+            if (lazy_sub_msg_iter != self->m_subscribed_msgs.end()) {
+                self->m_subscribed_msgs.erase(lazy_sub_msg_iter);
+                co_await lazy_sub_msg_iter->second->get(closer);
+            } else {
+                throw cpptrace::runtime_error("call subsrcibe at first. ");
+            }
         }
 
         auto Signal::send_message(close_chan closer, bool ack, std::string evt, std::string payload, std::string room, std::string to) -> asio::awaitable<std::string> {
@@ -594,6 +748,13 @@ namespace cfgo
     }
     std::string && SignalMsg::consume() const noexcept {
         return impl()->consume();
+    }
+
+    auto SignalAcker::async_ack(close_chan closer, std::string payload) const -> asio::awaitable<void> {
+        return impl()->async_ack(closer, payload);
+    }
+    auto SignalAcker::async_ack_err(close_chan closer, std::unique_ptr<ServerErrorObject> err) const -> asio::awaitable<void> {
+        return impl()->async_ack_err(closer, std::move(err));
     }
 
     auto make_websocket_raw_signal(const WebsocketSignalConfigure & conf) -> pro::proxy<spec::RawSignal> {

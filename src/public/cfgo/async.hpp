@@ -5,6 +5,7 @@
 #include <mutex>
 #include <vector>
 #include <set>
+#include <atomic>
 #include "cfgo/asio.hpp"
 #include "cfgo/alias.hpp"
 #include "cfgo/common.hpp"
@@ -1465,6 +1466,31 @@ namespace cfgo
         }
     };
 
+    auto wrap_cancel(std::function<asio::awaitable<void>()> func) -> asio::awaitable<void> {
+        try
+        {
+            co_await func();
+        }
+        catch(const CancelError& e) {}
+    }
+
+    auto log_error(std::function<asio::awaitable<void>()> func, Logger logger = Log::instance().default_logger()) -> std::function<asio::awaitable<void>()> {
+        return [logger = std::move(logger), func = std::move(func)]() -> asio::awaitable<void> {
+            try
+            {
+                co_await func();
+            }
+            catch(const CancelError& e)
+            {
+                logger->debug(e.what());
+            }
+            catch(...)
+            {
+                logger->error(what());
+            }
+        };
+    }
+
     template<typename T>
     class manually_ptr
     {
@@ -1624,6 +1650,48 @@ namespace cfgo
     {
         destroy_weak_holder<T>(static_cast<weak_ptr_holder<T> *>(holder_ptr));
     }
+
+    template<typename T>
+    class LazyBox {
+    private:
+        std::optional<T> m_data {std::nullopt};
+        unique_void_chan m_ch {};
+        std::atomic<bool> m_done;
+        LazyBox() {}
+    public:
+        static auto create() -> std::unique_ptr<LazyBox<T>> {
+            template<T>
+            struct enable_make_unique<T> : public LazyBox<T> {};
+            return std::make_unique<enable_make_unique<T>>();
+        }
+        void init(const T & data) {
+            bool done = m_done.load(std::memory_order::acquire);
+            if (!done)
+            {
+                m_data = data;
+                m_done.store(true, std::memory_order::release);
+                chan_must_write(m_ch);
+            }
+        }
+        void init(T && data) {
+            bool done = m_done.load(std::memory_order::acquire);
+            if (!done)
+            {
+                m_data = std::move<T>(data);
+                m_done.store(true, std::memory_order::release);
+                chan_must_write(m_ch);
+            }
+        }
+
+        auto get(close_chan closer) -> asio::awaitable<T> {
+            bool done = m_done.load(std::memory_order::acquire);
+            if (done) {
+                co_return std::forward<T>(m_data.value());
+            }
+            co_await chan_read_or_throw<void>(m_ch, closer);
+            co_return std::forward<T>(m_data.value());
+        }
+    };
 
 } // namespace cfgo
 

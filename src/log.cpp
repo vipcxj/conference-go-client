@@ -274,6 +274,10 @@ namespace cfgo
             return "default";
         case CLIENT:
             return "client";
+        case SIGNAL:
+            return "signal";
+        case WEBRTC:
+            return "webrtc";
         case CFGOSRC:
             return "gst::src";
         case TRACK:

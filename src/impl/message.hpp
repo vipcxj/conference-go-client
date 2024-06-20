@@ -31,6 +31,22 @@ namespace cfgo
             {ROLLBACK, "rollback"},
         })
 
+        constexpr char * sdp_type_to_string(SdpType type) {
+            switch (type)
+            {
+            case SdpType::ANSWER:
+                return "answer";
+            case SdpType::OFFER:
+                return "offer";
+            case SdpType::PRANSWER:
+                return "pranswer";
+            case SdpType::ROLLBACK:
+                return "rollback";
+            case SdpType::UNKNOWN:
+                return "unknown";
+            }
+        }
+
         struct SdpMessage {
             SdpType type {SdpType::UNKNOWN};
             std::string sdp {};
@@ -131,7 +147,6 @@ namespace cfgo
         };
         
         struct SubscribeMessage {
-            Router router {};
             SubscribeOp op {SubscribeOp::ADD};
             std::string id {};
             std::vector<std::string> reqTypes {};
@@ -149,7 +164,7 @@ namespace cfgo
         struct SubscribedMessage {
             std::string subId {};
             std::string pubId {};
-            std::string sdpId {};
+            int sdpId {};
             std::vector<Track> tracks {};
 
             NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(SubscribedMessage, subId, pubId, sdpId, tracks)

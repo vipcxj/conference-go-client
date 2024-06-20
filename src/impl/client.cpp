@@ -101,89 +101,83 @@ namespace cfgo
             }
         }
 
-        // msg_ptr create_setup_message()
+        // msg_ptr Client::create_auth_message() const
         // {
-        //     auto setup_msg = sio::object_message::create();
-        //     return setup_msg;
+        //     auto auth_msg = sio::object_message::create();
+        //     auth_msg->get_map()["token"] = sio::string_message::create(m_config.m_token);
+        //     auth_msg->get_map()["id"] = sio::string_message::create(m_id);
+        //     return auth_msg;
         // }
 
-        msg_ptr Client::create_auth_message() const
-        {
-            auto auth_msg = sio::object_message::create();
-            auth_msg->get_map()["token"] = sio::string_message::create(m_config.m_token);
-            auth_msg->get_map()["id"] = sio::string_message::create(m_id);
-            return auth_msg;
-        }
+        // msg_ptr create_add_cand_message(const ::rtc::Candidate &cand)
+        // {
+        //     auto add_cand_msg = sio::object_message::create();
+        //     add_cand_msg->get_map()["op"] = sio::string_message::create("add");
+        //     auto cand_msg = sio::object_message::create();
+        //     cand_msg->get_map()["candidate"] = sio::string_message::create(cand.candidate());
+        //     cand_msg->get_map()["sdpMid"] = sio::string_message::create(cand.mid());
+        //     add_cand_msg->get_map()["candidate"] = cand_msg;
+        //     return add_cand_msg;
+        // }
 
-        msg_ptr create_add_cand_message(const ::rtc::Candidate &cand)
-        {
-            auto add_cand_msg = sio::object_message::create();
-            add_cand_msg->get_map()["op"] = sio::string_message::create("add");
-            auto cand_msg = sio::object_message::create();
-            cand_msg->get_map()["candidate"] = sio::string_message::create(cand.candidate());
-            cand_msg->get_map()["sdpMid"] = sio::string_message::create(cand.mid());
-            add_cand_msg->get_map()["candidate"] = cand_msg;
-            return add_cand_msg;
-        }
+        // msg_ptr create_subscribe_message(const Pattern &pattern, const std::vector<std::string> &req_types)
+        // {
+        //     auto msg = sio::object_message::create();
+        //     msg->get_map()["op"] = sio::int_message::create(0);
+        //     auto req_types_msg = sio::array_message::create();
+        //     for (auto &&req_type : req_types)
+        //     {
+        //         req_types_msg->get_vector().push_back(sio::string_message::create(req_type));
+        //     }
+        //     msg->get_map()["reqTypes"] = req_types_msg;
+        //     msg->get_map()["pattern"] = pattern.create_message();
+        //     return msg;
+        // }
 
-        msg_ptr create_subscribe_message(const Pattern &pattern, const std::vector<std::string> &req_types)
-        {
-            auto msg = sio::object_message::create();
-            msg->get_map()["op"] = sio::int_message::create(0);
-            auto req_types_msg = sio::array_message::create();
-            for (auto &&req_type : req_types)
-            {
-                req_types_msg->get_vector().push_back(sio::string_message::create(req_type));
-            }
-            msg->get_map()["reqTypes"] = req_types_msg;
-            msg->get_map()["pattern"] = pattern.create_message();
-            return msg;
-        }
+        // msg_ptr create_unsubscribe_message(const std::string &sub_id)
+        // {
+        //     auto msg = sio::object_message::create();
+        //     msg->get_map()["op"] = sio::int_message::create(2);
+        //     msg->get_map()["id"] = sio::string_message::create(sub_id);
+        //     return msg;
+        // }
 
-        msg_ptr create_unsubscribe_message(const std::string &sub_id)
-        {
-            auto msg = sio::object_message::create();
-            msg->get_map()["op"] = sio::int_message::create(2);
-            msg->get_map()["id"] = sio::string_message::create(sub_id);
-            return msg;
-        }
+        // msg_ptr create_sdp_message(int sdp_id, const ::rtc::Description &desc)
+        // {
+        //     auto sdp_msg = sio::object_message::create();
+        //     sdp_msg->get_map()["type"] = sio::string_message::create(desc.typeString());
+        //     sdp_msg->get_map()["sdp"] = sio::string_message::create(desc);
+        //     sdp_msg->get_map()["mid"] = sio::int_message::create(sdp_id);
+        //     return sdp_msg;
+        // }
 
-        msg_ptr create_sdp_message(int sdp_id, const ::rtc::Description &desc)
-        {
-            auto sdp_msg = sio::object_message::create();
-            sdp_msg->get_map()["type"] = sio::string_message::create(desc.typeString());
-            sdp_msg->get_map()["sdp"] = sio::string_message::create(desc);
-            sdp_msg->get_map()["mid"] = sio::int_message::create(sdp_id);
-            return sdp_msg;
-        }
+        // msg_ptr create_user_message(const std::string & content, const std::string & to, std::uint32_t msg_id, bool ack)
+        // {
+        //     auto user_msg = sio::object_message::create();
+        //     if (!to.empty())
+        //     {
+        //         auto router_msg = sio::object_message::create();
+        //         router_msg->get_map()["userTo"] = sio::string_message::create(to);
+        //         user_msg->get_map()["router"] = router_msg;
+        //     }
+        //     user_msg->get_map()["content"] = sio::string_message::create(content);
+        //     user_msg->get_map()["msgId"] = sio::int_message::create(msg_id);
+        //     user_msg->get_map()["ack"] = sio::bool_message::create(ack);
+        //     return user_msg;
+        // }
 
-        msg_ptr create_user_message(const std::string & content, const std::string & to, std::uint32_t msg_id, bool ack)
-        {
-            auto user_msg = sio::object_message::create();
-            if (!to.empty())
-            {
-                auto router_msg = sio::object_message::create();
-                router_msg->get_map()["userTo"] = sio::string_message::create(to);
-                user_msg->get_map()["router"] = router_msg;
-            }
-            user_msg->get_map()["content"] = sio::string_message::create(content);
-            user_msg->get_map()["msgId"] = sio::int_message::create(msg_id);
-            user_msg->get_map()["ack"] = sio::bool_message::create(ack);
-            return user_msg;
-        }
-
-        msg_ptr create_user_ack_message(std::uint32_t msg_id, const std::string & to)
-        {
-            auto user_ack_msg = sio::object_message::create();
-            if (!to.empty())
-            {
-                auto router_msg = sio::object_message::create();
-                router_msg->get_map()["userTo"] = sio::string_message::create(to);
-                user_ack_msg->get_map()["router"] = router_msg;
-            }
-            user_ack_msg->get_map()["msgId"] = sio::int_message::create(msg_id);
-            return user_ack_msg;
-        }
+        // msg_ptr create_user_ack_message(std::uint32_t msg_id, const std::string & to)
+        // {
+        //     auto user_ack_msg = sio::object_message::create();
+        //     if (!to.empty())
+        //     {
+        //         auto router_msg = sio::object_message::create();
+        //         router_msg->get_map()["userTo"] = sio::string_message::create(to);
+        //         user_ack_msg->get_map()["router"] = router_msg;
+        //     }
+        //     user_ack_msg->get_map()["msgId"] = sio::int_message::create(msg_id);
+        //     return user_ack_msg;
+        // }
 
         void Client::update_gst_sdp()
         {
@@ -519,6 +513,16 @@ namespace cfgo
                     CFGO_SELF_DEBUG("{}", "release.");
                     m_a_mutex.release(asio::get_associated_executor(m_io_context));
                 });
+
+                auto cands = std::make_shared<std::vector<cfgo::Signal::CandMsgPtr>>();
+
+
+
+
+
+
+
+
                 self->setup_socket_close_callback(closer);
                 DEFER({
                     self->clean_socket_close_callback();
