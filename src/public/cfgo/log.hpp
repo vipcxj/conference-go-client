@@ -26,6 +26,7 @@ namespace cfgo
             CLIENT,
             SIGNAL,
             WEBRTC,
+            WEBSOCKET,
             CFGOSRC,
             TRACK
         };

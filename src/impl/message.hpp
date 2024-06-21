@@ -15,40 +15,13 @@ namespace cfgo
             NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Router, room, userFrom, userTo)
         };
 
-        enum struct SdpType {
-            ANSWER,
-            OFFER,
-            PRANSWER,
-            ROLLBACK,
-            UNKNOWN = -1,
-        };
-
-        NLOHMANN_JSON_SERIALIZE_ENUM(SdpType, {
-            {UNKNOWN, nullptr},
-            {ANSWER, "answer"},
-            {OFFER, "offer"},
-            {PRANSWER, "pranswer"},
-            {ROLLBACK, "rollback"},
-        })
-
-        constexpr char * sdp_type_to_string(SdpType type) {
-            switch (type)
-            {
-            case SdpType::ANSWER:
-                return "answer";
-            case SdpType::OFFER:
-                return "offer";
-            case SdpType::PRANSWER:
-                return "pranswer";
-            case SdpType::ROLLBACK:
-                return "rollback";
-            case SdpType::UNKNOWN:
-                return "unknown";
-            }
-        }
+        constexpr const char* SDP_TYPE_ANSWER = "answer";
+        constexpr const char* SDP_TYPE_OFFER = "offer";
+        constexpr const char* SDP_TYPE_PRANSWER = "pranswer";
+        constexpr const char* SDP_TYPE_ROLLBACK = "rollback";
 
         struct SdpMessage {
-            SdpType type {SdpType::UNKNOWN};
+            std::string type {};
             std::string sdp {};
             int mid {0};
 

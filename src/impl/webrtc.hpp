@@ -4,6 +4,7 @@
 #include "cfgo/utils.hpp"
 #include "cfgo/async.hpp"
 #include "cfgo/pattern.hpp"
+#include "cfgo/configuration.hpp"
 
 namespace cfgo
 {

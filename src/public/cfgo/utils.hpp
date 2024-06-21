@@ -3,6 +3,10 @@
 #include <string>
 #include <exception>
 #include <memory>
+#include <unordered_map>
+#include <vector>
+#include <atomic>
+#include <functional>
 
 // We haven't checked which filesystem to include yet
 #ifndef INCLUDE_STD_FILESYSTEM_EXPERIMENTAL
@@ -87,19 +91,24 @@ namespace cfgo
     template <typename T>
     using impl_ptr = std::shared_ptr<T>;
     template <typename T>
+    using weak_impl_ptr = std::weak_ptr<T>;
+    template <typename T>
     class ImplBy
     {
     public:
         explicit ImplBy(impl_ptr<T> impl) : mImpl(std::move(impl)) {}
+        ImplBy(std::nullptr_t) : mImpl(impl_ptr<T>()) {}
         template <typename... Args>
         explicit ImplBy(Args&&... args) : mImpl(std::make_shared<T>(std::forward<Args>(args)...)) {}
         ImplBy(ImplBy<T> &&cc) = default;
         ImplBy(const ImplBy<T> &) = default;
-
         virtual ~ImplBy() = default;
 
         ImplBy &operator=(ImplBy<T> &&cc) = default;
         ImplBy &operator=(const ImplBy<T> &) = default;
+        operator bool() const noexcept {
+            return (bool) mImpl;
+        }
 
     protected:
         impl_ptr<T> & impl() noexcept { return mImpl; }
@@ -107,6 +116,29 @@ namespace cfgo
 
     private:
         impl_ptr<T> mImpl;
+    };
+
+    template<typename Self, typename T>
+    class WeakImplBy
+    {
+    private:
+        weak_impl_ptr<T> m_weak_impl;
+    public:
+        explicit WeakImplBy(weak_impl_ptr<T> impl): m_weak_impl(std::move(impl)) {}
+        Self lock() {
+            return Self{m_weak_impl.lock()};
+        }
+    };
+
+    template<typename Self, typename T>
+    class WeakableImplBy : public ImplBy<T>
+    {
+    public:
+        using ImplBy::ImplBy;
+        WeakImplBy<Self, T> weak() {
+            weak_impl_ptr<T> weak_impl = impl();
+            return WeakImplBy {std::move(weak_impl)};
+        }
     };
 
     template <typename T>
@@ -132,6 +164,56 @@ namespace cfgo
         impl_ptr<T> mImpl;
     };
 
+    // not thread safe, used for strand async coroutine
+    template<typename K, typename T>
+    class LzayRemoveMap {
+    private:
+        using map_type = std::unordered_map<K, T>;
+        map_type m_map;
+        std::vector<std::reference_wrapper<K>> m_to_removes;
+        std::atomic_bool m_looping;
+    public:
+        std::unordered_map<K, T> * operator  -> () & noexcept {
+            return &m_map;
+        }
+        std::unordered_map<K, T> const * operator  -> () const & noexcept {
+            return &m_map;
+        }
+        void start_loop() noexcept {
+            m_looping.store(true, std::memory_order::release);
+        }
+        void complete_loop() noexcept {
+            m_looping.store(true, std::memory_order::release);
+            for(auto k : m_to_removes) {
+                m_map.erase(k);
+            }
+            m_to_removes.clear();
+        }
+        map_type::iterator lazy_remove(map_type::const_iterator iter) {
+            if (m_looping.load(std::memory_order::acquire)) {
+                m_to_removes.push_back(std::ref(iter->first));
+                return iter;
+            } else {
+                return m_map.erase(iter);
+            }
+        }
+        map_type::iterator lazy_remove(map_type::iterator iter) {
+            if (m_looping.load(std::memory_order::acquire)) {
+                m_to_removes.push_back(std::ref(iter->first));
+                return iter;
+            } else {
+                return m_map.erase(iter);
+            }
+        }
+        map_type::size_type lazy_remove(const key_type& __x) {
+            if (m_looping.load(std::memory_order::acquire)) {
+                m_to_removes.push_back(std::ref(__x));
+                return iter;
+            } else {
+                return m_map.erase(__x);
+            }
+        }
+    };
 }
 
 #endif

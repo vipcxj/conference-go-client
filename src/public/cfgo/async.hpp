@@ -44,6 +44,8 @@ namespace cfgo
     constexpr const char * CLOSER_DEFAULT_CLOSE_REASON = "user request";
     constexpr const char * CLOSER_DEFAULT_TIMEOUT_REASON = "timeout";
 
+    class WeakCloseSignal;
+
     class CloseSignal
     {
     private:
@@ -58,6 +60,9 @@ namespace cfgo
         CloseSignal(CloseSignal &&cc) = default;
         CloseSignal &operator=(const CloseSignal &) = default;
         CloseSignal &operator=(CloseSignal &&cc) = default;
+        [[nodiscard]] WeakCloseSignal weak() const noexcept {
+            return WeakCloseSignal{m_state};
+        }
         [[nodiscard]] bool is_closed() const noexcept;
         [[nodiscard]] bool is_timeout() const noexcept;
         [[nodiscard]] inline operator bool() const noexcept
@@ -95,6 +100,18 @@ namespace cfgo
         [[nodiscard]] const char * get_timeout_reason() const noexcept;
 
         friend class detail::CloseSignalState;
+        friend class WeakCloseSignal;
+    };
+
+    class WeakCloseSignal {
+    private:
+        std::weak_ptr<detail::CloseSignalState> m_state;
+        WeakCloseSignal(std::weak_ptr<detail::CloseSignalState> state): m_state(state) {}
+    public:
+        CloseSignal lock() const noexcept {
+            return CloseSignal{m_state.lock()};
+        }
+        friend class CloseSignal;
     };
 
     inline bool is_valid_close_chan(const close_chan & ch) noexcept {

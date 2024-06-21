@@ -278,6 +278,8 @@ namespace cfgo
             return "signal";
         case WEBRTC:
             return "webrtc";
+        case WEBSOCKET:
+            return "websocket";
         case CFGOSRC:
             return "gst::src";
         case TRACK:
