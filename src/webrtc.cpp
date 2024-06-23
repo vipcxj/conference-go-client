@@ -1,5 +1,5 @@
-#include "impl/webrtc.hpp"
-#include "impl/signal.hpp"
+#include "cfgo/webrtc.hpp"
+#include "cfgo/track.hpp"
 #include "rtc/rtc.hpp"
 #include "cfgo/defer.hpp"
 
@@ -47,7 +47,7 @@ namespace cfgo
             PeerBox(const rtc::Configuration & conf): peer(conf) {}
         };
 
-        class Webrtc : std::enable_shared_from_this<Webrtc>
+        class Webrtc : public std::enable_shared_from_this<Webrtc>, public cfgo::Webrtc
         {
         private:
             using PeerBoxPtr = std::shared_ptr<PeerBox>;
@@ -69,6 +69,10 @@ namespace cfgo
             std::vector<close_chan> m_peer_closers {};
             mutex m_peer_closers_mux {};
 
+            #ifdef CFGO_SUPPORT_GSTREAMER
+            GstSDPMessage * m_gst_sdp {nullptr};
+            #endif
+
             [[nodiscard]] auto negotiate(close_chan closer, PeerBoxPtr peer, int sdp_id, bool active) -> asio::awaitable<void>;
             static void add_candidate(PeerBoxPtr box, cfgo::Signal::CandMsgPtr msg) {
                 if (msg->op == msg::CandidateOp::ADD)
@@ -79,6 +83,21 @@ namespace cfgo
             void register_peer_closer(close_chan closer) {
                 std::lock_guard g(m_peer_closers_mux);
                 m_peer_closers.push_back(std::move(closer));
+            }
+            void update_gst_sdp(const rtc::Description & desc)
+            {
+                #ifdef CFGO_SUPPORT_GSTREAMER
+                if (m_gst_sdp)
+                {
+                    gst_sdp_message_free(m_gst_sdp);
+                    m_gst_sdp = nullptr;
+                }
+                auto res = gst_sdp_message_new_from_text(((std::string) desc).c_str(), &m_gst_sdp);
+                if (res != GST_SDP_OK)
+                {
+                    throw cpptrace::runtime_error("unable to generate the gst sdp message from local desc.");
+                }
+                #endif
             }
             auto access_peer_box(close_chan closer) -> asio::awaitable<PeerBoxPtr> {
                 auto self = shared_from_this();
@@ -168,8 +187,22 @@ namespace cfgo
                 } while (true);
             }
         public:
-            [[nodiscard]] auto subscribe(close_chan closer, Pattern pattern, std::vector<std::string> req_types) -> asio::awaitable<SubPtr>;
-            [[nodiscard]] auto unsubscribe(close_chan closer, std::string sub_id) -> asio::awaitable<void>;
+            Webrtc(SignalPtr signal, const cfgo::Configuration & conf):
+                m_signal(signal), 
+                m_conf(conf)
+            {
+                m_conf.m_rtc_config.disableAutoNegotiation = true;
+            }
+            ~Webrtc() {
+                #ifdef CFGO_SUPPORT_GSTREAMER
+                if (m_gst_sdp)
+                {
+                    gst_sdp_message_free(m_gst_sdp);
+                }
+                #endif
+            }
+            [[nodiscard]] auto subscribe(close_chan closer, Pattern pattern, std::vector<std::string> req_types) -> asio::awaitable<SubPtr> override;
+            [[nodiscard]] auto unsubscribe(close_chan closer, std::string sub_id) -> asio::awaitable<void> override;
         };
 
         auto Webrtc::negotiate(close_chan closer, PeerBoxPtr box, int sdp_id, bool active) -> asio::awaitable<void> {
@@ -208,7 +241,8 @@ namespace cfgo
                 if (active)
                 {
                     asiochan::unbounded_channel<Signal::SdpMsgPtr> desc_ch;
-                    box->peer.onLocalDescription([desc_ch, sdp_id](const rtc::Description & desc) {
+                    box->peer.onLocalDescription([self, desc_ch, sdp_id](const rtc::Description & desc) {
+                        self->update_gst_sdp(desc);
                         auto req_sdp = std::make_shared<msg::SdpMessage>();
                         req_sdp->mid = sdp_id;
                         req_sdp->sdp = desc;
@@ -257,8 +291,9 @@ namespace cfgo
                         }
                         cands->clear();
                         asiochan::unbounded_channel<Signal::SdpMsgPtr> answer_sdp_ch {};
-                        box->peer.onLocalDescription([answer_sdp_ch, sdp_id](const rtc::Description & desc) {
+                        box->peer.onLocalDescription([self, answer_sdp_ch, sdp_id](const rtc::Description & desc) {
                             assert(desc.type() == rtc::Description::Type::Answer || desc.type() == rtc::Description::Type::Pranswer);
+                            self->update_gst_sdp(desc);
                             auto req_sdp = std::make_shared<msg::SdpMessage>();
                             req_sdp->mid = sdp_id;
                             req_sdp->sdp = desc;
@@ -290,8 +325,36 @@ namespace cfgo
             auto sub_req_res = co_await self->m_signal->subsrcibe(closer, std::move(sub_req_msg));
             auto sub_res = co_await self->m_signal->wait_subscribed(closer, std::move(sub_req_res));
             auto sub_ptr = std::make_shared<cfgo::Subscribation>(sub_res->subId, sub_res->pubId);
+            if (sub_res->tracks.empty())
+            {
+                co_return sub_ptr;
+            }
+            for (auto && track : sub_res->tracks)
+            {
+                sub_ptr->tracks().emplace_back(track, self);
+            }
+            std::vector<cfgo::TrackPtr> uncompleted_tracks(sub_ptr->tracks());
             auto box = co_await self->access_peer_box(closer);
+            co_await self->negotiate(closer, box, sub_res->sdpId, false);
+            while (!uncompleted_tracks.empty())
+            {
+                auto rtc_track = co_await chan_read_or_throw<TrackPtr>(box->track_ch, closer);
+                auto&& iter = std::partition(uncompleted_tracks.begin(), uncompleted_tracks.end(), [&rtc_track](const cfgo::TrackPtr& t) -> bool {
+                    return t->bind_id() == rtc_track->mid();
+                });
+                if (iter != uncompleted_tracks.end())
+                {
+                    (*iter)->track() = rtc_track;
+                    (*iter)->prepare_track();
+                    uncompleted_tracks.erase(iter, uncompleted_tracks.end());
+                }
+            }
+            co_return sub_ptr;
         }
     } // namespace impl
+
+    WebrtcUPtr make_webrtc(SignalPtr signal, const cfgo::Configuration & conf) {
+        return std::make_unique<impl::Webrtc>(std::move(signal), conf);
+    }
     
 } // namespace cfgo

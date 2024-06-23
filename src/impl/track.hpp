@@ -3,7 +3,7 @@
 
 #include <string>
 #include <memory>
-#include <map>
+#include <unordered_map>
 #include <vector>
 #include <deque>
 #include <mutex>
@@ -12,7 +12,7 @@
 #include "cfgo/track.hpp"
 #include "cfgo/async.hpp"
 #include "cfgo/log.hpp"
-#include "impl/client.hpp"
+#include "cfgo/webrtc.hpp"
 #include "boost/circular_buffer.hpp"
 #ifdef CFGO_SUPPORT_GSTREAMER
 #include "gst/sdp/sdp.h"
@@ -41,7 +41,7 @@ namespace cfgo
             std::string bindId;
             std::string rid;
             std::string streamId;
-            std::map<std::string, std::string> labels;
+            std::unordered_map<std::string, std::string> labels;
             std::shared_ptr<rtc::Track> track;
 
             bool m_inited;
@@ -53,7 +53,7 @@ namespace cfgo
             OnDataCb m_on_data = nullptr;
             Statistics m_statistics;
             OnStatCb m_on_stat = nullptr;
-            std::shared_ptr<Client> m_client;
+            WebrtcWPtr m_weak_webrtc;
             asiochan::channel<void, 1> m_msg_notify;
             asiochan::channel<void, 1> m_open_notify;
             asiochan::channel<void, 1> m_closed_notify;
@@ -61,7 +61,7 @@ namespace cfgo
             GstSDPMedia *m_gst_media;
             #endif
 
-            Track(const msg_ptr& msg, int cache_capicity);
+            Track(const msg::Track & msg, WebrtcWPtr webrtc, int cache_capicity);
             ~Track();
 
             uint32_t makesure_min_seq();
@@ -73,7 +73,6 @@ namespace cfgo
             auto await_open_or_closed(close_chan close_ch) -> asio::awaitable<bool>;
             cfgo::Track::MsgPtr receive_msg(cfgo::Track::MsgType msg_type);
             auto await_msg(cfgo::Track::MsgType msg_type, close_chan close_ch) -> asio::awaitable<cfgo::Track::MsgPtr>;
-            void bind_client(std::shared_ptr<Client> client);
             void * get_gst_caps(int pt) const;
             void set_on_data(const OnDataCb & cb);
             void set_on_data(OnDataCb && cb);

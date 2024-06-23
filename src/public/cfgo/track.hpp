@@ -3,11 +3,14 @@
 
 #include <string>
 #include <memory>
+#include <unordered_map>
 #include "cfgo/config/configuration.h"
 #include "cfgo/asio.hpp"
 #include "cfgo/alias.hpp"
 #include "cfgo/async.hpp"
 #include "cfgo/utils.hpp"
+#include "cfgo/message.hpp"
+#include "cfgo/webrtc.hpp"
 #include "rtc/track.hpp"
 
 namespace rtc
@@ -149,16 +152,16 @@ namespace cfgo
             ALL
         };
         Track(std::nullptr_t);
-        Track(const msg_ptr & msg, int cache_capicity = DEFAULT_TRACK_CACHE_CAPICITY);
-
+        Track(const msg::Track & msg, WebrtcWPtr webrtc, int cache_capicity = DEFAULT_TRACK_CACHE_CAPICITY);
+        void prepare_track() const;
         const std::string& type() const noexcept;
         const std::string& pub_id() const noexcept;
         const std::string& global_id() const noexcept;
         const std::string& bind_id() const noexcept;
         const std::string& rid() const noexcept;
         const std::string& stream_id() const noexcept;
-        std::map<std::string, std::string> & labels() noexcept;
-        const std::map<std::string, std::string> & labels() const noexcept;
+        std::unordered_map<std::string, std::string> & labels() noexcept;
+        const std::unordered_map<std::string, std::string> & labels() const noexcept;
         std::shared_ptr<rtc::Track> & track() noexcept;
         const std::shared_ptr<rtc::Track> & track() const noexcept;
         void * get_gst_caps(int pt) const;

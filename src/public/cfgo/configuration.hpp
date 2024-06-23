@@ -10,7 +10,7 @@ namespace cfgo {
         const std::string m_signal_url;
         const std::string m_token;
         const duration_t m_ready_timeout;
-        const ::rtc::Configuration m_rtc_config;
+        ::rtc::Configuration m_rtc_config;
         const bool m_thread_safe;
 
         Configuration(

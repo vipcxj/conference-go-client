@@ -125,7 +125,7 @@ namespace cfgo
         weak_impl_ptr<T> m_weak_impl;
     public:
         explicit WeakImplBy(weak_impl_ptr<T> impl): m_weak_impl(std::move(impl)) {}
-        Self lock() {
+        Self lock() const {
             return Self{m_weak_impl.lock()};
         }
     };

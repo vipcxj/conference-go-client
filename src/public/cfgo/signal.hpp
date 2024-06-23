@@ -5,7 +5,7 @@
 #include "cfgo/utils.hpp"
 #include "cfgo/configuration.hpp"
 #include "cfgo/error.hpp"
-#include "impl/message.hpp"
+#include "cfgo/message.hpp"
 
 #include <memory>
 #include <vector>

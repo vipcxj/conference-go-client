@@ -2,6 +2,7 @@
 #define _CFGO_IMPL_MESSAGE_HPP_
 
 #include "cfgo/pattern.hpp"
+#include <memory>
 
 namespace cfgo
 {
@@ -112,6 +113,7 @@ namespace cfgo
 
             NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Track, type, pubId, globalId, bindId, rid, streamId, labels)
         };
+        using TrackPtr = std::shared_ptr<Track>;
 
         enum struct SubscribeOp {
             ADD = 0,

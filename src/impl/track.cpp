@@ -13,44 +13,24 @@ namespace cfgo
 {
     namespace impl
     {
-        Track::Track(const msg_ptr & msg, int cache_capicity)
-        : m_logger(Log::instance().create_logger(Log::Category::TRACK)), m_rtp_cache(cache_capicity), m_rtcp_cache(cache_capicity), m_inited(false), m_seq(0)
+        Track::Track(const msg::Track & msg, WebrtcWPtr webrtc, int cache_capicity): 
+            m_logger(Log::instance().create_logger(Log::Category::TRACK)),
+            m_weak_webrtc(webrtc),
+            m_rtp_cache(cache_capicity), 
+            m_rtcp_cache(cache_capicity), 
+            m_inited(false), 
+            m_seq(0)
         #ifdef CFGO_SUPPORT_GSTREAMER
         , m_gst_media(nullptr)
         #endif
         {
-            auto &&map = msg->get_map();
-            if (auto &&mp = map["type"])
-            {
-                type = mp->get_string();
-            }
-            if (auto &&mp = map["pubId"])
-            {
-                pubId = mp->get_string();
-            }
-            if (auto &&mp = map["globalId"])
-            {
-                globalId = mp->get_string();
-            }
-            if (auto &&mp = map["bindId"])
-            {
-                bindId = mp->get_string();
-            }
-            if (auto &&mp = map["rid"])
-            {
-                rid = mp->get_string();
-            }
-            if (auto &&mp = map["streamId"])
-            {
-                streamId = mp->get_string();
-            }
-            if (auto &&mp = map["labels"])
-            {
-                for (auto &&[key, value] : mp->get_map())
-                {
-                    labels[key] = value->get_string();
-                }
-            }
+            type = msg.type;
+            pubId = msg.pubId;
+            globalId = msg.globalId;
+            bindId = msg.bindId;
+            rid = msg.rid;
+            streamId = msg.streamId;
+            labels = msg.labels;
         }
 
         Track::~Track()
@@ -80,14 +60,12 @@ namespace cfgo
         }
         #endif
 
-        void Track::bind_client(std::shared_ptr<Client> client)
-        {
-            if (!m_client)
+        void Track::prepare_track() {
+            if (auto webrtc = m_weak_webrtc.lock())
             {
-                m_client = client;
                 #ifdef CFGO_SUPPORT_GSTREAMER
                 auto mid = track->mid();
-                auto sdp = client->m_gst_sdp;
+                auto sdp = webrtc->gst_sdp();
                 auto media = get_media_from_sdp(sdp, mid.c_str());
                 if (!media)
                 {
@@ -100,9 +78,6 @@ namespace cfgo
                 }
                 #endif
             }
-        }
-
-        void Track::prepare_track() {
             if (!track)
             {
                 throw cpptrace::logic_error("Before call receive_msg, a valid rtc::track should be set.");
@@ -388,14 +363,21 @@ namespace cfgo
             {
                 throw cpptrace::logic_error("No gst sdp media found, please call bind_client at first.");
             }
-            auto caps = gst_sdp_media_get_caps_from_media(m_gst_media, pt);
-            gst_sdp_message_attributes_to_caps(m_client->m_gst_sdp, caps);
-            gst_sdp_media_attributes_to_caps(m_gst_media, caps);
-            auto s = gst_caps_get_structure(caps, 0);
-            gst_structure_set_name(s, "application/x-rtp");
-            if (!g_strcmp0 (gst_structure_get_string (s, "encoding-name"), "ULPFEC"))
-                gst_structure_set (s, "is-fec", G_TYPE_BOOLEAN, TRUE, NULL);
-            return caps;
+            if (auto webrtc = m_weak_webrtc.lock())
+            {
+                auto caps = gst_sdp_media_get_caps_from_media(m_gst_media, pt);
+                gst_sdp_message_attributes_to_caps(webrtc->gst_sdp(), caps);
+                gst_sdp_media_attributes_to_caps(m_gst_media, caps);
+                auto s = gst_caps_get_structure(caps, 0);
+                gst_structure_set_name(s, "application/x-rtp");
+                if (!g_strcmp0 (gst_structure_get_string (s, "encoding-name"), "ULPFEC"))
+                    gst_structure_set (s, "is-fec", G_TYPE_BOOLEAN, TRUE, NULL);
+                return caps;
+            }
+            else
+            {
+                return nullptr;
+            }
 #else
             throw cpptrace::logic_error("The gstreamer support is disabled, so to_gst_caps method is not supported. Please enable gstreamer support by set cmake GSTREAMER_SUPPORT option to ON.");
 #endif

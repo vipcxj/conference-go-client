@@ -4,8 +4,10 @@
 namespace cfgo
 {
     Track::Track(std::nullptr_t state): ImplBy(std::shared_ptr<impl::Track>(nullptr)) {}
-    Track::Track(const msg_ptr & msg, int cache_capicity): ImplBy<impl::Track>(msg, cache_capicity) {}
-
+    Track::Track(const msg::Track & msg, WebrtcWPtr webrtc, int cache_capicity): ImplBy<impl::Track>(msg, std::move(webrtc), cache_capicity) {}
+    void Track::prepare_track() const {
+        impl()->prepare_track();
+    }
     const std::string& Track::type() const noexcept {
         return impl()->type;
     }
@@ -24,10 +26,10 @@ namespace cfgo
     const std::string& Track::stream_id() const noexcept {
         return impl()->streamId;
     }
-    std::map<std::string, std::string> & Track::labels() noexcept {
+    std::unordered_map<std::string, std::string> & Track::labels() noexcept {
         return impl()->labels;
     }
-    const std::map<std::string, std::string> & Track::labels() const noexcept {
+    const std::unordered_map<std::string, std::string> & Track::labels() const noexcept {
         return impl()->labels;
     }
     std::shared_ptr<rtc::Track> & Track::track() noexcept {
