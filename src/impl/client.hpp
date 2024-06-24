@@ -29,7 +29,7 @@ namespace cfgo {
         {
         public:
             using Ptr = std::shared_ptr<Client>;
-            using CtxPtr = cfgo::Client::CtxPtr;
+            using IoCtxPtr = cfgo::Client::IoCtxPtr;
             using Strand = cfgo::Client::Strand;
 
         private:
@@ -38,10 +38,11 @@ namespace cfgo {
             cfgo::SignalPtr m_signal;
             cfgo::WebrtcUPtr m_webrtc;
             close_chan m_closer;
+            IoCtxPtr m_io_ctx;
             Strand m_strand;
         public:
             Client() = delete;
-            Client(const Configuration& config, const Strand& strand, close_chan closer);
+            Client(const Configuration& config, const IoCtxPtr & io_context, close_chan closer);
             Client(Client&&) = default;
             ~Client();
             Client(const Client&) = delete;

@@ -32,18 +32,16 @@ typedef struct
     int execution_context_handle;
 } cfgoConfiguration;
 
-CFGO_API int cfgo_execution_context_create_io_context();
-CFGO_API int cfgo_execution_context_create_thread_pool(int n);
-CFGO_API int cfgo_execution_context_create_thread_pool_auto();
-CFGO_API int cfgo_execution_context_ref(int handle);
-CFGO_API int cfgo_execution_context_unref(int handle);
+CFGO_API int cfgo_io_context_create();
+CFGO_API int cfgo_io_context_ref(int handle);
+CFGO_API int cfgo_io_context_unref(int handle);
 
 CFGO_API int cfgo_close_chan_create();
 CFGO_API int cfgo_close_chan_close(int handle);
 CFGO_API int cfgo_close_chan_ref(int handle);
 CFGO_API int cfgo_close_chan_unref(int handle);
 
-CFGO_API int cfgo_client_create(const cfgoConfiguration * config);
+CFGO_API int cfgo_client_create(const cfgoConfiguration * config, int io_context_handle, int closer_handle);
 CFGO_API int cfgo_client_ref(int handle);
 CFGO_API int cfgo_client_unref(int handle);
 typedef void(*cfgoOnSubCallback)(int sub_handle, void * user_data);

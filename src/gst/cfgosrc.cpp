@@ -621,7 +621,7 @@ namespace cfgo
             }
             auto weak_self = weak_from_this();
             asio::co_spawn(
-                asio::get_associated_executor(m_client->execution_context()),
+                m_client->strand(),
                 fix_async_lambda([self = shared_from_this()]() -> asio::awaitable<void> {
                     try
                     {

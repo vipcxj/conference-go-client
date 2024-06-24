@@ -215,9 +215,22 @@ function(fix_win_version_warn target)
     endif()
 endfunction()
 
+if(CMAKE_COMPILER_IS_GNUCXX)
+    #检查GNU编译是否支持 -Wa，-mbig-obj
+    include(CheckCXXCompilerFlag)
+    check_cxx_compiler_flag("-Wa,-mbig-obj" GNU_BIG_OBJ_FLAG_ENABLE)
+    message(STATUS GNU_BIG_OBJ_FLAG_ENABLE=${GNU_BIG_OBJ_FLAG_ENABLE})
+endif()
+
+
 message(STATUS "add library cfgoclient")
 add_library(cfgoclient ${MY_SOURCES} ${MY_PUBLIC_HEADERS} ${MY_PRIVATE_HEADERS})
 target_compile_definitions(cfgoclient PRIVATE BUILDING_CFGO)
+target_compile_options(cfgoclient 
+    PRIVATE
+    $<$<CXX_COMPILER_ID:MSVC>:/bigobj>
+    $<$<AND:$<CXX_COMPILER_ID:GNU>,$<BOOL:${GNU_BIG_OBJ_FLAG_ENABLE}>>:-Wa,-mbig-obj>
+)
 target_precompile_headers(cfgoclient PRIVATE ${MY_PRECOMPILE_HEADERS})
 target_include_directories(cfgoclient PUBLIC
     $<BUILD_INTERFACE:${H_PUBLIC}>

@@ -7,6 +7,9 @@
 
 G_BEGIN_DECLS
 
+#define CFGO_TYPE_BOXED_TRACK (cfgo_boxed_track_get_type())
+CFGO_DECLARE_BOXED_PTR_LIKE(Track, track)
+
 #define GST_TYPE_CFGOSRC (gst_cfgosrc_get_type())
 #define GST_CFGOSRC(obj) (G_TYPE_CHECK_INSTANCE_CAST((obj), GST_TYPE_CFGOSRC, GstCfgoSrc))
 #define GST_CFGOSRC_CLASS(klass) (G_TYPE_CHECK_CLASS_CAST((klass), GST_TYPE_CFGOSRC, GstCfgoSrcClass))

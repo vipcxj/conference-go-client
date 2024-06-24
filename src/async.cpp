@@ -663,5 +663,30 @@ namespace cfgo
     {
         return m_state ? m_state->m_timeout_reason.c_str() : "";
     }
+
+    auto wrap_cancel(std::function<asio::awaitable<void>()> func) -> asio::awaitable<void> {
+        try
+        {
+            co_await func();
+        }
+        catch(const CancelError& e) {}
+    }
+
+    auto log_error(std::function<asio::awaitable<void>()> func, Logger logger) -> std::function<asio::awaitable<void>()> {
+        return [logger = std::move(logger), func = std::move(func)]() -> asio::awaitable<void> {
+            try
+            {
+                co_await func();
+            }
+            catch(const CancelError& e)
+            {
+                logger->debug(e.what());
+            }
+            catch(...)
+            {
+                logger->error(what());
+            }
+        };
+    }
     
 } // namespace cfgo

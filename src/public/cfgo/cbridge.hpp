@@ -11,13 +11,13 @@
 
 namespace cfgo
 {
-    Client::CtxPtr get_execution_context(int handle);
-    int wrap_execution_context(Client::CtxPtr ptr);
-    void ref_execution_context(int handle);
-    void unref_execution_context(int handle);
+    std::shared_ptr<asio::io_context> get_io_context(int handle);
+    int wrap_io_context(std::shared_ptr<asio::io_context> ptr);
+    void ref_io_context(int handle);
+    void unref_io_context(int handle);
 
-    close_chan_ptr get_close_chan(int handle);
-    int wrap_close_chan(close_chan_ptr ptr);
+    close_chan get_close_chan(int handle);
+    int wrap_close_chan(close_chan ptr);
     void ref_close_chan(int handle);
     void unref_close_chan(int handle);
 

@@ -35,6 +35,8 @@
 GST_DEBUG_CATEGORY_STATIC(gst_cfgosrc_debug_category);
 #define GST_CAT_DEFAULT gst_cfgosrc_debug_category
 
+CFGO_DEFINE_BOXED_PTR_LIKE(cfgo::Track, Track, track)
+
 /* prototypes */
 
 namespace cfgo

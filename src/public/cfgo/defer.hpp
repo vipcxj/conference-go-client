@@ -1,6 +1,8 @@
 #ifndef _CFGO_DEFER_HPP_
 #define _CFGO_DEFER_HPP_
 
+#include <unordered_map>
+
 namespace cfgo
 {
     namespace detail
@@ -74,7 +76,7 @@ namespace cfgo
     private:
         int m_i;
         bool m_success;
-        std::map<int, std::function<void()>> m_cleanups;
+        std::unordered_map<int, std::function<void()>> m_cleanups;
     };
 
 #define DEFER_ACTUALLY_JOIN(x, y) x##y

@@ -767,7 +767,7 @@ namespace cfgo
             auto lazy_sub_msg_iter = self->m_subscribed_msgs.find(sub->id);
             if (lazy_sub_msg_iter != self->m_subscribed_msgs.end()) {
                 self->m_subscribed_msgs.erase(lazy_sub_msg_iter);
-                co_await lazy_sub_msg_iter->second->get(closer);
+                co_return co_await lazy_sub_msg_iter->second->get(closer);
             } else {
                 throw cpptrace::runtime_error("call subsrcibe at first. ");
             }

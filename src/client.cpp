@@ -5,7 +5,7 @@
 
 namespace cfgo
 {
-    Client::Client(const Configuration& config, const Strand& strand, const close_chan & closer) : ImplBy<impl::Client>(config, strand, closer) {}
+    Client::Client(const Configuration& config, const IoCtxPtr & io_context, const close_chan & closer) : ImplBy<impl::Client>(config, io_context, closer) {}
 
     // void Client::set_sio_logs_default() const {
     //     impl()->set_sio_logs_default();

@@ -18,12 +18,13 @@ namespace cfgo {
     {
     public:
         using Ptr = std::shared_ptr<Client>;
-        using CtxPtr = std::shared_ptr<asio::io_context>;
+        using CtxPtr = std::shared_ptr<asio::execution_context>;
+        using IoCtxPtr = std::shared_ptr<asio::io_context>;
         using executor_type = asio::io_context::executor_type;
         using Strand = asio::strand<executor_type>;
 
     public:
-        Client(const Configuration& config, const Strand& strand, const close_chan & closer = nullptr);
+        Client(const Configuration& config, const IoCtxPtr & io_context, const close_chan & closer = nullptr);
         // void set_sio_logs_default() const;
         // void set_sio_logs_verbose() const;
         // void set_sio_logs_quiet() const;

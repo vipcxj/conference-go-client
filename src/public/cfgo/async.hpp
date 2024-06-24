@@ -4,7 +4,8 @@
 #include <chrono>
 #include <mutex>
 #include <vector>
-#include <set>
+#include <unordered_set>
+#include <unordered_map>
 #include <atomic>
 #include "cfgo/asio.hpp"
 #include "cfgo/alias.hpp"
@@ -553,12 +554,12 @@ namespace cfgo
         constexpr static const auto value = Op::always_waitfree;
     };
 
-    template <asiochan::sendable T, asiochan::select_op Op, asiochan::select_op... OtherOps>
+    template <asiochan::select_op Op, asiochan::select_op... OtherOps>
     class combine_read_op
     {
     public:
         using executor_type = typename Op::executor_type;
-        using result_type = asiochan::read_result<T>;
+        using result_type = typename Op::result_type;
         static constexpr auto num_alternatives = calc_sum_alternatives<Op, OtherOps...>::value;
         static constexpr auto always_waitfree = calc_always_waitfree<Op, OtherOps...>::value;
         using wait_state_type = std::tuple<typename Op::wait_state_type, typename OtherOps::wait_state_type...>;
@@ -598,7 +599,7 @@ namespace cfgo
                 auto wait_alternative = std::optional<std::size_t>{};
                 std::size_t s = 0;
                 ([&]<typename TheOp, typename TheState>(TheOp& op, TheState && state){
-                    if (auto res = op.submit_with_wait(select_ctx, base_token, std::forward<TheState>(state)))
+                    if (auto res = op.submit_with_wait(select_ctx, base_token + s, std::forward<TheState>(state)))
                     {
                         wait_alternative = s + *res;
                         return true;
@@ -656,6 +657,7 @@ namespace cfgo
                     }
                     else
                     {
+                        s += TheOp::num_alternatives;
                         return false;
                     }
                 }(std::get<indices>(m_ops)) or ...);
@@ -727,7 +729,7 @@ namespace cfgo
                 if constexpr (is_void_read_op<First_Op>)
                 {   
                     auto && res = co_await select_(
-                        combine_read_op<void, asiochan::ops::read<void, close_chan::Waiter>, std::decay_t<First_Op>>(
+                        combine_read_op(
                             asiochan::ops::read(*waiter_opt),
                             std::forward<First_Op>(first_op)
                         ),
@@ -810,7 +812,7 @@ namespace cfgo
                 if constexpr (is_void_read_op<First_Op>)
                 {   
                     auto && res = co_await select_(
-                        combine_read_op<void, asiochan::ops::read<void, close_chan::Waiter>, std::decay_t<First_Op>>(
+                        combine_read_op(
                             asiochan::ops::read(*waiter_opt),
                             std::forward<First_Op>(first_op)
                         ),
@@ -1462,15 +1464,15 @@ namespace cfgo
     };
 
     template<typename T>
-    class AsyncTasksSome : public AsyncTasksBase<T, std::map<int, T>>
+    class AsyncTasksSome : public AsyncTasksBase<T, std::unordered_map<int, T>>
     {
     public:
-        using PT = AsyncTasksBase<T, std::map<int, T>>;
+        using PT = AsyncTasksBase<T, std::unordered_map<int, T>>;
         AsyncTasksSome(std::uint32_t n, const close_chan & close_ch = INVALID_CLOSE_CHAN): m_target(n), PT(close_ch) {}
         virtual ~AsyncTasksSome() = default;
     private:
         std::uint32_t m_target;
-        std::map<int, T> m_result;
+        std::unordered_map<int, T> m_result;
     protected:
         auto _sync() -> asio::awaitable<void>
         {
@@ -1514,22 +1516,22 @@ namespace cfgo
             co_return;
         }
 
-        auto _collect_result() -> std::vector<std::optional<T>>
+        auto _collect_result() -> std::unordered_map<int, T>
         {
             return m_result;
         }
     };
 
     template<>
-    class AsyncTasksSome<void> : public AsyncTasksBase<void, std::set<int>>
+    class AsyncTasksSome<void> : public AsyncTasksBase<void, std::unordered_set<int>>
     {
     public:
-        using PT = AsyncTasksBase<void, std::set<int>>;
+        using PT = AsyncTasksBase<void, std::unordered_set<int>>;
         AsyncTasksSome(std::uint32_t n, const close_chan & close_ch = INVALID_CLOSE_CHAN): m_target(n), PT(close_ch) {}
         virtual ~AsyncTasksSome() = default;
     private:
         std::uint32_t m_target;
-        std::set<int> m_result;
+        std::unordered_set<int> m_result;
     protected:
         auto _sync() -> asio::awaitable<void>
         {
@@ -1573,36 +1575,15 @@ namespace cfgo
             co_return;
         }
 
-        auto _collect_result() -> std::set<int>
+        auto _collect_result() -> std::unordered_set<int>
         {
             return m_result;
         }
     };
 
-    auto wrap_cancel(std::function<asio::awaitable<void>()> func) -> asio::awaitable<void> {
-        try
-        {
-            co_await func();
-        }
-        catch(const CancelError& e) {}
-    }
+    auto wrap_cancel(std::function<asio::awaitable<void>()> func) -> asio::awaitable<void>;
 
-    auto log_error(std::function<asio::awaitable<void>()> func, Logger logger = Log::instance().default_logger()) -> std::function<asio::awaitable<void>()> {
-        return [logger = std::move(logger), func = std::move(func)]() -> asio::awaitable<void> {
-            try
-            {
-                co_await func();
-            }
-            catch(const CancelError& e)
-            {
-                logger->debug(e.what());
-            }
-            catch(...)
-            {
-                logger->error(what());
-            }
-        };
-    }
+    auto log_error(std::function<asio::awaitable<void>()> func, Logger logger = Log::instance().default_logger()) -> std::function<asio::awaitable<void>()>;
 
     template<typename T>
     class manually_ptr

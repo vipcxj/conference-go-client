@@ -78,9 +78,9 @@
 namespace cfgo
 {
 
-    std::unordered_map<int, cfgo::Client::CtxPtr> execution_context_map;
-    std::unordered_map<int, int> execution_context_ref_map;
-    std::unordered_map<int, cfgo::close_chan_ptr> close_chan_map;
+    std::unordered_map<int, std::shared_ptr<asio::io_context>> io_context_map;
+    std::unordered_map<int, int> io_context_ref_map;
+    std::unordered_map<int, cfgo::close_chan> close_chan_map;
     std::unordered_map<int, int> close_chan_ref_map;
     std::unordered_map<int, cfgo::Client::Ptr> client_map;
     std::unordered_map<int, int> client_ref_map;
@@ -92,13 +92,13 @@ namespace cfgo
     mutex c_mutex;
     int last_handle = 0;
 
-    CFGO_DEFINE_CPP_GET_REF(execution_context, Client::CtxPtr, "execution context")
-    CFGO_DEFINE_CPP_WRAP(execution_context, Client::CtxPtr)
-    CFGO_DEFINE_CPP_REF(execution_context, "execution context")
-    CFGO_DEFINE_CPP_UNREF(execution_context, "execution context")
+    CFGO_DEFINE_CPP_GET_REF(io_context, std::shared_ptr<asio::io_context>, "io context")
+    CFGO_DEFINE_CPP_WRAP(io_context, std::shared_ptr<asio::io_context>)
+    CFGO_DEFINE_CPP_REF(io_context, "io context")
+    CFGO_DEFINE_CPP_UNREF(io_context, "io context")
 
-    CFGO_DEFINE_CPP_GET_REF(close_chan, close_chan_ptr, "close chan")
-    CFGO_DEFINE_CPP_WRAP(close_chan, close_chan_ptr)
+    CFGO_DEFINE_CPP_GET_REF(close_chan, close_chan, "close chan")
+    CFGO_DEFINE_CPP_WRAP(close_chan, close_chan)
     CFGO_DEFINE_CPP_REF(close_chan, "close chan")
     CFGO_DEFINE_CPP_UNREF(close_chan, "close chan")
 
@@ -273,39 +273,39 @@ namespace cfgo
 
 } // namespace name
 
-CFGO_API int cfgo_execution_context_create_io_context()
+CFGO_API int cfgo_io_context_create()
 {
     return cfgo::c_wrap([]() {
-        return cfgo::wrap_execution_context(std::make_shared<asio::io_context>());
+        return cfgo::wrap_io_context(std::make_shared<asio::io_context>());
     });
 }
 
-CFGO_API int cfgo_execution_context_create_thread_pool(int n)
-{
-    return cfgo::c_wrap([n]() {
-        return cfgo::wrap_execution_context(std::make_shared<asio::thread_pool>(n));
-    });
-}
+// CFGO_API int cfgo_execution_context_create_thread_pool(int n)
+// {
+//     return cfgo::c_wrap([n]() {
+//         return cfgo::wrap_execution_context(std::make_shared<asio::thread_pool>(n));
+//     });
+// }
 
-CFGO_API int cfgo_execution_context_create_thread_pool_auto()
-{
-    return cfgo::c_wrap([]() {
-        return cfgo::wrap_execution_context(std::make_shared<asio::thread_pool>());
-    });
-}
+// CFGO_API int cfgo_execution_context_create_thread_pool_auto()
+// {
+//     return cfgo::c_wrap([]() {
+//         return cfgo::wrap_execution_context(std::make_shared<asio::thread_pool>());
+//     });
+// }
 
-CFGO_API int cfgo_execution_context_ref(int handle)
+CFGO_API int cfgo_io_context_ref(int handle)
 {
     return cfgo::c_wrap([handle]() {
-        cfgo::ref_execution_context(handle);
+        cfgo::ref_io_context(handle);
         return CFGO_ERR_SUCCESS;
     });
 }
 
-CFGO_API int cfgo_execution_context_unref(int handle)
+CFGO_API int cfgo_io_context_unref(int handle)
 {
     return cfgo::c_wrap([handle]() {
-        cfgo::unref_execution_context(handle);
+        cfgo::unref_io_context(handle);
         return CFGO_ERR_SUCCESS;
     });
 }
@@ -313,7 +313,7 @@ CFGO_API int cfgo_execution_context_unref(int handle)
 CFGO_API int cfgo_close_chan_create()
 {
     return cfgo::c_wrap([]() {
-        return cfgo::wrap_close_chan(std::make_shared<cfgo::close_chan>());
+        return cfgo::wrap_close_chan(cfgo::close_chan());
     });
 }
 
@@ -321,7 +321,7 @@ CFGO_API int cfgo_close_chan_close(int handle)
 {
     return cfgo::c_wrap([handle]() {
         auto chan = cfgo::get_close_chan(handle);
-        chan->close();
+        chan.close();
         return CFGO_ERR_SUCCESS;
     });
 }
@@ -342,10 +342,12 @@ CFGO_API int cfgo_close_chan_unref(int handle)
     });
 }
 
-CFGO_API int cfgo_client_create(const cfgoConfiguration * config)
+CFGO_API int cfgo_client_create(const cfgoConfiguration * config, int io_context_handle, int closer_handle)
 {
-    return cfgo::c_wrap([config]() {
-        return cfgo::wrap_client(std::make_shared<cfgo::Client>(cfgo::cfgo_config_to_cpp(config)));
+    return cfgo::c_wrap([config, io_context_handle, closer_handle]() {
+        auto io_context = cfgo::get_io_context(io_context_handle);
+        auto closer = cfgo::get_close_chan(closer_handle);
+        return cfgo::wrap_client(std::make_shared<cfgo::Client>(cfgo::cfgo_config_to_cpp(config), io_context, closer));
     });
 }
 
@@ -377,7 +379,7 @@ CFGO_API int cfgo_client_subscribe(
         auto client = cfgo::get_client(client_handle);
         auto close_chan = close_chan_handle > 0 ? cfgo::get_close_chan(close_chan_handle) : nullptr;
         asio::co_spawn(
-            asio::get_associated_executor(client->execution_context()),
+            client->strand(),
             cfgo::fix_async_lambda([=]() -> asio::awaitable<void> {
                 std::vector<std::string> arg_req_types;
                 cfgo::cfgo_req_types_parse(req_types, arg_req_types);
@@ -388,7 +390,7 @@ CFGO_API int cfgo_client_subscribe(
                     cfgo::SubPtr sub;
                     if (close_chan)
                     {
-                        sub = co_await client->subscribe(std::move(p), std::move(arg_req_types), *close_chan);
+                        sub = co_await client->subscribe(std::move(p), std::move(arg_req_types), close_chan);
                     }
                     else
                     {
