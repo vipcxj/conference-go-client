@@ -60,14 +60,15 @@ namespace cfgo
         CloseSignal(CloseSignal &&cc) = default;
         CloseSignal &operator=(const CloseSignal &) = default;
         CloseSignal &operator=(CloseSignal &&cc) = default;
-        [[nodiscard]] WeakCloseSignal weak() const noexcept {
-            return WeakCloseSignal{m_state};
-        }
+        [[nodiscard]] WeakCloseSignal weak() const noexcept;
         [[nodiscard]] bool is_closed() const noexcept;
         [[nodiscard]] bool is_timeout() const noexcept;
         [[nodiscard]] inline operator bool() const noexcept
         {
             return (bool) m_state;
+        }
+        [[nodiscard]] std::size_t hash() const noexcept {
+            return std::hash<detail::CloseSignalState *>()(m_state.get());
         }
         void close(const std::string & reason) const;
         void close(std::string && reason = CLOSER_DEFAULT_CLOSE_REASON) const;
@@ -534,40 +535,57 @@ namespace cfgo
 
     auto wait_timeout(const duration_t& dur, close_chan closer = nullptr, std::string && reasion = "timeout") -> asio::awaitable<void>;
 
-    template <asiochan::sendable T, asiochan::select_op Op1, asiochan::select_op Op2>
+    template<asiochan::select_op Op, asiochan::select_op... OtherOps>
+    struct calc_sum_alternatives {
+        constexpr static const auto value = Op::num_alternatives + calc_sum_alternatives<OtherOps...>::value;
+    };
+    template<asiochan::select_op Op>
+    struct calc_sum_alternatives<Op> {
+        constexpr static const auto value = Op::num_alternatives;
+    };
+
+    template<asiochan::select_op Op, asiochan::select_op... OtherOps>
+    struct calc_always_waitfree {
+        constexpr static const auto value = Op::always_waitfree && calc_always_waitfree<OtherOps...>::value;
+    };
+    template<asiochan::select_op Op>
+    struct calc_always_waitfree<Op> {
+        constexpr static const auto value = Op::always_waitfree;
+    };
+
+    template <asiochan::sendable T, asiochan::select_op Op, asiochan::select_op... OtherOps>
     class combine_read_op
     {
     public:
-        using executor_type = typename Op1::executor_type;
+        using executor_type = typename Op::executor_type;
         using result_type = asiochan::read_result<T>;
-        static constexpr auto num_alternatives_1 = Op1::num_alternatives;
-        static constexpr auto num_alternatives_2 = Op2::num_alternatives;
-        static constexpr auto num_alternatives = num_alternatives_1 + num_alternatives_2;
-        static constexpr auto always_waitfree_1 = Op1::always_waitfree;
-        static constexpr auto always_waitfree_2 = Op2::always_waitfree;
-        static constexpr auto always_waitfree = always_waitfree_1 && always_waitfree_2;
-        using wait_state_type_1 = typename Op1::wait_state_type;
-        using wait_state_type_2 = typename Op2::wait_state_type;
-        struct wait_state_type
-        {
-            wait_state_type_1 state_1;
-            wait_state_type_2 state_2;
-        };
+        static constexpr auto num_alternatives = calc_sum_alternatives<Op, OtherOps...>::value;
+        static constexpr auto always_waitfree = calc_always_waitfree<Op, OtherOps...>::value;
+        using wait_state_type = std::tuple<typename Op::wait_state_type, typename OtherOps::wait_state_type...>;
 
-        explicit combine_read_op(const Op1 & op1, const Op2 & op2): m_op1(op1), m_op2(op2)
+        explicit combine_read_op(Op && op, OtherOps && ... other_ops): m_ops(std::forward<Op>(op), std::forward<OtherOps>(other_ops)...)
         {}
 
         [[nodiscard]] auto submit_if_ready() -> std::optional<std::size_t>
         {
-            if (auto res = m_op1.submit_if_ready())
-            {
-                return res;
-            }
-            if (auto res = m_op2.submit_if_ready())
-            {
-                return Op1::num_alternatives + *res;
-            }
-            return std::nullopt;
+            return ([&]<std::size_t... indices>(std::index_sequence<indices...>){
+                auto ready_alternative = std::optional<std::size_t>{};
+                std::size_t s = 0;
+                ([&]<typename TheOp>(TheOp& op){
+                    if (auto res = op.submit_if_ready())
+                    {
+                        ready_alternative = s + *res;
+                        return true;
+                    }
+                    else
+                    {
+                        s += TheOp::num_alternatives;
+                        return false;
+                    }
+                }(std::get<indices>(m_ops)) or ...);
+
+                return ready_alternative;
+            }(std::index_sequence_for<Op, OtherOps...>{}));
         }
 
         [[nodiscard]] auto submit_with_wait(
@@ -576,56 +594,93 @@ namespace cfgo
             wait_state_type& wait_state)
             -> std::optional<std::size_t>
         {
-            if (auto res = m_op1.submit_with_wait(select_ctx, base_token, wait_state.state_1))
-            {
-                return res;
-            }
-            if (auto res = m_op2.submit_with_wait(select_ctx, base_token + Op1::num_alternatives, wait_state.state_2))
-            {
-                return *res + Op1::num_alternatives;
-            }
-            return std::nullopt;
+            return ([&]<std::size_t... indices>(std::index_sequence<indices...>){
+                auto wait_alternative = std::optional<std::size_t>{};
+                std::size_t s = 0;
+                ([&]<typename TheOp, typename TheState>(TheOp& op, TheState && state){
+                    if (auto res = op.submit_with_wait(select_ctx, base_token, std::forward<TheState>(state)))
+                    {
+                        wait_alternative = s + *res;
+                        return true;
+                    }
+                    else
+                    {
+                        s += TheOp::num_alternatives;
+                        return false;
+                    }
+                }(std::get<indices>(m_ops), std::get<indices>(wait_state)) or ...);
+
+                return wait_alternative;
+            }(std::index_sequence_for<Op, OtherOps...>{}));
         }
 
         void clear_wait(
             std::optional<std::size_t> const successful_alternative,
             wait_state_type& wait_state)
         {
-            if (successful_alternative)
-            {
-                if (*successful_alternative >= Op1::num_alternatives)
-                {
-                    m_op1.clear_wait(std::nullopt, wait_state.state_1);
-                    m_op2.clear_wait(*successful_alternative - Op1::num_alternatives, wait_state.state_2);
-                }
-                else
-                {
-                    m_op1.clear_wait(successful_alternative, wait_state.state_1);
-                    m_op2.clear_wait(std::nullopt, wait_state.state_2);
-                }
-            }
-            else
-            {
-                m_op1.clear_wait(std::nullopt, wait_state.state_1);
-                m_op2.clear_wait(std::nullopt, wait_state.state_2);
-            }
+            ([&]<std::size_t... indices>(std::index_sequence<indices...>){
+                std::size_t s = 0;
+                ([&]<typename TheOp, typename TheState>(TheOp & op, TheState && state){
+                    if (successful_alternative)
+                    {
+                        auto index = *successful_alternative;
+                        if (index >= s && index < s + TheOp::num_alternatives)
+                        {
+    
+                            op.clear_wait(index - s, std::forward<TheState>(state));
+                        }
+                        else
+                        {
+                            op.clear_wait(std::nullopt, std::forward<TheState>(state));
+                        }
+                        s += TheOp::num_alternatives;
+                    }
+                    else
+                    {
+                        op.clear_wait(std::nullopt, std::forward<TheState>(state));
+                    }
+                }(std::get<indices>(m_ops), std::get<indices>(wait_state)), ...);
+            }(std::index_sequence_for<Op, OtherOps...>{}));
         }
 
         [[nodiscard]] auto get_result(std::size_t const successful_alternative) noexcept -> result_type
         {
-            if (successful_alternative >= Op1::num_alternatives)
-            {
-                return m_op2.get_result(successful_alternative - Op1::num_alternatives);
-            }
-            else
-            {
-                return m_op1.get_result(successful_alternative);
-            }
+            return ([&]<std::size_t... indices>(std::index_sequence<indices...>){
+                std::size_t s = 0;
+                std::optional<result_type> res {};
+                ([&]<typename TheOp>(TheOp & op){
+                    if (successful_alternative >= s && successful_alternative < s + TheOp::num_alternatives)
+                    {
+                        res = op.get_result(successful_alternative - s);
+                        return true;
+                    }
+                    else
+                    {
+                        return false;
+                    }
+                }(std::get<indices>(m_ops)) or ...);
+
+                return *res;
+            }(std::index_sequence_for<Op, OtherOps...>{}));
         }
 
     private:
-        Op1 m_op1;
-        Op2 m_op2;
+        std::tuple<Op, OtherOps...> m_ops;
+    };
+
+    template<typename C, typename... CS>
+    requires std::is_same_v<std::decay_t<C>, close_chan> && (std::is_same_v<std::decay_t<CS>, close_chan> && ...)
+    struct combined_closer {
+        combined_closer(C && closer, CS && ... other_closers): m_closers(std::forward<C>(closer), std::forward<CS>(other_closers)...) {}
+        operator bool() const noexcept {
+            return ([&]<std::size_t... indices>(std::index_sequence<indices...>){
+                return ([&]<typename Closer>(const Closer & closer){
+                    return (bool) closer;
+                }(std::get<indices>(m_closers)) && ...);
+            }(std::index_sequence_for<C, CS...>{}));
+        }
+    private:
+        std::tuple<C, CS...> m_closers;
     };
 
     template<asiochan::select_op Op>
@@ -664,7 +719,7 @@ namespace cfgo
         {
             static_assert(none_is_void_read_op<Ops...>(), "None of other_ops could be asiochan::ops::read<void>, use first_op instead.");
         }
-        if (is_valid_close_chan(close_ch))
+        if (close_ch)
         {
             co_await close_ch.init_timer();
             if (auto waiter_opt = close_ch.get_waiter())
@@ -924,6 +979,7 @@ namespace cfgo
     }
 
     template<asiochan::writable_channel_type<void> CH>
+    requires requires (CH ch) {ch.try_write();}
     void chan_must_write(CH ch)
     {
         if (!ch.try_write())
@@ -932,25 +988,65 @@ namespace cfgo
         }
     }
 
+    template<asiochan::writable_channel_type<void> CH>
+    requires requires (CH ch) {
+        requires std::is_void_v<decltype(ch.write())>;
+    }
+    void chan_must_write(CH ch)
+    {
+        ch.write();
+    }
+
     template<typename T, asiochan::writable_channel_type<std::decay_t<T>> CH>
+    requires requires (CH ch, T && value) {ch.try_write(std::forward<T>(value));}
     void chan_must_write(CH ch, T && value)
     {
+
         if (!ch.try_write(std::forward<T>(value)))
         {
             throw cpptrace::runtime_error("Write chan failed. This should not happened.");
         }
     }
 
+    template<typename T, asiochan::writable_channel_type<std::decay_t<T>> CH>
+    requires requires (CH ch, T && value) {
+        requires std::is_void_v<decltype(ch.write(std::forward<T>(value)))>;
+    }
+    void chan_must_write(CH ch, T && value)
+    {
+        ch.write(std::forward<T>(value));
+    }
+
     template<asiochan::writable_channel_type<void> CH>
+    requires requires (CH ch) {ch.try_write();}
     void chan_maybe_write(CH ch)
     {
         std::ignore = ch.try_write();
     }
 
+    template<asiochan::writable_channel_type<void> CH>
+    requires requires (CH ch) {
+        requires std::is_void_v<decltype(ch.write())>;
+    }
+    void chan_maybe_write(CH ch)
+    {
+        ch.write();
+    }
+
     template<typename T, asiochan::writable_channel_type<std::decay_t<T>> CH>
+    requires requires (CH ch, T && value) {ch.try_write(std::forward<T>(value));}
     void chan_maybe_write(CH ch, T && value)
     {
         std::ignore = ch.try_write(std::forward<T>(value));
+    }
+
+    template<typename T, asiochan::writable_channel_type<std::decay_t<T>> CH>
+    requires requires (CH ch, T && value) {
+        requires std::is_void_v<decltype(ch.write(std::forward<T>(value)))>;
+    }
+    void chan_maybe_write(CH ch, T && value)
+    {
+        ch.write(std::forward<T>(value));
     }
 
     template<typename T>
@@ -1675,10 +1771,10 @@ namespace cfgo
         unique_void_chan m_ch {};
         std::atomic<bool> m_done;
         LazyBox() {}
+        template<typename TT>
+        struct enable_make_unique : public LazyBox<TT> {};
     public:
         static auto create() -> std::unique_ptr<LazyBox<T>> {
-            template<T>
-            struct enable_make_unique<T> : public LazyBox<T> {};
             return std::make_unique<enable_make_unique<T>>();
         }
         void init(const T & data) {
@@ -1694,7 +1790,7 @@ namespace cfgo
             bool done = m_done.load(std::memory_order::acquire);
             if (!done)
             {
-                m_data = std::move<T>(data);
+                *m_data = std::move(data);
                 m_done.store(true, std::memory_order::release);
                 chan_must_write(m_ch);
             }
@@ -1712,5 +1808,12 @@ namespace cfgo
 
 } // namespace cfgo
 
+
+template<>
+struct std::hash<cfgo::close_chan> {
+    std::size_t operator()(const cfgo::close_chan & c) const {
+        return c.hash();
+    }
+};
 
 #endif

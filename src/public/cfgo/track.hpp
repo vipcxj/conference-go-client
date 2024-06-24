@@ -152,8 +152,12 @@ namespace cfgo
             ALL
         };
         Track(std::nullptr_t);
-        Track(const msg::Track & msg, WebrtcWPtr webrtc, int cache_capicity = DEFAULT_TRACK_CACHE_CAPICITY);
-        void prepare_track() const;
+        Track(const msg::Track & msg, int cache_capicity = DEFAULT_TRACK_CACHE_CAPICITY);
+        void prepare_track(
+            #ifdef CFGO_SUPPORT_GSTREAMER
+            GstSDPMessage *sdp
+            #endif
+        ) const;
         const std::string& type() const noexcept;
         const std::string& pub_id() const noexcept;
         const std::string& global_id() const noexcept;

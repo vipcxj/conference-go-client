@@ -42,48 +42,23 @@ namespace cfgo
 
         struct PeerBox {
             rtc::PeerConnection peer;
-            asiochan::unbounded_channel<std::shared_ptr<rtc::Track>> track_ch {};
-
-            PeerBox(const rtc::Configuration & conf): peer(conf) {}
-        };
-
-        class Webrtc : public std::enable_shared_from_this<Webrtc>, public cfgo::Webrtc
-        {
-        private:
-            using PeerBoxPtr = std::shared_ptr<PeerBox>;
-            using TrackPtr = std::shared_ptr<rtc::Track>;
-            static constexpr const int PEER_STATE_NEW = 0;
-            static constexpr const int PEER_STATE_INITIALIZING = 1;
-            static constexpr const int PEER_STATE_INITIALIZED = 2;
-
-            cfgo::SignalPtr m_signal;
-            cfgo::Configuration m_conf;
-            PeerBoxPtr m_peer_box;
-            mutex m_peer_mutex;
-            close_chan m_peer_signal {nullptr};
-            int m_peer_state {PEER_STATE_NEW};
-            Logger m_logger = Log::instance().create_logger(Log::Category::WEBRTC);
-            cfgo::AsyncMutex m_neg_mux {};
-            std::vector<close_chan> m_signal_closers {};
-            mutex m_signal_closers_mux {};
-            std::vector<close_chan> m_peer_closers {};
-            mutex m_peer_closers_mux {};
-
             #ifdef CFGO_SUPPORT_GSTREAMER
             GstSDPMessage * m_gst_sdp {nullptr};
             #endif
+            asiochan::unbounded_channel<std::shared_ptr<rtc::Track>> track_ch {};
+            std::unordered_set<close_chan> m_peer_closers {};
+            mutex m_peer_closers_mux {};
 
-            [[nodiscard]] auto negotiate(close_chan closer, PeerBoxPtr peer, int sdp_id, bool active) -> asio::awaitable<void>;
-            static void add_candidate(PeerBoxPtr box, cfgo::Signal::CandMsgPtr msg) {
-                if (msg->op == msg::CandidateOp::ADD)
+            PeerBox(const rtc::Configuration & conf): peer(conf) {}
+            ~PeerBox() {
+                #ifdef CFGO_SUPPORT_GSTREAMER
+                if (m_gst_sdp)
                 {
-                    box->peer.addRemoteCandidate(rtc::Candidate {msg->candidate.candidate, msg->candidate.sdpMid});
+                    gst_sdp_message_free(m_gst_sdp);
                 }
+                #endif
             }
-            void register_peer_closer(close_chan closer) {
-                std::lock_guard g(m_peer_closers_mux);
-                m_peer_closers.push_back(std::move(closer));
-            }
+
             void update_gst_sdp(const rtc::Description & desc)
             {
                 #ifdef CFGO_SUPPORT_GSTREAMER
@@ -98,6 +73,54 @@ namespace cfgo
                     throw cpptrace::runtime_error("unable to generate the gst sdp message from local desc.");
                 }
                 #endif
+            }
+
+            void register_peer_closer(const close_chan & closer) {
+                std::lock_guard g(m_peer_closers_mux);
+                m_peer_closers.insert(closer);
+            }
+
+            void unregister_peer_closer(const close_chan & closer) {
+                std::lock_guard g(m_peer_closers_mux);
+                m_peer_closers.erase(closer);
+            }
+
+            void process_peer_closers(std::string_view reason) {
+                std::lock_guard g(m_peer_closers_mux);
+                for (auto && closer : m_peer_closers) {
+                    std::string the_reason {reason};
+                    closer.close_no_except(std::move(the_reason));
+                }
+            }
+        };
+        using PeerBoxPtr = std::shared_ptr<PeerBox>;
+
+        class Webrtc : public std::enable_shared_from_this<Webrtc>, public cfgo::Webrtc
+        {
+        private:
+            using TrackPtr = std::shared_ptr<rtc::Track>;
+            static constexpr const int PEER_STATE_NEW = 0;
+            static constexpr const int PEER_STATE_INITIALIZING = 1;
+            static constexpr const int PEER_STATE_INITIALIZED = 2;
+
+            cfgo::SignalPtr m_signal;
+            close_chan m_closer;
+            cfgo::Configuration m_conf;
+            PeerBoxPtr m_peer_box;
+            mutex m_peer_mutex;
+            close_chan m_peer_signal {nullptr};
+            int m_peer_state {PEER_STATE_NEW};
+            Logger m_logger = Log::instance().create_logger(Log::Category::WEBRTC);
+            cfgo::AsyncMutex m_neg_mux {};
+            std::vector<close_chan> m_peer_closers {};
+            mutex m_peer_closers_mux {};
+
+            [[nodiscard]] auto negotiate(close_chan closer, PeerBoxPtr peer, int sdp_id, bool active) -> asio::awaitable<void>;
+            static void add_candidate(PeerBoxPtr box, cfgo::Signal::CandMsgPtr msg) {
+                if (msg->op == msg::CandidateOp::ADD)
+                {
+                    box->peer.addRemoteCandidate(rtc::Candidate {msg->candidate.candidate, msg->candidate.sdpMid});
+                }
             }
             auto access_peer_box(close_chan closer) -> asio::awaitable<PeerBoxPtr> {
                 auto self = shared_from_this();
@@ -141,6 +164,7 @@ namespace cfgo
                             {
                                 if (state == rtc::PeerConnection::State::Closed || state == rtc::PeerConnection::State::Failed)
                                 {
+                                    box->process_peer_closers(std::format("peer state changed to {}", peer_state_to_str(state)));
                                     {
                                         std::lock_guard g(self->m_peer_mutex);
                                         if (self->m_peer_box == box)
@@ -187,20 +211,14 @@ namespace cfgo
                 } while (true);
             }
         public:
-            Webrtc(SignalPtr signal, const cfgo::Configuration & conf):
+            Webrtc(close_chan closer, SignalPtr signal, const cfgo::Configuration & conf):
+                m_closer(closer.create_child()),
                 m_signal(signal), 
                 m_conf(conf)
             {
                 m_conf.m_rtc_config.disableAutoNegotiation = true;
             }
-            ~Webrtc() {
-                #ifdef CFGO_SUPPORT_GSTREAMER
-                if (m_gst_sdp)
-                {
-                    gst_sdp_message_free(m_gst_sdp);
-                }
-                #endif
-            }
+            ~Webrtc() noexcept override {}
             [[nodiscard]] auto subscribe(close_chan closer, Pattern pattern, std::vector<std::string> req_types) -> asio::awaitable<SubPtr> override;
             [[nodiscard]] auto unsubscribe(close_chan closer, std::string sub_id) -> asio::awaitable<void> override;
         };
@@ -241,8 +259,8 @@ namespace cfgo
                 if (active)
                 {
                     asiochan::unbounded_channel<Signal::SdpMsgPtr> desc_ch;
-                    box->peer.onLocalDescription([self, desc_ch, sdp_id](const rtc::Description & desc) {
-                        self->update_gst_sdp(desc);
+                    box->peer.onLocalDescription([box, desc_ch, sdp_id](const rtc::Description & desc) {
+                        box->update_gst_sdp(desc);
                         auto req_sdp = std::make_shared<msg::SdpMessage>();
                         req_sdp->mid = sdp_id;
                         req_sdp->sdp = desc;
@@ -291,9 +309,9 @@ namespace cfgo
                         }
                         cands->clear();
                         asiochan::unbounded_channel<Signal::SdpMsgPtr> answer_sdp_ch {};
-                        box->peer.onLocalDescription([self, answer_sdp_ch, sdp_id](const rtc::Description & desc) {
+                        box->peer.onLocalDescription([box, answer_sdp_ch, sdp_id](const rtc::Description & desc) {
                             assert(desc.type() == rtc::Description::Type::Answer || desc.type() == rtc::Description::Type::Pranswer);
-                            self->update_gst_sdp(desc);
+                            box->update_gst_sdp(desc);
                             auto req_sdp = std::make_shared<msg::SdpMessage>();
                             req_sdp->mid = sdp_id;
                             req_sdp->sdp = desc;
@@ -316,6 +334,7 @@ namespace cfgo
         }
 
         auto Webrtc::subscribe(close_chan closer, Pattern pattern, std::vector<std::string> req_types) -> asio::awaitable<SubPtr> {
+            closer = closer.create_child();
             auto self = shared_from_this();
             self->m_logger->debug("subscribing...");
             auto sub_req_msg = std::make_unique<msg::SubscribeMessage>();
@@ -331,10 +350,14 @@ namespace cfgo
             }
             for (auto && track : sub_res->tracks)
             {
-                sub_ptr->tracks().emplace_back(track, self);
+                sub_ptr->tracks().push_back(std::make_shared<cfgo::Track>(track));
             }
             std::vector<cfgo::TrackPtr> uncompleted_tracks(sub_ptr->tracks());
             auto box = co_await self->access_peer_box(closer);
+            box->register_peer_closer(closer);
+            DEFER({
+                box->unregister_peer_closer(closer);
+            });
             co_await self->negotiate(closer, box, sub_res->sdpId, false);
             while (!uncompleted_tracks.empty())
             {
@@ -345,16 +368,29 @@ namespace cfgo
                 if (iter != uncompleted_tracks.end())
                 {
                     (*iter)->track() = rtc_track;
-                    (*iter)->prepare_track();
+                    (*iter)->prepare_track(
+                        #ifdef CFGO_SUPPORT_GSTREAMER
+                        box->m_gst_sdp
+                        #endif
+                    );
                     uncompleted_tracks.erase(iter, uncompleted_tracks.end());
                 }
             }
             co_return sub_ptr;
         }
+
+        auto Webrtc::unsubscribe(close_chan closer, std::string sub_id) -> asio::awaitable<void> {
+            auto self = shared_from_this();
+            auto sub_req_msg = std::make_unique<msg::SubscribeMessage>();
+            sub_req_msg->op = msg::SubscribeOp::REMOVE;
+            sub_req_msg->id = sub_id;
+            co_await self->m_signal->subsrcibe(closer, std::move(sub_req_msg));
+            co_return;
+        }
     } // namespace impl
 
-    WebrtcUPtr make_webrtc(SignalPtr signal, const cfgo::Configuration & conf) {
-        return std::make_unique<impl::Webrtc>(std::move(signal), conf);
+    WebrtcUPtr make_webrtc(close_chan closer, SignalPtr signal, const cfgo::Configuration & conf) {
+        return std::make_unique<impl::Webrtc>(std::move(closer), std::move(signal), conf);
     }
     
 } // namespace cfgo

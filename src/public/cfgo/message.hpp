@@ -36,9 +36,9 @@ namespace cfgo
         };
 
         NLOHMANN_JSON_SERIALIZE_ENUM(CandidateOp, {
-            {UNKNOWN, nullptr},
-            {ADD, "add"},
-            {END, "end"},
+            {CandidateOp::UNKNOWN, nullptr},
+            {CandidateOp::ADD, "add"},
+            {CandidateOp::END, "end"},
         })
 
         struct RTCIceCandidateInit {
@@ -68,7 +68,7 @@ namespace cfgo
             Router router {};
             std::uint32_t msgId {};
 
-            NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(PingMessage, router, msgId)
+            NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(PongMessage, router, msgId)
         };
 
         struct ParticipantJoinMessage {

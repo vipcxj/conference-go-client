@@ -33,11 +33,18 @@ namespace cfgo
     struct RawSignal {
         virtual ~RawSignal() = 0;
         virtual auto connect(close_chan closer) -> asio::awaitable<void> = 0;
-        virtual auto run(close_chan closer) -> asio::awaitable<void> = 0;
         virtual auto send_msg(close_chan closer, RawSigMsgUPtr msg) -> asio::awaitable<nlohmann::json> = 0;
         virtual std::uint64_t on_msg(RawSigMsgCb cb) = 0;
         virtual void off_msg(std::uint64_t) = 0;
         virtual auto create_msg(const std::string_view & evt, nlohmann::json && payload, bool ack) -> RawSigMsgUPtr = 0;
+        /**
+         * used to get the close event, close this closer will not close the raw signal.
+         */
+        virtual close_chan get_notify_closer() = 0;
+        /**
+         * close the raw signal.
+         */
+        virtual void close() = 0;
     };
     using RawSignalPtr = std::shared_ptr<RawSignal>;
     using RawSignalUPtr = std::unique_ptr<RawSignal>;
@@ -96,9 +103,17 @@ namespace cfgo
         std::string url;
         std::string token;
         duration_t ready_timeout;
+
+        static WebsocketSignalConfigure from_conf(const Configuration & conf) {
+            return WebsocketSignalConfigure{
+                .url = conf.m_signal_url,
+                .token = conf.m_token,
+                .ready_timeout = conf.m_ready_timeout,
+            };
+        }
     };
 
-    auto make_websocket_signal(const WebsocketSignalConfigure & conf) -> SignalUPtr;
+    auto make_websocket_signal(close_chan closer, const WebsocketSignalConfigure & conf) -> SignalUPtr;
 
 } // namespace cfgo
 

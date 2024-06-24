@@ -13,16 +13,12 @@ namespace cfgo
 {
     namespace impl
     {
-        Track::Track(const msg::Track & msg, WebrtcWPtr webrtc, int cache_capicity): 
+        Track::Track(const msg::Track & msg, int cache_capicity): 
             m_logger(Log::instance().create_logger(Log::Category::TRACK)),
-            m_weak_webrtc(webrtc),
             m_rtp_cache(cache_capicity), 
             m_rtcp_cache(cache_capicity), 
             m_inited(false), 
             m_seq(0)
-        #ifdef CFGO_SUPPORT_GSTREAMER
-        , m_gst_media(nullptr)
-        #endif
         {
             type = msg.type;
             pubId = msg.pubId;
@@ -36,9 +32,9 @@ namespace cfgo
         Track::~Track()
         {
             #ifdef CFGO_SUPPORT_GSTREAMER
-            if (m_gst_media)
+            if (m_sdp)
             {
-                gst_sdp_media_free(m_gst_media);
+                gst_sdp_message_free(m_sdp);
             }
             #endif
         }
@@ -60,24 +56,23 @@ namespace cfgo
         }
         #endif
 
-        void Track::prepare_track() {
-            if (auto webrtc = m_weak_webrtc.lock())
+        void Track::prepare_track(
+            #ifdef CFGO_SUPPORT_GSTREAMER
+            GstSDPMessage *sdp
+            #endif
+        ) {
+            #ifdef CFGO_SUPPORT_GSTREAMER
+            auto mid = track->mid();
+            if (m_sdp)
             {
-                #ifdef CFGO_SUPPORT_GSTREAMER
-                auto mid = track->mid();
-                auto sdp = webrtc->gst_sdp();
-                auto media = get_media_from_sdp(sdp, mid.c_str());
-                if (!media)
-                {
-                    throw cpptrace::runtime_error("unable to find the media from sdp message with mid " + mid);
-                }
-                auto ret = gst_sdp_media_copy(media, &m_gst_media);
-                if (ret != GstSDPResult::GST_SDP_OK)
-                {
-                    throw cpptrace::runtime_error("unable to clone the media from sdp message with mid " + mid);
-                }
-                #endif
+                gst_sdp_message_free(m_sdp);
             }
+            auto ret = gst_sdp_message_copy(sdp, &m_sdp);
+            if (ret != GstSDPResult::GST_SDP_OK)
+            {
+                throw cpptrace::runtime_error("unable to copy the sdp message with mid " + mid);
+            }
+            #endif
             if (!track)
             {
                 throw cpptrace::logic_error("Before call receive_msg, a valid rtc::track should be set.");
@@ -88,6 +83,12 @@ namespace cfgo
             track->onError(std::bind(&Track::on_track_error, this, std::placeholders::_1));
             m_inited = true;
         }
+
+        #ifdef CFGO_SUPPORT_GSTREAMER
+        const GstSDPMedia * Track::gst_media() const {
+            return get_media_from_sdp(m_sdp, track->mid().c_str());
+        }
+        #endif
 
         uint32_t Track::makesure_min_seq()
         {
@@ -359,25 +360,24 @@ namespace cfgo
         void * Track::get_gst_caps(int pt) const
         {
 #ifdef CFGO_SUPPORT_GSTREAMER
-            if (!m_gst_media)
+            if (!m_sdp)
             {
-                throw cpptrace::logic_error("No gst sdp media found, please call bind_client at first.");
+                throw cpptrace::logic_error("No gst sdp found, please call bind_client at first.");
             }
-            if (auto webrtc = m_weak_webrtc.lock())
+            auto media = gst_media();
+            if (!media)
             {
-                auto caps = gst_sdp_media_get_caps_from_media(m_gst_media, pt);
-                gst_sdp_message_attributes_to_caps(webrtc->gst_sdp(), caps);
-                gst_sdp_media_attributes_to_caps(m_gst_media, caps);
-                auto s = gst_caps_get_structure(caps, 0);
-                gst_structure_set_name(s, "application/x-rtp");
-                if (!g_strcmp0 (gst_structure_get_string (s, "encoding-name"), "ULPFEC"))
-                    gst_structure_set (s, "is-fec", G_TYPE_BOOLEAN, TRUE, NULL);
-                return caps;
+                throw cpptrace::runtime_error(fmt::format("Unable to extract the sdp media from sdp message with mid {}.", track->mid()));
             }
-            else
-            {
-                return nullptr;
-            }
+            
+            auto caps = gst_sdp_media_get_caps_from_media(media, pt);
+            gst_sdp_message_attributes_to_caps(m_sdp, caps);
+            gst_sdp_media_attributes_to_caps(media, caps);
+            auto s = gst_caps_get_structure(caps, 0);
+            gst_structure_set_name(s, "application/x-rtp");
+            if (!g_strcmp0 (gst_structure_get_string (s, "encoding-name"), "ULPFEC"))
+                gst_structure_set (s, "is-fec", G_TYPE_BOOLEAN, TRUE, NULL);
+            return caps;
 #else
             throw cpptrace::logic_error("The gstreamer support is disabled, so to_gst_caps method is not supported. Please enable gstreamer support by set cmake GSTREAMER_SUPPORT option to ON.");
 #endif

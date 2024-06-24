@@ -26,6 +26,7 @@ typedef struct
 {
     const char * signal_url;
     const char * token;
+    const unsigned long ready_timeout;
     const rtcConfiguration * rtc_config;
     bool thread_safe;
     int execution_context_handle;

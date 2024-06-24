@@ -513,6 +513,10 @@ namespace cfgo
         }
     }
 
+    WeakCloseSignal CloseSignal::weak() const noexcept {
+            return WeakCloseSignal{m_state};
+    }
+
     auto CloseSignal::get_waiter() const -> std::optional<Waiter>
     {
         if (m_state)

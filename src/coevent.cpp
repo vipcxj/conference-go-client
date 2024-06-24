@@ -48,7 +48,7 @@ namespace cfgo {
                 if (timeout.count() > 0)
                 {
                     self->m_timer = std::make_unique<asio::steady_timer>(asio::get_associated_executor(handler), timeout);
-                    self->m_timer->async_wait([self](const std::error_code& err) {
+                    self->m_timer->async_wait([self](auto && err) {
                         if (err == asio::error::operation_aborted)
                         {
                             return;

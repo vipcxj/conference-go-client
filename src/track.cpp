@@ -4,9 +4,17 @@
 namespace cfgo
 {
     Track::Track(std::nullptr_t state): ImplBy(std::shared_ptr<impl::Track>(nullptr)) {}
-    Track::Track(const msg::Track & msg, WebrtcWPtr webrtc, int cache_capicity): ImplBy<impl::Track>(msg, std::move(webrtc), cache_capicity) {}
-    void Track::prepare_track() const {
-        impl()->prepare_track();
+    Track::Track(const msg::Track & msg, int cache_capicity): ImplBy<impl::Track>(msg, cache_capicity) {}
+    void Track::prepare_track(
+        #ifdef CFGO_SUPPORT_GSTREAMER
+        GstSDPMessage *sdp
+        #endif
+    ) const {
+        impl()->prepare_track(
+            #ifdef CFGO_SUPPORT_GSTREAMER
+            sdp
+            #endif
+        );
     }
     const std::string& Track::type() const noexcept {
         return impl()->type;

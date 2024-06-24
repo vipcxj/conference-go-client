@@ -134,9 +134,9 @@ namespace cfgo
     class WeakableImplBy : public ImplBy<T>
     {
     public:
-        using ImplBy::ImplBy;
+        using ImplBy<T>::ImplBy;
         WeakImplBy<Self, T> weak() {
-            weak_impl_ptr<T> weak_impl = impl();
+            weak_impl_ptr<T> weak_impl = this->impl();
             return WeakImplBy {std::move(weak_impl)};
         }
     };
@@ -170,7 +170,7 @@ namespace cfgo
     private:
         using map_type = std::unordered_map<K, T>;
         map_type m_map;
-        std::vector<std::reference_wrapper<K>> m_to_removes;
+        std::vector<K> m_to_removes;
         std::atomic_bool m_looping;
     public:
         std::unordered_map<K, T> * operator  -> () & noexcept {
@@ -184,14 +184,14 @@ namespace cfgo
         }
         void complete_loop() noexcept {
             m_looping.store(true, std::memory_order::release);
-            for(auto k : m_to_removes) {
+            for(auto && k : m_to_removes) {
                 m_map.erase(k);
             }
             m_to_removes.clear();
         }
         map_type::iterator lazy_remove(map_type::const_iterator iter) {
             if (m_looping.load(std::memory_order::acquire)) {
-                m_to_removes.push_back(std::ref(iter->first));
+                m_to_removes.push_back(iter->first);
                 return iter;
             } else {
                 return m_map.erase(iter);
@@ -199,18 +199,18 @@ namespace cfgo
         }
         map_type::iterator lazy_remove(map_type::iterator iter) {
             if (m_looping.load(std::memory_order::acquire)) {
-                m_to_removes.push_back(std::ref(iter->first));
+                m_to_removes.push_back(iter->first);
                 return iter;
             } else {
                 return m_map.erase(iter);
             }
         }
-        map_type::size_type lazy_remove(const key_type& __x) {
+        map_type::size_type lazy_remove(const K & key) {
             if (m_looping.load(std::memory_order::acquire)) {
-                m_to_removes.push_back(std::ref(__x));
-                return iter;
+                m_to_removes.push_back(key);
+                return 0;
             } else {
-                return m_map.erase(__x);
+                return m_map.erase(key);
             }
         }
     };

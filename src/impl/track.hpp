@@ -12,7 +12,6 @@
 #include "cfgo/track.hpp"
 #include "cfgo/async.hpp"
 #include "cfgo/log.hpp"
-#include "cfgo/webrtc.hpp"
 #include "boost/circular_buffer.hpp"
 #ifdef CFGO_SUPPORT_GSTREAMER
 #include "gst/sdp/sdp.h"
@@ -53,19 +52,23 @@ namespace cfgo
             OnDataCb m_on_data = nullptr;
             Statistics m_statistics;
             OnStatCb m_on_stat = nullptr;
-            WebrtcWPtr m_weak_webrtc;
             asiochan::channel<void, 1> m_msg_notify;
             asiochan::channel<void, 1> m_open_notify;
             asiochan::channel<void, 1> m_closed_notify;
             #ifdef CFGO_SUPPORT_GSTREAMER
-            GstSDPMedia *m_gst_media;
+            GstSDPMessage *m_sdp = nullptr;
+            const GstSDPMedia * gst_media() const;
             #endif
 
-            Track(const msg::Track & msg, WebrtcWPtr webrtc, int cache_capicity);
+            Track(const msg::Track & msg, int cache_capicity);
             ~Track();
 
             uint32_t makesure_min_seq();
-            void prepare_track();
+            void prepare_track(
+                #ifdef CFGO_SUPPORT_GSTREAMER
+                GstSDPMessage *sdp
+                #endif
+            );
             void on_track_msg(rtc::binary data);
             void on_track_open();
             void on_track_closed();

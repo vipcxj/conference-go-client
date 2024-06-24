@@ -1016,9 +1016,9 @@ namespace cfgo
 
         auto CfgoSrc::_loop() -> asio::awaitable<void>
         {
+            auto self = shared_from_this();
             try
             {
-                auto self = shared_from_this();
                 CFGO_SELF_DEBUG("Subscribing...");
                 TryOption sub_try_option;
                 guint64 sub_timeout;
@@ -1092,12 +1092,6 @@ namespace cfgo
                 {
                     CFGO_SELF_DEBUG(fmt::format("The loop task is canceled because {}", e.what()));
                 }
-                if (auto owner = _safe_get_owner())
-                {
-                    CFGO_SELF_DEBUG("Send eos event to the owner.");
-                    gst_element_send_event(owner.get(), gst_event_new_eos());
-                    CFGO_SELF_DEBUG("after send eos event");
-                }
             }
             catch(...)
             {
@@ -1107,6 +1101,12 @@ namespace cfgo
                     auto error = steal_shared_g_error(create_gerror_from_except(std::current_exception(), true));
                     cfgo_error_submit(owner.get(), error.get());
                 }
+            }
+            if (auto owner = _safe_get_owner())
+            {
+                CFGO_SELF_DEBUG("Send eos event to the owner.");
+                gst_element_send_event(owner.get(), gst_event_new_eos());
+                CFGO_SELF_DEBUG("after send eos event");
             }
             co_return;
         }

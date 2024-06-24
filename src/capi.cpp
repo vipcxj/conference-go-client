@@ -170,11 +170,11 @@ namespace cfgo
         }
         if (conf->rtc_config)
         {
-            return {conf->signal_url, conf->token, rtc_config_to_cpp(conf->rtc_config), conf->thread_safe};
+            return {conf->signal_url, conf->token, std::chrono::milliseconds{conf->ready_timeout},  rtc_config_to_cpp(conf->rtc_config), conf->thread_safe};
         }
         else
         {
-            return {conf->signal_url, conf->token, conf->thread_safe};
+            return {conf->signal_url, conf->token, std::chrono::milliseconds{conf->ready_timeout}, conf->thread_safe};
         }
     }
 
