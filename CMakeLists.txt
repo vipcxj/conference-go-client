@@ -55,6 +55,7 @@ set(MY_PUBLIC_HEADERS
     "${H_PUBLIC_PATH}/black_magic.hpp"
     #"${H_PUBLIC_PATH}/sio_helper.hpp"
     "${H_PUBLIC_PATH}/spd_helper.hpp"
+    "${H_PUBLIC_PATH}/token.hpp"
     "${H_PUBLIC_PATH}/error.hpp"
     "${H_PUBLIC_PATH}/cbridge.hpp"
     "${H_PUBLIC_PATH}/capi.h"
@@ -112,6 +113,7 @@ set(MY_SOURCES
     #"${SRC_PATH}/sio_helper.cpp"
     "${SRC_PATH}/rtc_helper.cpp"
     "${SRC_PATH}/signal.cpp"
+    "${SRC_PATH}/token.cpp"
     "${SRC_PATH}/coevent.cpp"
     "${SRC_PATH}/utils.cpp"
     "${SRC_PATH}/capi.cpp"
@@ -147,7 +149,7 @@ endif()
 message(STATUS "find packages")
 find_path(ASIOCHAN_INCLUDE_DIRS "asiochan/asiochan.hpp")
 find_package(proxy CONFIG REQUIRED)
-find_package(Boost REQUIRED)
+find_package(Boost REQUIRED COMPONENTS url)
 #find_package(CxxUrl CONFIG REQUIRED)
 find_package(cpptrace CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
@@ -238,7 +240,7 @@ target_include_directories(cfgoclient PUBLIC
 )
 target_include_directories(cfgoclient PRIVATE ${H_PRIVATE} ${SRC_PATH})
 target_link_libraries(cfgoclient PUBLIC yamc)
-target_link_libraries(cfgoclient PRIVATE msft_proxy)
+target_link_libraries(cfgoclient PRIVATE Boost::url)
 #target_link_libraries(cfgoclient PRIVATE chmike::CxxUrl)
 fix_win_version_warn(cfgoclient)
 link_common_libs(cfgoclient)
@@ -294,6 +296,13 @@ if(ENABLE_TEST)
     target_link_libraries(test-async PRIVATE cfgoclient)
     target_link_libraries(test-async PRIVATE GTest::gtest GTest::gtest_main GTest::gmock GTest::gmock_main)
     add_test(NAME test-async COMMAND test-async)
+
+    add_executable(test-signal "${MY_TEST_PATH}/signal.cpp")
+    include_asiochan(test-signal)
+    fix_win_version_warn(test-signal)
+    target_link_libraries(test-signal PRIVATE cfgoclient)
+    target_link_libraries(test-signal PRIVATE GTest::gtest GTest::gtest_main GTest::gmock GTest::gmock_main)
+    add_test(NAME test-signal COMMAND test-signal)
 
     if(GSTREAMER_SUPPORT)
         find_package(CUDAToolkit)

@@ -1,4 +1,5 @@
 #include "cfgo/signal.hpp"
+#include "cfgo/utils.hpp"
 #include "boost/beast/core.hpp"
 #include "boost/beast/websocket.hpp"
 #include "boost/lexical_cast.hpp"
@@ -102,7 +103,7 @@ namespace cfgo
              }
         }
 
-        class WSMsg : public cfgo::RawSigMsg {
+        class WSMsg : public enable_shared<cfgo::RawSigMsg, WSMsg> {
         private:
             std::uint64_t m_msg_id;
             std::string m_evt;
@@ -115,6 +116,7 @@ namespace cfgo
                 m_payload(std::move(payload)),
                 m_ack(ack)
             {}
+            ~WSMsg() {}
             static auto create(std::uint64_t msg_id, std::string_view evt, nlohmann::json && payload, bool ack) -> RawSigMsgUPtr {
                 return std::make_unique<WSMsg>(msg_id, evt, std::move(payload), ack);
             }
@@ -132,20 +134,21 @@ namespace cfgo
             }
         };
 
-        class WSAcker : public RawSigAcker {
+        class WSAcker : public enable_shared<RawSigAcker, WSAcker> {
         private:
-            std::weak_ptr<WebsocketRawSignal> m_signal;
+            derived_weak_ptr<cfgo::RawSignal, WebsocketRawSignal> m_signal;
             std::uint64_t m_msg_id;
         public:
-            WSAcker(std::weak_ptr<WebsocketRawSignal> signal, std::uint64_t msg_id): m_signal(signal), m_msg_id(msg_id) {}
-            static auto create(std::weak_ptr<WebsocketRawSignal> signal, std::uint64_t msg_id) -> RawSigAckerPtr {
+            WSAcker(derived_weak_ptr<cfgo::RawSignal, WebsocketRawSignal> signal, std::uint64_t msg_id): m_signal(signal), m_msg_id(msg_id) {}
+            ~WSAcker() {}
+            static auto create(derived_weak_ptr<cfgo::RawSignal, WebsocketRawSignal> signal, std::uint64_t msg_id) -> RawSigAckerPtr {
                 return std::make_shared<WSAcker>(signal, msg_id);
             }
             auto ack(nlohmann::json payload) -> asio::awaitable<void> override;
             auto ack(std::unique_ptr<ServerErrorObject> eo) -> asio::awaitable<void> override;
         };
 
-        struct WSFakeAcker : public RawSigAcker {
+        struct WSFakeAcker : public enable_shared<RawSigAcker, WSFakeAcker> {
             auto ack(nlohmann::json payload) -> asio::awaitable<void> override {
                 co_return;
             }
@@ -156,7 +159,7 @@ namespace cfgo
         static WSFakeAcker WS_FAKE_ACKER {};
         static RawSigAckerPtr WS_FAKE_ACKER_PTR { std::shared_ptr<WSFakeAcker>{}, &WS_FAKE_ACKER };
 
-        auto make_acker(std::weak_ptr<WebsocketRawSignal> signal, bool ack, std::uint64_t msg_id) {
+        auto make_acker(derived_weak_ptr<cfgo::RawSignal, WebsocketRawSignal> signal, bool ack, std::uint64_t msg_id) {
             if (ack) {
                 return WSAcker::create(signal, msg_id);
             } else {
@@ -186,7 +189,7 @@ namespace cfgo
             }
         };
 
-        class WebsocketRawSignal : public cfgo::RawSignal, public std::enable_shared_from_this<WebsocketRawSignal> {
+        class WebsocketRawSignal : public enable_shared<cfgo::RawSignal, WebsocketRawSignal> {
         private:
             using WSAckChan = unique_chan<WSAck>;
 
@@ -231,6 +234,7 @@ namespace cfgo
                 m_closer(closer.create_child()),
                 m_config(conf)
             {}
+            ~WebsocketRawSignal() {}
             static auto create(close_chan closer, const WebsocketSignalConfigure & conf) -> RawSignalUPtr {
                 return std::make_unique<WebsocketRawSignal>(std::move(closer), conf);
             }
@@ -458,7 +462,7 @@ namespace cfgo
     }
 
     namespace impl {
-        class SignalMsg : public cfgo::SignalMsg {
+        class SignalMsg : public enable_shared<cfgo::SignalMsg, SignalMsg> {
             std::string m_evt;
             bool m_ack;
             std::string m_room;
@@ -474,6 +478,7 @@ namespace cfgo
                 m_payload(std::move(payload)),
                 m_msg_id(msg_id)
             {}
+            ~SignalMsg() {}
             static auto create(std::string_view evt, bool ack, std::string_view room, std::string_view to, std::string && payload, std::uint32_t msg_id) -> cfgo::SignalMsgUPtr {
                 return std::make_unique<SignalMsg>(evt, ack, room, to, std::move(payload), msg_id);
             }
@@ -501,7 +506,7 @@ namespace cfgo
         };
 
         class Signal;
-        class SignalAcker : public cfgo::SignalAcker, public std::enable_shared_from_this<SignalAcker> {
+        class SignalAcker : public enable_shared<cfgo::SignalAcker, SignalAcker> {
             std::weak_ptr<Signal> m_signal;
             SignalMsgPtr m_msg;
         public:
@@ -509,6 +514,7 @@ namespace cfgo
                 m_signal(std::move(signal)),
                 m_msg(std::move(msg))
             {}
+            ~SignalAcker() {}
             static SignalAckerPtr create(std::weak_ptr<Signal> signal, SignalMsgPtr msg) {
                 return std::make_shared<SignalAcker>(std::move(signal), std::move(msg));
             }
@@ -516,7 +522,7 @@ namespace cfgo
             auto ack(close_chan closer, std::unique_ptr<ServerErrorObject> err) -> asio::awaitable<void> override;
         };
 
-        class Signal : public cfgo::Signal, public std::enable_shared_from_this<Signal> {
+        class Signal : public enable_shared<cfgo::Signal, Signal> {
         private:
             using CustomAckMessagePtr = std::unique_ptr<msg::CustomAckMessage>;
             using UserInfoPtr = std::unique_ptr<msg::UserInfoMessage>;
@@ -539,6 +545,7 @@ namespace cfgo
             std::unordered_map<std::string, std::shared_ptr<LazyBox<SubscribedMsgPtr>>> m_subscribed_msgs {};
         public:
             Signal(RawSignalUPtr raw_signal): m_raw_signal(std::move(raw_signal)) {}
+            ~Signal() {}
             auto connect(close_chan closer) -> asio::awaitable<void> override;
             auto send_candidate(close_chan closer, CandMsgPtr msg) -> asio::awaitable<void>;
             std::uint64_t on_candidate(CandCb cb) override {

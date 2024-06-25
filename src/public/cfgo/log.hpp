@@ -50,6 +50,8 @@ namespace cfgo
 
 } // namespace cfgo
 
+#define CFGO_DEFAULT_LOGGER cfgo::Log::instance().default_logger()
+
 #define _CFGO_VARARGS_NUM(...) std::tuple_size<decltype(std::make_tuple(__VA_ARGS__))>::value
 
 #define _CFGO_LOG_LOGGER_LOG(LOGGER, LVL, MTH, FMT, ...) \
@@ -62,7 +64,7 @@ do { \
 
 #define _CFGO_LOG_DEFAULT_LOG(LVL, MTH, FMT, ...) \
 do { \
-    const auto & logger = cfgo::Log::instance().default_logger(); \
+    const auto & logger = CFGO_DEFAULT_LOGGER; \
     if (logger->should_log(cfgo::LogLevel::LVL)) \
     { \
         logger->MTH(FMT CFGO_VA_ARGS(__VA_ARGS__)); \

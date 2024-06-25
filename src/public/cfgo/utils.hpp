@@ -214,6 +214,30 @@ namespace cfgo
             }
         }
     };
+
+    template <class Base, class Derived>
+    struct derived_weak_ptr {
+        std::weak_ptr<Base> m_ptr;
+
+        std::shared_ptr<Derived> lock() const noexcept {
+            return std::static_pointer_cast<Derived>(m_ptr.lock());
+        }
+    };
+
+    template <class Base, class Derived>
+    struct enable_shared : public Base
+    {
+        std::shared_ptr<Derived> shared_from_this()
+        {
+            return std::static_pointer_cast<Derived>(
+                Base::shared_from_this());
+        }
+
+        derived_weak_ptr<Base, Derived> weak_from_this()
+        {
+            return derived_weak_ptr<Base, Derived>{Base::weak_from_this()};
+        }
+    };
 }
 
 #endif
