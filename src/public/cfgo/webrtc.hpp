@@ -26,12 +26,14 @@ namespace cfgo
         virtual ~Webrtc() = 0;
         virtual auto subscribe(close_chan closer, Pattern pattern, std::vector<std::string> req_types) -> asio::awaitable<SubPtr> = 0;
         virtual auto unsubscribe(close_chan closer, std::string sub_id) -> asio::awaitable<void> = 0;
+        virtual close_chan get_notify_closer() = 0;
+        virtual void close();
     };
     using WebrtcPtr = std::shared_ptr<Webrtc>;
     using WebrtcWPtr = std::weak_ptr<Webrtc>;
     using WebrtcUPtr = std::unique_ptr<Webrtc>;
 
-    WebrtcUPtr make_webrtc(close_chan closer, SignalPtr signal, const cfgo::Configuration & conf);
+    WebrtcPtr make_webrtc(close_chan closer, SignalPtr signal, const cfgo::Configuration & conf);
     
 } // namespace cfgo
 

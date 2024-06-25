@@ -93,6 +93,8 @@ TEST(Signal, SendMessage) {
                 signal1->off_message(cb_id_1);
                 signal2->off_message(cb_id_2);
             });
+            co_await signal1->connect(closer);
+            co_await signal2->connect(closer);
             auto ack_from_2 = co_await signal1->send_message(closer, signal1->create_message("hello", false, "room", "2", "world from 1"));
             EXPECT_EQ("", ack_from_2);
             auto ack_from_1 = co_await signal2->send_message(closer, signal2->create_message("hello", false, "room", "1", "world from 2"));

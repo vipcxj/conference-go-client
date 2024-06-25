@@ -12,7 +12,7 @@
 
 namespace cfgo
 {
-    struct RawSigMsg : public std::enable_shared_from_this<RawSigMsg> {
+    struct RawSigMsg {
         virtual ~RawSigMsg() = 0;
         virtual std::string_view evt() const noexcept = 0;
         virtual const nlohmann::json & payload() const noexcept = 0;
@@ -23,7 +23,7 @@ namespace cfgo
     using RawSigMsgPtr = std::shared_ptr<RawSigMsg>;
     using RawSigMsgUPtr = std::unique_ptr<RawSigMsg>;
 
-    struct RawSigAcker : public std::enable_shared_from_this<RawSigAcker> {
+    struct RawSigAcker {
         virtual ~RawSigAcker() = 0;
         virtual auto ack(nlohmann::json payload) -> asio::awaitable<void> = 0;
         virtual auto ack(std::unique_ptr<ServerErrorObject> err) -> asio::awaitable<void> = 0;
@@ -32,7 +32,7 @@ namespace cfgo
     using RawSigAckerPtr = std::shared_ptr<RawSigAcker>;
     using RawSigMsgCb = std::function<asio::awaitable<bool>(RawSigMsgPtr, RawSigAckerPtr acker)>;
 
-    struct RawSignal : public std::enable_shared_from_this<RawSignal> {
+    struct RawSignal {
         virtual ~RawSignal() = 0;
         virtual auto connect(close_chan closer) -> asio::awaitable<void> = 0;
         virtual auto send_msg(close_chan closer, RawSigMsgUPtr msg) -> asio::awaitable<nlohmann::json> = 0;
@@ -52,7 +52,7 @@ namespace cfgo
     using RawSignalPtr = std::shared_ptr<RawSignal>;
     using RawSignalUPtr = std::unique_ptr<RawSignal>;
 
-    struct SignalMsg : public std::enable_shared_from_this<SignalMsg> {
+    struct SignalMsg {
         virtual ~SignalMsg() = 0;
         virtual std::string_view evt() const noexcept = 0;
         virtual bool ack() const noexcept = 0;
@@ -66,7 +66,7 @@ namespace cfgo
     using SignalMsgPtr = std::shared_ptr<SignalMsg>;
     using SignalMsgUPtr = std::unique_ptr<SignalMsg>;
 
-    struct SignalAcker : public std::enable_shared_from_this<SignalAcker> {
+    struct SignalAcker {
         virtual ~SignalAcker() = 0;
         virtual auto ack(close_chan closer, std::string payload) -> asio::awaitable<void> = 0;
         virtual auto ack(close_chan closer, std::unique_ptr<ServerErrorObject> err) -> asio::awaitable<void> = 0;
@@ -76,7 +76,7 @@ namespace cfgo
 
     using SigMsgCb = std::function<asio::awaitable<bool>(SignalMsgPtr, SignalAckerPtr)>;
 
-    struct Signal : public std::enable_shared_from_this<Signal> {
+    struct Signal {
         using CandMsgPtr = std::shared_ptr<msg::CandidateMessage>;
         using CandCb = std::function<bool(CandMsgPtr)>;
         using SdpMsgPtr = std::shared_ptr<msg::SdpMessage>;
@@ -119,7 +119,7 @@ namespace cfgo
         }
     };
 
-    auto make_websocket_signal(close_chan closer, const WebsocketSignalConfigure & conf) -> SignalUPtr;
+    auto make_websocket_signal(close_chan closer, const WebsocketSignalConfigure & conf) -> SignalPtr;
 
 } // namespace cfgo
 

@@ -7,6 +7,7 @@
 #include <unordered_set>
 #include <unordered_map>
 #include <atomic>
+#include <type_traits>
 #include "cfgo/asio.hpp"
 #include "cfgo/alias.hpp"
 #include "cfgo/common.hpp"
@@ -1784,6 +1785,339 @@ namespace cfgo
             }
             co_await chan_read_or_throw<void>(m_ch, closer);
             co_return std::forward<T>(m_data.value());
+        }
+    };
+
+    enum class AsyncInitState {
+        NEW,
+        RUNNING,
+        DONE,
+    };
+
+    template<typename T>
+    class InitableBox {
+    public:
+        using FUN = std::function<asio::awaitable<T>(close_chan)>;
+    private:
+        mutable AsyncInitState m_state {AsyncInitState::NEW};
+        mutable FUN m_task;
+        mutable std::vector<unique_void_chan> m_busy_chs {};
+        mutable std::variant<T, std::exception_ptr> m_res {};
+        bool m_thread_safe {true};
+        mutable mutex m_mux {};
+
+        std::unique_lock<mutex> lock_guard() const {
+            if (m_thread_safe) {
+                return std::unique_lock<mutex>(m_mux);
+            } else {
+                return std::unique_lock<mutex>(m_mux, std::defer_lock);
+            }
+        }
+
+    public:
+        template<typename F>
+        requires (std::is_convertible_v<std::decay_t<F>, FUN>)
+        InitableBox(F && fun) : m_task(std::forward<F>(fun)) {}
+
+        template<typename F>
+        requires (std::is_nothrow_convertible_v<std::decay_t<F>, FUN>)
+        InitableBox(F && fun) noexcept : m_task(std::forward<F>(fun)) {}
+
+        std::optional<T> value(bool throwable = true) const {
+            auto guard = lock_guard();
+            if (std::holds_alternative<std::exception_ptr>(m_res))
+            {
+                if (throwable)
+                {
+                    std::rethrow_exception(std::get<std::exception_ptr>(m_res));
+                }
+                else
+                {
+                    return std::nullopt;
+                }
+            }
+            else
+            {
+                return std::make_optional(std::get<T>(m_res));
+            }
+        }
+
+        auto operator()(close_chan closer) -> asio::awaitable<T> {
+            do
+            {
+                bool run = false;
+                bool done = false;
+                unique_void_chan busy_ch;
+                {
+                    auto guard = lock_guard();
+                    if (m_state == AsyncInitState::NEW)
+                    {
+                        m_state = AsyncInitState::RUNNING;
+                        run = true;
+                    }
+                    else if (m_state == AsyncInitState::DONE)
+                    {
+                        done = true;
+                    }
+                    else
+                    {
+                        busy_ch = unique_void_chan {};
+                        m_busy_chs.push_back(busy_ch);
+                    }
+                }
+                if (done)
+                {
+                    if (std::holds_alternative<std::exception_ptr>(m_res))
+                    {
+                        std::rethrow_exception(std::get<std::exception_ptr>(m_res));
+                    }
+                    else 
+                    {
+                        co_return std::get<T>(m_res);
+                    }
+                }
+                if (run)
+                {
+                    try
+                    {
+                        m_res = co_await m_task(closer);
+                    }
+                    catch(...)
+                    {
+                        m_res = std::current_exception();
+                    }
+                    {
+                        auto guard = lock_guard();
+                        m_state = AsyncInitState::DONE;
+                        for (auto && ch : m_busy_chs) {
+                            chan_must_write(ch);
+                        }
+                        m_busy_chs.clear();
+                    }
+                }
+                else
+                {
+                    co_await chan_read_or_throw<void>(busy_ch, closer);
+                }
+            } while (true);
+        }
+    };
+
+    template<>
+    class InitableBox<void> {
+    public:
+        using FUN = std::function<asio::awaitable<void>(close_chan)>;
+    private:
+        mutable AsyncInitState m_state {AsyncInitState::NEW};
+        mutable FUN m_task;
+        mutable std::vector<unique_void_chan> m_busy_chs {};
+        mutable std::exception_ptr m_err {nullptr};
+        bool m_thread_safe {true};
+        mutable mutex m_mux {};
+
+        std::unique_lock<mutex> lock_guard() const {
+            if (m_thread_safe) {
+                return std::unique_lock<mutex>(m_mux);
+            } else {
+                return std::unique_lock<mutex>(m_mux, std::defer_lock);
+            }
+        }
+
+    public:
+        template<typename F>
+        requires (std::is_convertible_v<std::decay_t<F>, FUN>)
+        InitableBox(F && fun) : m_task(std::forward<F>(fun)) {}
+
+        template<typename F>
+        requires (std::is_nothrow_convertible_v<std::decay_t<F>, FUN>)
+        InitableBox(F && fun) noexcept : m_task(std::forward<F>(fun)) {}
+
+        bool value(bool throwable = true) const {
+            auto guard = lock_guard();
+            if (m_err)
+            {
+                if (throwable)
+                {
+                    std::rethrow_exception(m_err);
+                }
+                else
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                return true;
+            }
+        }
+
+        auto operator()(close_chan closer) const -> asio::awaitable<void> {
+            do
+            {
+                bool run = false;
+                bool done = false;
+                unique_void_chan busy_ch;
+                {
+                    auto guard = lock_guard();
+                    if (m_state == AsyncInitState::NEW)
+                    {
+                        m_state = AsyncInitState::RUNNING;
+                        run = true;
+                    }
+                    else if (m_state == AsyncInitState::DONE)
+                    {
+                        done = true;
+                    }
+                    else
+                    {
+                        busy_ch = unique_void_chan {};
+                        m_busy_chs.push_back(busy_ch);
+                    }
+                }
+                if (done)
+                {
+                    if (m_err)
+                    {
+                        std::rethrow_exception(m_err);
+                    }
+                    else 
+                    {
+                        co_return;
+                    }
+                }
+                if (run)
+                {
+                    try
+                    {
+                        co_await m_task(closer);
+                    }
+                    catch(...)
+                    {
+                        m_err = std::current_exception();
+                    }
+                    {
+                        auto guard = lock_guard();
+                        m_state = AsyncInitState::DONE;
+                        for (auto && ch : m_busy_chs) {
+                            chan_must_write(ch);
+                        }
+                        m_busy_chs.clear();
+                    }
+                }
+                else
+                {
+                    co_await chan_read_or_throw<void>(busy_ch, closer);
+                }
+            } while (true);
+        }
+    };
+
+    template<>
+    class InitableBox<std::exception_ptr> {
+    public:
+        using FUN = std::function<asio::awaitable<std::exception_ptr>(close_chan)>;
+    private:
+        mutable AsyncInitState m_state {AsyncInitState::NEW};
+        mutable FUN m_task;
+        mutable std::vector<unique_void_chan> m_busy_chs {};
+        mutable std::tuple<std::exception_ptr, std::exception_ptr> m_res {};
+        bool m_thread_safe {true};
+        mutable mutex m_mux {};
+
+        std::unique_lock<mutex> lock_guard() const {
+            if (m_thread_safe) {
+                return std::unique_lock<mutex>(m_mux);
+            } else {
+                return std::unique_lock<mutex>(m_mux, std::defer_lock);
+            }
+        }
+
+    public:
+        template<typename F>
+        requires (std::is_convertible_v<std::decay_t<F>, FUN>)
+        InitableBox(F && fun) : m_task(std::forward<F>(fun)) {}
+
+        template<typename F>
+        requires (std::is_nothrow_convertible_v<std::decay_t<F>, FUN>)
+        InitableBox(F && fun) noexcept : m_task(std::forward<F>(fun)) {}
+
+        std::optional<std::exception_ptr> value(bool throwable = true) const {
+            auto err = std::get<1>(m_res);
+            if (err)
+            {
+                if (throwable) {
+                    std::rethrow_exception(err);
+                }
+                else
+                {
+                    return std::nullopt;
+                }
+            }
+            else
+            {
+                return std::get<0>(m_res);
+            }
+        }
+
+        auto operator()(close_chan closer) const -> asio::awaitable<std::exception_ptr> {
+            do
+            {
+                bool run = false;
+                bool done = false;
+                unique_void_chan busy_ch;
+                {
+                    auto guard = lock_guard();
+                    if (m_state == AsyncInitState::NEW)
+                    {
+                        m_state = AsyncInitState::RUNNING;
+                        run = true;
+                    }
+                    else if (m_state == AsyncInitState::DONE)
+                    {
+                        done = true;
+                    }
+                    else
+                    {
+                        busy_ch = unique_void_chan {};
+                        m_busy_chs.push_back(busy_ch);
+                    }
+                }
+                if (done)
+                {
+                    auto err = std::get<1>(m_res);
+                    if (err)
+                    {
+                        std::rethrow_exception(err);
+                    }
+                    else 
+                    {
+                        co_return std::get<0>(m_res);
+                    }
+                }
+                if (run)
+                {
+                    try
+                    {
+                        m_res = std::make_tuple(co_await m_task(closer), nullptr);
+                    }
+                    catch(...)
+                    {
+                        m_res = std::make_tuple(nullptr, std::current_exception());
+                    }
+                    {
+                        auto guard = lock_guard();
+                        m_state = AsyncInitState::DONE;
+                        for (auto && ch : m_busy_chs) {
+                            chan_must_write(ch);
+                        }
+                        m_busy_chs.clear();
+                    }
+                }
+                else
+                {
+                    co_await chan_read_or_throw<void>(busy_ch, closer);
+                }
+            } while (true);
         }
     };
 

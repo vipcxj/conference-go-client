@@ -106,14 +106,10 @@ namespace cfgo
             cfgo::SignalPtr m_signal;
             close_chan m_closer;
             cfgo::Configuration m_conf;
-            PeerBoxPtr m_peer_box;
-            mutex m_peer_mutex;
-            close_chan m_peer_signal {nullptr};
-            int m_peer_state {PEER_STATE_NEW};
             Logger m_logger = Log::instance().create_logger(Log::Category::WEBRTC);
             cfgo::AsyncMutex m_neg_mux {};
-            std::vector<close_chan> m_peer_closers {};
-            mutex m_peer_closers_mux {};
+            InitableBox<PeerBoxPtr> m_access_peer;
+            
 
             [[nodiscard]] auto negotiate(close_chan closer, PeerBoxPtr peer, int sdp_id, bool active) -> asio::awaitable<void>;
             static void add_candidate(PeerBoxPtr box, cfgo::Signal::CandMsgPtr msg) {
@@ -122,105 +118,76 @@ namespace cfgo
                     box->peer.addRemoteCandidate(rtc::Candidate {msg->candidate.candidate, msg->candidate.sdpMid});
                 }
             }
-            auto access_peer_box(close_chan closer) -> asio::awaitable<PeerBoxPtr> {
+            auto _access_peer_box(close_chan closer) -> asio::awaitable<PeerBoxPtr> {
                 auto self = shared_from_this();
-                bool do_init = false;
-                bool done = false;
-                unique_void_chan done_ch {};
-                PeerBoxPtr box;
-                close_chan peer_signal = nullptr;
-                close_chan worker_closer = nullptr;
-                do
+                if (self->m_closer.is_closed())
                 {
+                    throw CancelError(self->m_closer);
+                }
+                auto box = std::make_shared<PeerBox>(m_conf.m_rtc_config);
+                box->peer.onStateChange([box, weak_self = self->weak_from_this(), weak_closer = self->m_closer.weak()](rtc::PeerConnection::State state) {
+                    if (auto self = weak_self.lock())
                     {
-                        std::lock_guard g(self->m_peer_mutex);
-                        if (self->m_peer_state == PEER_STATE_NEW)
+                        if (state == rtc::PeerConnection::State::Closed || state == rtc::PeerConnection::State::Failed)
                         {
-                            box = std::make_shared<PeerBox>(m_conf.m_rtc_config);
-                            self->m_peer_box = box;
-                            self->m_peer_state = PEER_STATE_INITIALIZING;
-                            self->m_peer_signal = close_chan {};
-                            worker_closer = close_chan {};
-                            do_init = true;
-                        }
-                        else if (self->m_peer_state == PEER_STATE_INITIALIZED)
-                        {
-                            done = true;
-                            box = self->m_peer_box;
-                        }
-                        else
-                        {
-                            peer_signal = self->m_peer_signal;
-                        }
-                    }
-                    if (done)
-                    {
-                        co_return box;
-                    }
-                    if (do_init)
-                    {
-                        box->peer.onStateChange([box, weak_self = self->weak_from_this(), weak_closer = worker_closer.weak()](rtc::PeerConnection::State state) {
-                            if (auto self = weak_self.lock())
+                            box->process_peer_closers(std::format("peer state changed to {}", peer_state_to_str(state)));
+                            if (auto closer = weak_closer.lock())
                             {
-                                if (state == rtc::PeerConnection::State::Closed || state == rtc::PeerConnection::State::Failed)
-                                {
-                                    box->process_peer_closers(std::format("peer state changed to {}", peer_state_to_str(state)));
-                                    {
-                                        std::lock_guard g(self->m_peer_mutex);
-                                        if (self->m_peer_box == box)
-                                        {
-                                            self->m_peer_box.reset();
-                                            self->m_peer_state = PEER_STATE_NEW;
-                                        }
-                                    }
-                                    if (auto closer = weak_closer.lock())
-                                    {
-                                        closer.close(std::format("peer state changed to {}", peer_state_to_str(state)));
-                                    }
-                                }
+                                closer.close(std::format("peer state changed to {}", peer_state_to_str(state)));
                             }
-                        });
-                        asiochan::unbounded_channel<rtc::Candidate> cand_ch {};
-                        box->peer.onLocalCandidate([cand_ch](rtc::Candidate candidate) {
-                            chan_must_write(cand_ch, std::move(candidate));
-                        });
-                        box->peer.onTrack([box](TrackPtr track) {
-                            chan_must_write(box->track_ch, track);
-                        });
-                        auto executor = co_await asio::this_coro::executor;
-                        asio::co_spawn(executor, log_error(fix_async_lambda([self, closer = std::move(worker_closer), cand_ch]() -> asio::awaitable<void> {
-                            while (true)
-                            {
-                                auto cand = co_await chan_read_or_throw<rtc::Candidate>(cand_ch, closer);
-                                auto msg = std::make_unique<msg::CandidateMessage>();
-                                msg->op = msg::CandidateOp::ADD;
-                                msg->candidate.candidate = cand.candidate();
-                                msg->candidate.sdpMid = cand.mid();
-                                co_await self->m_signal->send_candidate(closer, std::move(msg));
-                            }
-                        }), self->m_logger), asio::detached);
-                    }
-                    else
-                    {
-                        auto waiter = peer_signal.get_waiter();
-                        if (waiter)
-                        {
-                            co_await chan_read_or_throw<void>(waiter.value(), closer);
                         }
                     }
-                } while (true);
+                });
+                asiochan::unbounded_channel<rtc::Candidate> cand_ch {};
+                box->peer.onLocalCandidate([cand_ch](rtc::Candidate candidate) {
+                    chan_must_write(cand_ch, std::move(candidate));
+                });
+                box->peer.onTrack([box](TrackPtr track) {
+                    chan_must_write(box->track_ch, track);
+                });
+                auto executor = co_await asio::this_coro::executor;
+                asio::co_spawn(executor, log_error(fix_async_lambda([self, closer = self->m_closer, cand_ch]() -> asio::awaitable<void> {
+                    while (true)
+                    {
+                        auto cand = co_await chan_read_or_throw<rtc::Candidate>(cand_ch, closer);
+                        auto msg = std::make_unique<msg::CandidateMessage>();
+                        msg->op = msg::CandidateOp::ADD;
+                        msg->candidate.candidate = cand.candidate();
+                        msg->candidate.sdpMid = cand.mid();
+                        co_await self->m_signal->send_candidate(closer, std::move(msg));
+                    }
+                }), self->m_logger), asio::detached);
+                co_return box;
+            }
+
+            auto access_peer_box(close_chan closer) -> asio::awaitable<PeerBoxPtr> {
+                return m_access_peer(std::move(closer));
             }
         public:
             Webrtc(close_chan closer, SignalPtr signal, const cfgo::Configuration & conf):
                 m_closer(closer.create_child()),
                 m_signal(signal), 
-                m_conf(conf)
+                m_conf(conf),
+                m_access_peer([this](auto closer) {
+                    return _access_peer_box(std::move(closer));
+                })
             {
                 m_conf.m_rtc_config.disableAutoNegotiation = true;
             }
             ~Webrtc() noexcept override {}
             [[nodiscard]] auto subscribe(close_chan closer, Pattern pattern, std::vector<std::string> req_types) -> asio::awaitable<SubPtr> override;
             [[nodiscard]] auto unsubscribe(close_chan closer, std::string sub_id) -> asio::awaitable<void> override;
+            close_chan get_notify_closer() override {
+                return m_closer.create_child();
+            }
+            void close() override {
+                m_closer.close_no_except();
+                auto box = m_access_peer.value(false);
+                if (box)
+                {
+                    (*box)->peer.close();
+                }
+            }
         };
 
         auto Webrtc::negotiate(close_chan closer, PeerBoxPtr box, int sdp_id, bool active) -> asio::awaitable<void> {
@@ -389,8 +356,8 @@ namespace cfgo
         }
     } // namespace impl
 
-    WebrtcUPtr make_webrtc(close_chan closer, SignalPtr signal, const cfgo::Configuration & conf) {
-        return std::make_unique<impl::Webrtc>(std::move(closer), std::move(signal), conf);
+    WebrtcPtr make_webrtc(close_chan closer, SignalPtr signal, const cfgo::Configuration & conf) {
+        return std::make_shared<impl::Webrtc>(std::move(closer), std::move(signal), conf);
     }
     
 } // namespace cfgo
