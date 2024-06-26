@@ -46,7 +46,7 @@ namespace cfgo
         defers_when_fail &operator=(const defers_when_fail &) = delete;
         defers_when_fail &operator=(defers_when_fail &&) = delete;
 
-        defers_when_fail() : m_success(false), m_i(0) {}
+        defers_when_fail() {}
         ~defers_when_fail()
         {
             if (m_success)
@@ -74,8 +74,8 @@ namespace cfgo
         }
 
     private:
-        int m_i;
-        bool m_success;
+        int m_i {0};
+        bool m_success {false};
         std::unordered_map<int, std::function<void()>> m_cleanups;
     };
 

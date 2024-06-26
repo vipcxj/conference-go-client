@@ -46,6 +46,44 @@ void do_async(std::function<asio::awaitable<void>()> func, bool multithread = tr
     }
 }
 
+TEST(Signal, JoinAndLeave) {
+    do_async([]() -> asio::awaitable<void> {
+        using namespace cfgo;
+        close_chan closer {};
+        auto token = co_await get_token("1", "root.*", false);
+        auto signal = make_websocket_signal(closer, cfgo::WebsocketSignalConfigure{
+            .url = fmt::format("ws://{}:{}/ws", SIGNAL_HOST, SIGNAL_PORT),
+            .token = token,
+            .ready_timeout = std::chrono::seconds(30),
+        });
+        {
+            co_await signal->join(closer, "root.room1");
+            EXPECT_EQ(1, signal->rooms().size());
+            EXPECT_TRUE(signal->rooms().contains("root.room1"));
+        }
+        {
+            std::vector<std::string> rooms_arg({"root.room3", "root.room2"});
+            co_await signal->join(closer, std::move(rooms_arg));
+            std::unordered_set<std::string> expect({"root.room1", "root.room2", "root.room3"});
+            EXPECT_EQ(expect, signal->rooms());
+        }
+        {
+            EXPECT_THROW({
+                try
+                {
+                    co_await signal->join(closer, "room1");
+                }
+                catch(const std::exception& e)
+                {
+                    EXPECT_STREQ("no right for room room1", e.what());
+                    throw;
+                }
+                
+            }, ServerError);
+        }
+    });
+}
+
 TEST(Signal, SendMessage) {
     do_async([]() -> asio::awaitable<void> {
         using namespace cfgo;

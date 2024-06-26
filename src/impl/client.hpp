@@ -35,9 +35,9 @@ namespace cfgo {
         private:
             Logger m_logger;
             Configuration m_config;
+            close_chan m_closer;
             cfgo::SignalPtr m_signal;
             cfgo::WebrtcPtr m_webrtc;
-            close_chan m_closer;
             IoCtxPtr m_io_ctx;
             Strand m_strand;
         public:

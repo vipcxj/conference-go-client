@@ -87,6 +87,11 @@ namespace cfgo
 
         virtual ~Signal() = 0;
         virtual auto connect(close_chan closer) -> asio::awaitable<void> = 0;
+        virtual auto join(close_chan closer, std::string room) -> asio::awaitable<void> = 0;
+        virtual auto join(close_chan closer, std::vector<std::string> rooms) -> asio::awaitable<void> = 0;
+        virtual auto leave(close_chan closer, std::string room) -> asio::awaitable<void> = 0;
+        virtual auto leave(close_chan closer, std::vector<std::string> rooms) -> asio::awaitable<void> = 0;
+        virtual auto rooms() const -> const std::unordered_set<std::string> & = 0;
         virtual auto send_candidate(close_chan closer, CandMsgPtr msg) -> asio::awaitable<void> = 0;
         virtual std::uint64_t on_candidate(CandCb cb) = 0;
         virtual void off_candidate(std::uint64_t id) = 0;

@@ -20,13 +20,13 @@ namespace cfgo {
         using TimerPtr = std::unique_ptr<asio::steady_timer>;
     private:
         int m_times;
-        mutex m_mutex;
-        std::atomic_bool m_done;
-        std::exception_ptr m_exception;
-        cfgo::unique_function<void(std::exception_ptr)> m_handler;
-        TimerPtr m_timer;
+        mutex m_mutex {};
+        std::atomic_bool m_done {false};
+        std::exception_ptr m_exception {};
+        cfgo::unique_function<void(std::exception_ptr)> m_handler {};
+        TimerPtr m_timer {};
     protected:
-        CoEvent(int times = 1) noexcept: m_times(times), m_exception(), m_handler(), m_timer(), m_mutex(), m_done(false) {}
+        CoEvent(int times = 1) noexcept: m_times(times) {}
         CoEvent(const CoEvent&) = delete;
         CoEvent& operator = (const CoEvent&) = delete;
     public:

@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.21)
 project(conference-go-client)
 #set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+add_compile_options($<$<CXX_COMPILER_ID:GNU>:-Wreorder>)
+
 include(GNUInstallDirs)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -300,6 +302,7 @@ if(ENABLE_TEST)
     add_executable(test-signal "${MY_TEST_PATH}/signal.cpp")
     include_asiochan(test-signal)
     fix_win_version_warn(test-signal)
+    #target_compile_options(test-signal PRIVATE -freport-bug)
     target_link_libraries(test-signal PRIVATE cfgoclient)
     target_link_libraries(test-signal PRIVATE GTest::gtest GTest::gtest_main GTest::gmock GTest::gmock_main)
     add_test(NAME test-signal COMMAND test-signal)

@@ -32,14 +32,20 @@ namespace cfgo {
     class ServerError : public cpptrace::exception_with_message {
     private:
         ServerErrorObject m_seo;
+        bool m_trace;
     public:
         ServerError(ServerErrorObject && seo, bool trace = true) noexcept:
+            cpptrace::exception_with_message(std::string(seo.msg), trace ? cpptrace::detail::get_raw_trace_and_absorb() : cpptrace::raw_trace{}),
             m_seo(std::move(seo)),
-            cpptrace::exception_with_message(std::string(m_seo.msg), trace ? cpptrace::detail::get_raw_trace_and_absorb() : cpptrace::raw_trace{})
+            m_trace(trace)
         {}
 
         const ServerErrorObject & data() const noexcept {
             return m_seo;
+        }
+
+        const char* what() const noexcept override {
+            return m_trace ? cpptrace::exception_with_message::what() : message();
         }
     };
 

@@ -103,8 +103,8 @@ namespace cfgo
             static constexpr const int PEER_STATE_INITIALIZING = 1;
             static constexpr const int PEER_STATE_INITIALIZED = 2;
 
-            cfgo::SignalPtr m_signal;
             close_chan m_closer;
+            cfgo::SignalPtr m_signal;
             cfgo::Configuration m_conf;
             Logger m_logger = Log::instance().create_logger(Log::Category::WEBRTC);
             cfgo::AsyncMutex m_neg_mux {};
@@ -170,7 +170,7 @@ namespace cfgo
                 m_conf(conf),
                 m_access_peer([this](auto closer) {
                     return _access_peer_box(std::move(closer));
-                })
+                }, false)
             {
                 m_conf.m_rtc_config.disableAutoNegotiation = true;
             }

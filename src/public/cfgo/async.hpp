@@ -1528,7 +1528,7 @@ namespace cfgo
     {
     public:
         using PT = AsyncTasksBase<void, std::unordered_set<int>>;
-        AsyncTasksSome(std::uint32_t n, const close_chan & close_ch = INVALID_CLOSE_CHAN): m_target(n), PT(close_ch) {}
+        AsyncTasksSome(std::uint32_t n, const close_chan & close_ch = INVALID_CLOSE_CHAN): PT(close_ch), m_target(n) {}
         virtual ~AsyncTasksSome() = default;
     private:
         std::uint32_t m_target;
@@ -1803,7 +1803,7 @@ namespace cfgo
         mutable FUN m_task;
         mutable std::vector<unique_void_chan> m_busy_chs {};
         mutable std::variant<T, std::exception_ptr> m_res {};
-        bool m_thread_safe {true};
+        bool m_thread_safe;
         mutable mutex m_mux {};
 
         std::unique_lock<mutex> lock_guard() const {
@@ -1816,12 +1816,12 @@ namespace cfgo
 
     public:
         template<typename F>
-        requires (std::is_convertible_v<std::decay_t<F>, FUN>)
-        InitableBox(F && fun) : m_task(std::forward<F>(fun)) {}
+        requires (std::is_convertible_v<std::decay_t<F>, FUN> && !std::is_nothrow_convertible_v<std::decay_t<F>, FUN>)
+        InitableBox(F && fun, bool thread_safe = true) : m_task(std::forward<F>(fun)), m_thread_safe(thread_safe) {}
 
         template<typename F>
         requires (std::is_nothrow_convertible_v<std::decay_t<F>, FUN>)
-        InitableBox(F && fun) noexcept : m_task(std::forward<F>(fun)) {}
+        InitableBox(F && fun, bool thread_safe = true) noexcept : m_task(std::forward<F>(fun)), m_thread_safe(thread_safe) {}
 
         std::optional<T> value(bool throwable = true) const {
             auto guard = lock_guard();
@@ -1912,7 +1912,7 @@ namespace cfgo
         mutable FUN m_task;
         mutable std::vector<unique_void_chan> m_busy_chs {};
         mutable std::exception_ptr m_err {nullptr};
-        bool m_thread_safe {true};
+        bool m_thread_safe;
         mutable mutex m_mux {};
 
         std::unique_lock<mutex> lock_guard() const {
@@ -1925,12 +1925,12 @@ namespace cfgo
 
     public:
         template<typename F>
-        requires (std::is_convertible_v<std::decay_t<F>, FUN>)
-        InitableBox(F && fun) : m_task(std::forward<F>(fun)) {}
+        requires (std::is_convertible_v<std::decay_t<F>, FUN> && !std::is_nothrow_convertible_v<std::decay_t<F>, FUN>)
+        InitableBox(F && fun, bool thread_safe = true) : m_task(std::forward<F>(fun)), m_thread_safe(thread_safe) {}
 
         template<typename F>
         requires (std::is_nothrow_convertible_v<std::decay_t<F>, FUN>)
-        InitableBox(F && fun) noexcept : m_task(std::forward<F>(fun)) {}
+        InitableBox(F && fun, bool thread_safe = true) noexcept : m_task(std::forward<F>(fun)), m_thread_safe(thread_safe) {}
 
         bool value(bool throwable = true) const {
             auto guard = lock_guard();
@@ -2021,7 +2021,7 @@ namespace cfgo
         mutable FUN m_task;
         mutable std::vector<unique_void_chan> m_busy_chs {};
         mutable std::tuple<std::exception_ptr, std::exception_ptr> m_res {};
-        bool m_thread_safe {true};
+        bool m_thread_safe;
         mutable mutex m_mux {};
 
         std::unique_lock<mutex> lock_guard() const {
@@ -2034,12 +2034,12 @@ namespace cfgo
 
     public:
         template<typename F>
-        requires (std::is_convertible_v<std::decay_t<F>, FUN>)
-        InitableBox(F && fun) : m_task(std::forward<F>(fun)) {}
+        requires (std::is_convertible_v<std::decay_t<F>, FUN> && !std::is_nothrow_convertible_v<std::decay_t<F>, FUN>)
+        InitableBox(F && fun, bool thread_safe = true) : m_task(std::forward<F>(fun)), m_thread_safe(thread_safe) {}
 
         template<typename F>
         requires (std::is_nothrow_convertible_v<std::decay_t<F>, FUN>)
-        InitableBox(F && fun) noexcept : m_task(std::forward<F>(fun)) {}
+        InitableBox(F && fun, bool thread_safe = true) noexcept : m_task(std::forward<F>(fun)), m_thread_safe(thread_safe) {}
 
         std::optional<std::exception_ptr> value(bool throwable = true) const {
             auto err = std::get<1>(m_res);

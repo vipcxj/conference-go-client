@@ -26,11 +26,11 @@ namespace cfgo
     {
         Client::Client(const Configuration &config, const IoCtxPtr & io_ctx, close_chan closer):
             m_config(config),
-            m_io_ctx(io_ctx),
-            m_strand(asio::make_strand(m_io_ctx->get_executor())),
             m_closer(closer.create_child()),
             m_signal(make_websocket_signal(m_closer, WebsocketSignalConfigure::from_conf(m_config))),
-            m_webrtc(make_webrtc(m_closer, m_signal, m_config))
+            m_webrtc(make_webrtc(m_closer, m_signal, m_config)),
+            m_io_ctx(io_ctx),
+            m_strand(asio::make_strand(m_io_ctx->get_executor()))
         {}
 
         Client::~Client()

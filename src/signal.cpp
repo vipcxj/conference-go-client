@@ -237,7 +237,7 @@ namespace cfgo
                 m_config(conf),
                 m_connect([this](auto closer) {
                     return _connect(std::move(closer));
-                })
+                }, false)
             {}
             ~WebsocketRawSignal() noexcept {}
             static auto create(close_chan closer, const WebsocketSignalConfigure & conf) -> RawSignalPtr {
@@ -447,7 +447,7 @@ namespace cfgo
                 if (ack.err()) {
                     ServerErrorObject error {};
                     nlohmann::from_json(ack.consume(), error);
-                    throw ServerError(std::move(error));
+                    throw ServerError(std::move(error), false);
                 } else {
                     co_return ack.consume();
                 }
@@ -550,6 +550,7 @@ namespace cfgo
             LzayRemoveMap<std::uint64_t, cfgo::SigMsgCb> m_custom_msg_cbs {};
             std::unordered_map<CustomAckKey, unique_chan<CustomAckMessagePtr>> m_custom_ack_chans {};
             std::unordered_map<std::string, std::shared_ptr<LazyBox<SubscribedMsgPtr>>> m_subscribed_msgs {};
+            std::unordered_set<std::string> m_rooms {};
             InitableBox<void> m_connect;
 
             auto _connect(close_chan closer) -> asio::awaitable<void>;
@@ -558,11 +559,40 @@ namespace cfgo
                 m_raw_signal(std::move(raw_signal)),
                 m_connect([this](auto closer) {
                     return _connect(std::move(closer));
-                })
+                }, false)
             {}
             ~Signal() noexcept {}
             auto connect(close_chan closer) -> asio::awaitable<void> override {
                 return m_connect(std::move(closer));
+            }
+            auto join(close_chan closer, std::vector<std::string> rooms) -> asio::awaitable<void> override {
+                auto self = shared_from_this();
+                co_await self->connect(closer);
+                msg::JoinMessage msg {std::move(rooms)};
+                nlohmann::json js_msg;
+                nlohmann::to_json(js_msg, msg);
+                co_await self->m_raw_signal->send_msg(closer, self->m_raw_signal->create_msg("join", std::move(js_msg), true));
+                m_rooms.insert(std::make_move_iterator(msg.rooms.begin()), std::make_move_iterator(msg.rooms.end()));
+            }
+            auto join(close_chan closer, std::string room) -> asio::awaitable<void> override {
+                return join(std::move(closer), std::vector<std::string>{room});
+            }
+            auto leave(close_chan closer, std::vector<std::string> rooms) -> asio::awaitable<void> override {
+                auto self = shared_from_this();
+                co_await self->connect(closer);
+                msg::LeaveMessage msg {std::move(rooms)};
+                nlohmann::json js_msg;
+                nlohmann::to_json(js_msg, msg);
+                co_await self->m_raw_signal->send_msg(closer, self->m_raw_signal->create_msg("leave", std::move(js_msg), true));
+                for (auto && room : msg.rooms) {
+                    m_rooms.erase(room);
+                }
+            }
+            auto leave(close_chan closer, std::string room) -> asio::awaitable<void> override {
+                return leave(std::move(closer), std::vector<std::string>{room});
+            }
+            auto rooms() const -> const std::unordered_set<std::string> & {
+                return m_rooms;
             }
             auto send_candidate(close_chan closer, CandMsgPtr msg) -> asio::awaitable<void>;
             std::uint64_t on_candidate(CandCb cb) override {
@@ -732,6 +762,8 @@ namespace cfgo
             });
             co_await m_raw_signal->connect(closer);
             self->m_user_info = co_await chan_read_or_throw<UserInfoPtr>(ready_ch, closer);
+            self->m_rooms = std::unordered_set<std::string>(self->m_user_info->rooms.begin(), self->m_user_info->rooms.end());
+            self->m_user_info->rooms.clear();
             // asio::co_spawn(executor, fix_async_lambda(log_error([]() -> asio::awaitable<void> {
 
             // }, self->m_logger)), asio::detached);
