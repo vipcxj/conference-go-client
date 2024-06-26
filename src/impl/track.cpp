@@ -16,9 +16,7 @@ namespace cfgo
         Track::Track(const msg::Track & msg, int cache_capicity): 
             m_logger(Log::instance().create_logger(Log::Category::TRACK)),
             m_rtp_cache(cache_capicity), 
-            m_rtcp_cache(cache_capicity), 
-            m_inited(false), 
-            m_seq(0)
+            m_rtcp_cache(cache_capicity)
         {
             type = msg.type;
             pubId = msg.pubId;

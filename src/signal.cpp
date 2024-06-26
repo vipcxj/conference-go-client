@@ -193,6 +193,7 @@ namespace cfgo
         private:
             using WSAckChan = unique_chan<WSAck>;
 
+            close_chan m_closer;
             WebsocketSignalConfigure m_config;
             int ws_state = 0;
             Logger m_logger = Log::instance().create_logger(Log::Category::WEBSOCKET);
@@ -200,7 +201,6 @@ namespace cfgo
             std::optional<Websocket> m_ws {std::nullopt};
             std::uint64_t m_next_msg_id {1};
             std::uint64_t m_next_msg_cb_id {0};
-            close_chan m_closer;
             LzayRemoveMap<std::uint64_t, RawSigMsgCb> m_msg_cbs {};
             std::unordered_map<std::uint64_t, WSAckChan> m_ack_chs {};
 

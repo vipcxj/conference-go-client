@@ -43,18 +43,18 @@ namespace cfgo
             std::unordered_map<std::string, std::string> labels;
             std::shared_ptr<rtc::Track> track;
 
-            bool m_inited;
+            bool m_inited {false};
             Logger m_logger;
             mutex m_lock;
             MsgBuffer m_rtp_cache;
             MsgBuffer m_rtcp_cache;
-            uint32_t m_seq;
+            uint32_t m_seq {0};
             OnDataCb m_on_data = nullptr;
             Statistics m_statistics;
             OnStatCb m_on_stat = nullptr;
-            asiochan::channel<void, 1> m_msg_notify;
-            asiochan::channel<void, 1> m_open_notify;
-            asiochan::channel<void, 1> m_closed_notify;
+            unique_void_chan m_msg_notify;
+            unique_void_chan m_open_notify;
+            unique_void_chan m_closed_notify;
             #ifdef CFGO_SUPPORT_GSTREAMER
             GstSDPMessage *m_sdp = nullptr;
             const GstSDPMedia * gst_media() const;

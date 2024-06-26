@@ -9,14 +9,19 @@
 
 #include <memory>
 #include <vector>
+#include <unordered_set>
 
 namespace cfgo
 {
     struct RawSigMsg {
         virtual ~RawSigMsg() = 0;
+        [[nodiscard]]
         virtual std::string_view evt() const noexcept = 0;
+        [[nodiscard]]
         virtual const nlohmann::json & payload() const noexcept = 0;
+        [[nodiscard]]
         virtual bool ack() const noexcept = 0;
+        [[nodiscard]]
         virtual std::uint64_t msg_id() const noexcept = 0;
     };
     inline RawSigMsg::~RawSigMsg() {}
@@ -25,7 +30,9 @@ namespace cfgo
 
     struct RawSigAcker {
         virtual ~RawSigAcker() = 0;
+        [[nodiscard]]
         virtual auto ack(nlohmann::json payload) -> asio::awaitable<void> = 0;
+        [[nodiscard]]
         virtual auto ack(std::unique_ptr<ServerErrorObject> err) -> asio::awaitable<void> = 0;
     };
     inline RawSigAcker::~RawSigAcker() {}
@@ -34,14 +41,18 @@ namespace cfgo
 
     struct RawSignal {
         virtual ~RawSignal() = 0;
+        [[nodiscard]]
         virtual auto connect(close_chan closer) -> asio::awaitable<void> = 0;
+        [[nodiscard]]
         virtual auto send_msg(close_chan closer, RawSigMsgUPtr msg) -> asio::awaitable<nlohmann::json> = 0;
         virtual std::uint64_t on_msg(RawSigMsgCb cb) = 0;
         virtual void off_msg(std::uint64_t) = 0;
+        [[nodiscard]]
         virtual auto create_msg(const std::string_view & evt, nlohmann::json && payload, bool ack) -> RawSigMsgUPtr = 0;
         /**
          * used to get the close event, close this closer will not close the raw signal.
          */
+        [[nodiscard]]
         virtual close_chan get_notify_closer() = 0;
         /**
          * close the raw signal.
@@ -54,12 +65,19 @@ namespace cfgo
 
     struct SignalMsg {
         virtual ~SignalMsg() = 0;
+        [[nodiscard]]
         virtual std::string_view evt() const noexcept = 0;
+        [[nodiscard]]
         virtual bool ack() const noexcept = 0;
+        [[nodiscard]]
         virtual std::string_view room() const noexcept = 0;
+        [[nodiscard]]
         virtual std::string_view user() const noexcept = 0;
+        [[nodiscard]]
         virtual std::string_view payload() const noexcept = 0;
+        [[nodiscard]]
         virtual std::uint32_t msg_id() const noexcept = 0;
+        [[nodiscard]]
         virtual std::string && consume() noexcept = 0;
     };
     inline SignalMsg::~SignalMsg() {}
@@ -68,7 +86,9 @@ namespace cfgo
 
     struct SignalAcker {
         virtual ~SignalAcker() = 0;
+        [[nodiscard]]
         virtual auto ack(close_chan closer, std::string payload) -> asio::awaitable<void> = 0;
+        [[nodiscard]]
         virtual auto ack(close_chan closer, std::unique_ptr<ServerErrorObject> err) -> asio::awaitable<void> = 0;
     };
     inline SignalAcker::~SignalAcker() {}
@@ -86,21 +106,33 @@ namespace cfgo
         using SubscribeResultPtr = std::unique_ptr<msg::SubscribeResultMessage>;
 
         virtual ~Signal() = 0;
+        [[nodiscard]]
         virtual auto connect(close_chan closer) -> asio::awaitable<void> = 0;
+        [[nodiscard]]
         virtual auto join(close_chan closer, std::string room) -> asio::awaitable<void> = 0;
+        [[nodiscard]]
         virtual auto join(close_chan closer, std::vector<std::string> rooms) -> asio::awaitable<void> = 0;
+        [[nodiscard]]
         virtual auto leave(close_chan closer, std::string room) -> asio::awaitable<void> = 0;
+        [[nodiscard]]
         virtual auto leave(close_chan closer, std::vector<std::string> rooms) -> asio::awaitable<void> = 0;
+        [[nodiscard]]
         virtual auto rooms() const -> const std::unordered_set<std::string> & = 0;
+        [[nodiscard]]
         virtual auto send_candidate(close_chan closer, CandMsgPtr msg) -> asio::awaitable<void> = 0;
         virtual std::uint64_t on_candidate(CandCb cb) = 0;
         virtual void off_candidate(std::uint64_t id) = 0;
+        [[nodiscard]]
+        virtual auto send_sdp(close_chan closer, SdpMsgPtr msg) -> asio::awaitable<void> = 0;
         virtual std::uint64_t on_sdp(SdpCb cb) = 0;
         virtual void off_sdp(std::uint64_t id) = 0;
-        virtual auto send_sdp(close_chan closer, SdpMsgPtr msg) -> asio::awaitable<void> = 0;
+        [[nodiscard]]
         virtual auto subsrcibe(close_chan closer, SubscribeMsgPtr msg) -> asio::awaitable<SubscribeResultPtr> = 0;
+        [[nodiscard]]
         virtual auto wait_subscribed(close_chan closer, SubscribeResultPtr sub) -> asio::awaitable<SubscribedMsgPtr> = 0;
+        [[nodiscard]]
         virtual auto create_message(std::string_view evt, bool ack, std::string_view room, std::string_view to, std::string && payload) -> cfgo::SignalMsgUPtr = 0;
+        [[nodiscard]]
         virtual auto send_message(close_chan closer, SignalMsgUPtr msg) -> asio::awaitable<std::string> = 0;
         virtual std::uint64_t on_message(const SigMsgCb & cb) = 0;
         virtual std::uint64_t on_message(SigMsgCb && cb) = 0;
@@ -109,6 +141,8 @@ namespace cfgo
     inline Signal::~Signal() {}
     using SignalPtr = std::shared_ptr<Signal>;
     using SignalUPtr = std::unique_ptr<Signal>;
+    using Rooms = std::vector<std::string>;
+    using RoomSet = std::unordered_set<std::string>;
 
     struct WebsocketSignalConfigure {
         std::string url;

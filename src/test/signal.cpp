@@ -62,12 +62,13 @@ TEST(Signal, JoinAndLeave) {
             EXPECT_TRUE(signal->rooms().contains("root.room1"));
         }
         {
-            std::vector<std::string> rooms_arg({"root.room3", "root.room2"});
+            Rooms rooms_arg({"root.room3", "root.room2"});
             co_await signal->join(closer, std::move(rooms_arg));
-            std::unordered_set<std::string> expect({"root.room1", "root.room2", "root.room3"});
+            RoomSet expect({"root.room1", "root.room2", "root.room3"});
             EXPECT_EQ(expect, signal->rooms());
         }
         {
+            RoomSet expect({"root.room1", "root.room2", "root.room3"});
             EXPECT_THROW({
                 try
                 {
@@ -78,8 +79,49 @@ TEST(Signal, JoinAndLeave) {
                     EXPECT_STREQ("no right for room room1", e.what());
                     throw;
                 }
-                
             }, ServerError);
+            EXPECT_EQ(expect, signal->rooms());
+            EXPECT_THROW({
+                try
+                {
+                    Rooms rooms_arg({"room2", "room3"});
+                    co_await signal->join(closer, std::move(rooms_arg));
+                }
+                catch(const std::exception& e)
+                {
+                    EXPECT_STREQ("no right for room room2", e.what());
+                    throw;
+                }
+            }, ServerError);
+            EXPECT_EQ(expect, signal->rooms());
+            EXPECT_THROW({
+                try
+                {
+                    Rooms rooms_arg({"root.room4", "room4"});
+                    co_await signal->join(closer, std::move(rooms_arg));
+                }
+                catch(const std::exception& e)
+                {
+                    EXPECT_STREQ("no right for room room4", e.what());
+                    throw;
+                }
+            }, ServerError);
+            EXPECT_EQ(expect, signal->rooms());
+        }
+        {
+            co_await signal->leave(closer, "root.room1");
+            RoomSet expect({"root.room2", "root.room3"});
+            EXPECT_EQ(expect, signal->rooms());
+        }
+        {
+            co_await signal->leave(closer, "root.room4");
+            RoomSet expect({"root.room2", "root.room3"});
+            EXPECT_EQ(expect, signal->rooms());
+        }
+        {
+            co_await signal->leave(closer, "root.room3");
+            RoomSet expect({"root.room2"});
+            EXPECT_EQ(expect, signal->rooms());
         }
     });
 }
