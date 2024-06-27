@@ -6,6 +6,7 @@
 #include "cfgo/configuration.hpp"
 #include "cfgo/error.hpp"
 #include "cfgo/message.hpp"
+#include "cfgo/log.hpp"
 
 #include <memory>
 #include <vector>
@@ -72,7 +73,7 @@ namespace cfgo
         [[nodiscard]]
         virtual std::string_view room() const noexcept = 0;
         [[nodiscard]]
-        virtual std::string_view user() const noexcept = 0;
+        virtual std::string_view socket_id() const noexcept = 0;
         [[nodiscard]]
         virtual std::string_view payload() const noexcept = 0;
         [[nodiscard]]
@@ -96,6 +97,25 @@ namespace cfgo
 
     using SigMsgCb = std::function<asio::awaitable<bool>(SignalMsgPtr, SignalAckerPtr)>;
 
+    struct KeepAliveContext {
+        std::exception_ptr err {nullptr};
+        int timeout_num {0};
+        duration_t timeout_dur {0};
+        bool warmup {true};
+    };
+
+    using KeepAliveCb = std::function<bool(const KeepAliveContext &)>;
+
+    auto make_keep_alive_callback(close_chan signal, int timeout_num, duration_t timeout_dur, int timeout_num_when_warmup = -1, duration_t timeout_dur_when_warmup = duration_t{0}, bool term_when_err = true, Logger logger = nullptr) -> KeepAliveCb;
+
+    inline auto makeKeepAliveCallback(close_chan signal, int timeout_num, int timeout_num_when_warmup = -1, bool term_when_err = true, Logger logger = nullptr) -> KeepAliveCb {
+        return make_keep_alive_callback(std::move(signal), timeout_num, duration_t{0}, timeout_num_when_warmup, duration_t{0}, term_when_err, logger);
+    }
+
+    inline auto makeKeepAliveCallback(close_chan signal, duration_t timeout_dur, duration_t timeout_dur_when_warmup = duration_t{0}, bool term_when_err = true, Logger logger = nullptr) -> KeepAliveCb {
+        return make_keep_alive_callback(std::move(signal), -1, timeout_dur, -1, timeout_dur_when_warmup, term_when_err, logger);
+    }
+
     struct Signal {
         using CandMsgPtr = std::shared_ptr<msg::CandidateMessage>;
         using CandCb = std::function<bool(CandMsgPtr)>;
@@ -108,6 +128,15 @@ namespace cfgo
         virtual ~Signal() = 0;
         [[nodiscard]]
         virtual auto connect(close_chan closer) -> asio::awaitable<void> = 0;
+        virtual void close() = 0;
+        [[nodiscard]]
+        virtual auto id(close_chan closer) -> asio::awaitable<std::string> = 0;
+        [[nodiscard]]
+        virtual auto user_id(close_chan closer) -> asio::awaitable<std::string> = 0;
+        [[nodiscard]]
+        virtual auto user_name(close_chan closer) -> asio::awaitable<std::string> = 0;
+        [[nodiscard]]
+        virtual auto role(close_chan closer) -> asio::awaitable<std::string> = 0;
         [[nodiscard]]
         virtual auto join(close_chan closer, std::string room) -> asio::awaitable<void> = 0;
         [[nodiscard]]
@@ -137,6 +166,8 @@ namespace cfgo
         virtual std::uint64_t on_message(const SigMsgCb & cb) = 0;
         virtual std::uint64_t on_message(SigMsgCb && cb) = 0;
         virtual void off_message(std::uint64_t id) = 0;
+        [[nodiscard]]
+        virtual auto keep_alive(close_chan closer, std::string room, std::string socket_id, bool active, duration_t timeout, KeepAliveCb cb) -> asio::awaitable<void> = 0;
     };
     inline Signal::~Signal() {}
     using SignalPtr = std::shared_ptr<Signal>;

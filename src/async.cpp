@@ -165,6 +165,40 @@ namespace cfgo
             Ptr create_child();
 
             void remove_me(CloseSignalState * child);
+
+            auto depend_on(close_chan closer, std::string reason) -> asio::awaitable<void>
+            {
+                auto self = shared_from_this();
+                auto executor = co_await asio::this_coro::executor;
+                asio::co_spawn(executor, fix_async_lambda([weak_self = self->weak_from_this(), weak_closer = closer.weak(), reason = std::move(reason)]() -> asio::awaitable<void> {
+                    std::optional<Waiter> waiter = std::nullopt;
+                    if (auto self = weak_self.lock())
+                    {
+                        waiter = self->get_waiter();
+                    }
+                    if (waiter)
+                    {
+                        if (auto closer = weak_closer.lock())
+                        {
+                            co_await chan_read<void>(*waiter, closer);
+                            if (auto self = weak_self.lock())
+                            {
+                                if (closer.is_closed() && !self->m_closed)
+                                {
+                                    self->close_no_except(false, std::move(reason));
+                                }
+                            }
+                        }
+                        else
+                        {
+                            if (auto self = weak_self.lock())
+                            {
+                                self->close_no_except(false, std::move(reason));
+                            }
+                        }
+                    }
+                }), asio::detached);
+            }
         };
 
         CloseSignalState::CloseSignalState(): m_parent() {}
@@ -662,6 +696,18 @@ namespace cfgo
     const char * CloseSignal::get_timeout_reason() const noexcept
     {
         return m_state ? m_state->m_timeout_reason.c_str() : "";
+    }
+
+    auto CloseSignal::depend_on(close_chan closer, std::string reason) const -> asio::awaitable<void>
+    {
+        if (m_state)
+        {
+            return m_state->depend_on(std::move(closer), std::move(reason));
+        }
+        else
+        {
+            throw cpptrace::runtime_error("The null closer does not support the depend_on operation.");
+        }
     }
 
     auto wrap_cancel(std::function<asio::awaitable<void>()> func) -> asio::awaitable<void> {

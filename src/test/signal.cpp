@@ -136,17 +136,19 @@ TEST(Signal, SendMessage) {
             .token = token1,
             .ready_timeout = std::chrono::seconds(30),
         });
+        auto id1 = co_await signal1->id(closer);
         auto token2 = co_await get_token("2", "room", true);
         auto signal2 = make_websocket_signal(closer, cfgo::WebsocketSignalConfigure{
             .url = fmt::format("ws://{}:{}/ws", SIGNAL_HOST, SIGNAL_PORT),
             .token = token2,
             .ready_timeout = std::chrono::seconds(30),
         });
+        auto id2 = co_await signal2->id(closer);
         {
             unique_void_chan signal1_cb_done {};
-            auto cb_id_1 = signal1->on_message(fix_async_lambda([closer, signal1_cb_done](SignalMsgPtr msg, SignalAckerPtr acker) -> asio::awaitable<bool> {
+            auto cb_id_1 = signal1->on_message(fix_async_lambda([closer, signal1_cb_done, id2](SignalMsgPtr msg, SignalAckerPtr acker) -> asio::awaitable<bool> {
                 EXPECT_EQ("room", msg->room());
-                EXPECT_EQ("2", msg->user());
+                EXPECT_EQ(id2, msg->socket_id());
                 EXPECT_EQ("hello", msg->evt());
                 EXPECT_EQ("world from 2", msg->payload());
                 EXPECT_EQ(false, msg->ack());
@@ -157,9 +159,9 @@ TEST(Signal, SendMessage) {
                 co_return false;
             }));
             unique_void_chan signal2_cb_done {};
-            auto cb_id_2 = signal2->on_message(fix_async_lambda([closer, signal2_cb_done](SignalMsgPtr msg, SignalAckerPtr acker) -> asio::awaitable<bool> {
+            auto cb_id_2 = signal2->on_message(fix_async_lambda([closer, signal2_cb_done, id1](SignalMsgPtr msg, SignalAckerPtr acker) -> asio::awaitable<bool> {
                 EXPECT_EQ("room", msg->room());
-                EXPECT_EQ("1", msg->user());
+                EXPECT_EQ(id1, msg->socket_id());
                 EXPECT_EQ("hello", msg->evt());
                 EXPECT_EQ("world from 1", msg->payload());
                 EXPECT_EQ(false, msg->ack());
@@ -173,15 +175,79 @@ TEST(Signal, SendMessage) {
                 signal1->off_message(cb_id_1);
                 signal2->off_message(cb_id_2);
             });
-            co_await signal1->connect(closer);
-            co_await signal2->connect(closer);
-            auto ack_from_2 = co_await signal1->send_message(closer, signal1->create_message("hello", false, "room", "2", "world from 1"));
+            auto ack_from_2 = co_await signal1->send_message(closer, signal1->create_message("hello", false, "room", id2, "world from 1"));
             EXPECT_EQ("", ack_from_2);
-            auto ack_from_1 = co_await signal2->send_message(closer, signal2->create_message("hello", false, "room", "1", "world from 2"));
+            auto ack_from_1 = co_await signal2->send_message(closer, signal2->create_message("hello", false, "room", id1, "world from 2"));
             EXPECT_EQ("", ack_from_1);
             co_await chan_read_or_throw<void>(signal1_cb_done, closer);
             co_await chan_read_or_throw<void>(signal2_cb_done, closer);
         }
+    });
+}
+
+TEST(Signal, KeepAlive) {
+    do_async([]() -> asio::awaitable<void> {
+        using namespace cfgo;
+        close_chan closer {};
+        DEFER({
+            closer.close();
+        });
+        auto token1 = co_await get_token("1", "room", true);
+        auto signal1 = make_websocket_signal(closer, cfgo::WebsocketSignalConfigure{
+            .url = fmt::format("ws://{}:{}/ws", SIGNAL_HOST, SIGNAL_PORT),
+            .token = token1,
+            .ready_timeout = std::chrono::seconds(30),
+        });
+        auto id1 = co_await signal1->id(closer);
+        auto token2 = co_await get_token("2", "room", true);
+        auto signal2 = make_websocket_signal(closer, cfgo::WebsocketSignalConfigure{
+            .url = fmt::format("ws://{}:{}/ws", SIGNAL_HOST, SIGNAL_PORT),
+            .token = token2,
+            .ready_timeout = std::chrono::seconds(30),
+        });
+        auto id2 = co_await signal2->id(closer);
+        auto keep_alive_closer = closer.create_child();
+        co_await signal1->keep_alive(keep_alive_closer, "room", id2, true, std::chrono::seconds{1}, [](const KeepAliveContext & ctx) -> bool {
+            if (ctx.err)
+            {
+                ADD_FAILURE() << what(ctx.err);
+                return true;
+            }
+            else if (ctx.timeout_num > 1)
+            {
+                ADD_FAILURE() << "pong timeout";
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        });
+        co_await signal2->keep_alive(keep_alive_closer, "room", id1, false, std::chrono::seconds{2}, [](const KeepAliveContext & ctx) -> bool {
+            if (ctx.err)
+            {
+                ADD_FAILURE() << what(ctx.err);
+                return true;
+            }
+            else if (ctx.timeout_num > 1)
+            {
+                ADD_FAILURE() << "ping timeout";
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        });
+        co_await wait_timeout(std::chrono::seconds{10}, closer);
+        keep_alive_closer.close();
+        keep_alive_closer = close_chan {};
+        co_await signal1->keep_alive(keep_alive_closer, "room", id2, true, std::chrono::seconds{1}, make_keep_alive_callback(keep_alive_closer, 0, duration_t{2}, -1, duration_t{0}));
+        co_await wait_timeout(std::chrono::seconds{5}, closer);
+        EXPECT_FALSE(keep_alive_closer.is_closed());
+        signal2->close();
+        co_await wait_timeout(std::chrono::seconds{2}, closer);
+        EXPECT_TRUE(keep_alive_closer.is_closed());
     });
 }
 

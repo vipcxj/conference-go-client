@@ -101,6 +101,7 @@ namespace cfgo
         [[nodiscard]] auto get_stop_waiter() const -> std::optional<Waiter>;
         [[nodiscard]] const char * get_close_reason() const noexcept;
         [[nodiscard]] const char * get_timeout_reason() const noexcept;
+        [[nodiscard]] auto depend_on(close_chan closer, std::string reason = "") const -> asio::awaitable<void>;
 
         friend class detail::CloseSignalState;
         friend class WeakCloseSignal;

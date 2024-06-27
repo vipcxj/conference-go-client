@@ -25,6 +25,13 @@ namespace cfgo
 
             bool operator==(const CustomAckKey &other) const = default;
         };
+
+        struct PingKey {
+            std::string socket_id;
+            std::string room;
+
+            bool operator==(const PingKey &other) const = default;
+        };
     } // namespace impl
     
 } // namespace cfgo
@@ -32,10 +39,20 @@ namespace cfgo
 template<>
 struct std::hash<cfgo::impl::CustomAckKey> {
 
-    std::size_t operator()(const cfgo::impl::CustomAckKey& k) const {
+    std::size_t operator()(const cfgo::impl::CustomAckKey & k) const {
         using std::hash;
         using std::string;
         return ((hash<std::int64_t>()(k.id) ^ (hash<string>()(k.room) << 1)) >> 1) ^ (hash<string>()(k.user) << 1);
+    }
+};
+
+template<>
+struct std::hash<cfgo::impl::PingKey> {
+
+    std::size_t operator()(const cfgo::impl::PingKey & k) const {
+        using std::hash;
+        using std::string;
+        return (hash<string>()(k.socket_id) ^ (hash<string>()(k.room) << 1)) >> 1;
     }
 };
 
@@ -403,7 +420,6 @@ namespace cfgo
                             auto ch_iter = self->m_ack_chs.find(msg_id);
                             if (ch_iter != self->m_ack_chs.end()) {
                                 chan_must_write(ch_iter->second, std::move(msg));
-                                self->m_ack_chs.erase(ch_iter);
                             }
                         } else {
                             RawSigMsgPtr msg = WSMsg::create(msg_id, evt, std::move(payload), flag == WS_MSG_FLAG_NEED_ACK);
@@ -441,6 +457,12 @@ namespace cfgo
             if (msg->ack()) {
                 m_ack_chs.insert(std::make_pair(msg->msg_id(), ch));
             }
+            DEFER({
+                if (msg->ack())
+                {
+                    m_ack_chs.erase(msg->msg_id());
+                }
+            });
             co_await m_ws->async_write(asio::buffer(payload));
             if (msg->ack()) {
                 auto && ack = co_await chan_read_or_throw<WSAck>(ch, closer);
@@ -473,7 +495,7 @@ namespace cfgo
             std::string m_evt;
             bool m_ack;
             std::string m_room;
-            std::string m_user;
+            std::string m_socket;
             std::string m_payload;
             std::uint32_t m_msg_id;
         public:
@@ -481,7 +503,7 @@ namespace cfgo
                 m_evt(evt),
                 m_ack(ack),
                 m_room(room),
-                m_user(to),
+                m_socket(to),
                 m_payload(std::move(payload)),
                 m_msg_id(msg_id)
             {}
@@ -498,8 +520,8 @@ namespace cfgo
             std::string_view room() const noexcept override {
                 return m_room;
             }
-            std::string_view user() const noexcept override {
-                return m_user;
+            std::string_view socket_id() const noexcept override {
+                return m_socket;
             }
             std::string_view payload() const noexcept override {
                 return m_payload;
@@ -533,6 +555,10 @@ namespace cfgo
         private:
             using CustomAckMessagePtr = std::unique_ptr<msg::CustomAckMessage>;
             using UserInfoPtr = std::unique_ptr<msg::UserInfoMessage>;
+            using PingMsgPtr = std::shared_ptr<msg::PingMessage>;
+            using PingCb = std::function<bool(PingMsgPtr)>;
+            using PongMsgPtr = std::shared_ptr<msg::PongMessage>;
+            using PongCb = std::function<bool(PongMsgPtr)>;
             using CandMsgPtr = cfgo::Signal::CandMsgPtr;
             using CandCb = cfgo::Signal::CandCb;
             using SdpMsgPtr = cfgo::Signal::SdpMsgPtr;
@@ -540,11 +566,15 @@ namespace cfgo
             using SubscribeMsgPtr = cfgo::Signal::SubscribeMsgPtr;
             using SubscribeResultPtr = cfgo::Signal::SubscribeResultPtr;
             using SubscribedMsgPtr = cfgo::Signal::SubscribedMsgPtr;
+            using PingCh = asiochan::unbounded_channel<PingMsgPtr>;
             Logger m_logger = Log::instance().create_logger(Log::Category::SIGNAL);
             RawSignalPtr m_raw_signal;
             UserInfoPtr m_user_info {nullptr};
             std::uint64_t m_next_cb_id {0};
             std::uint32_t m_next_custom_msg_id {0};
+            std::uint32_t m_next_ping_msg_id {0};
+            std::unordered_map<std::uint64_t, PingCb> m_ping_cbs {};
+            std::unordered_map<std::uint64_t, PongCb> m_pong_cbs {};
             std::unordered_map<std::uint64_t, CandCb> m_cand_cbs {};
             std::unordered_map<std::uint64_t, SdpCb> m_sdp_cbs {};
             LzayRemoveMap<std::uint64_t, cfgo::SigMsgCb> m_custom_msg_cbs {};
@@ -554,6 +584,52 @@ namespace cfgo
             InitableBox<void> m_connect;
 
             auto _connect(close_chan closer) -> asio::awaitable<void>;
+
+            auto _send_ping(close_chan closer, std::uint32_t msg_id, std::string room, std::string socket_id) -> asio::awaitable<void> {
+                auto self = shared_from_this();
+                msg::PingMessage pm {
+                    .router = msg::Router {
+                        .room = std::move(room),
+                        .socketTo = std::move(socket_id),
+                    },
+                    .msgId = msg_id,
+                };
+                nlohmann::json js_msg;
+                nlohmann::to_json(js_msg, pm);
+                co_await self->m_raw_signal->send_msg(closer, self->m_raw_signal->create_msg("ping", std::move(js_msg), false));
+            }
+            std::uint64_t _on_ping(PingCb && cb) {
+                auto cb_id = m_next_cb_id;
+                m_next_cb_id ++;
+                m_ping_cbs.insert(std::make_pair(cb_id, std::move(cb)));
+                return cb_id;
+            }
+            void _off_ping(std::uint64_t id) {
+                m_ping_cbs.erase(id);
+            }
+
+            auto _send_pong(close_chan closer, std::uint32_t msg_id, std::string room, std::string socket_id) -> asio::awaitable<void> {
+                auto self = shared_from_this();
+                msg::PongMessage pm {
+                    .router = msg::Router {
+                        .room = std::move(room),
+                        .socketTo = std::move(socket_id),
+                    },
+                    .msgId = msg_id,
+                };
+                nlohmann::json js_msg;
+                nlohmann::to_json(js_msg, pm);
+                co_await self->m_raw_signal->send_msg(closer, self->m_raw_signal->create_msg("pong", std::move(js_msg), false));
+            }
+            std::uint64_t _on_pong(PongCb && cb) {
+                auto cb_id = m_next_cb_id;
+                m_next_cb_id ++;
+                m_pong_cbs.insert(std::make_pair(cb_id, std::move(cb)));
+                return cb_id;
+            }
+            void _off_pong(std::uint64_t id) {
+                m_pong_cbs.erase(id);
+            }
         public:
             Signal(RawSignalPtr raw_signal):
                 m_raw_signal(std::move(raw_signal)),
@@ -564,6 +640,29 @@ namespace cfgo
             ~Signal() noexcept {}
             auto connect(close_chan closer) -> asio::awaitable<void> override {
                 return m_connect(std::move(closer));
+            }
+            void close() override {
+                m_raw_signal->close();
+            }
+            auto id(close_chan closer) -> asio::awaitable<std::string> override {
+                auto self = shared_from_this();
+                co_await self->connect(closer);
+                co_return self->m_user_info->socketId;
+            }
+            auto user_id(close_chan closer) -> asio::awaitable<std::string> override {
+                auto self = shared_from_this();
+                co_await self->connect(closer);
+                co_return self->m_user_info->userId;
+            }
+            auto user_name(close_chan closer) -> asio::awaitable<std::string> override {
+                auto self = shared_from_this();
+                co_await self->connect(closer);
+                co_return self->m_user_info->userName;
+            }
+            auto role(close_chan closer) -> asio::awaitable<std::string> override {
+                auto self = shared_from_this();
+                co_await self->connect(closer);
+                co_return self->m_user_info->role;
             }
             auto join(close_chan closer, std::vector<std::string> rooms) -> asio::awaitable<void> override {
                 auto self = shared_from_this();
@@ -631,6 +730,7 @@ namespace cfgo
             void off_message(std::uint64_t id) override {
                 m_custom_msg_cbs.lazy_remove(id);
             }
+            auto keep_alive(close_chan closer, std::string room, std::string socket_id, bool active, duration_t timeout, KeepAliveCb cb) -> asio::awaitable<void> override;
             friend class SignalAcker;
         };
 
@@ -645,7 +745,7 @@ namespace cfgo
                 msg::CustomAckMessage msg {
                     .router = msg::Router {
                         .room = std::string(m_msg->room()),
-                        .userTo = std::string(m_msg->user()),
+                        .socketTo = std::string(m_msg->socket_id()),
                     },
                     .msgId = m_msg->msg_id(),
                     .content = payload,
@@ -670,7 +770,7 @@ namespace cfgo
                 msg::CustomAckMessage msg {
                     .router = msg::Router {
                         .room = std::string(m_msg->room()),
-                        .userTo = std::string(m_msg->user()),
+                        .socketTo = std::string(m_msg->socket_id()),
                     },
                     .msgId = m_msg->msg_id(),
                     .content = js_err.dump(),
@@ -686,11 +786,48 @@ namespace cfgo
         auto Signal::_connect(close_chan closer) -> asio::awaitable<void> {
             auto self = shared_from_this();
             auto executor = co_await asio::this_coro::executor;
-            auto on_msg = [weak_self = weak_from_this()](RawSigMsgPtr msg, RawSigAckerPtr acker) -> asio::awaitable<bool> {
+            auto signal_closer = self->m_raw_signal->get_notify_closer();
+            auto on_msg = [weak_self = weak_from_this(), closer = signal_closer](RawSigMsgPtr msg, RawSigAckerPtr acker) -> asio::awaitable<bool> {
                 if (auto self = weak_self.lock()) {
                     auto evt = msg->evt();
-                    if (evt == "candidate")
+                    if (evt == "ping")
                     {
+                        assert(!msg->ack());
+                        auto pm = std::make_shared<msg::PingMessage>();
+                        nlohmann::from_json(msg->payload(), *pm);
+                        co_await self->_send_pong(closer, pm->msgId, pm->router.room, pm->router.socketFrom);
+                        for (auto iter = self->m_ping_cbs.begin(); iter != self->m_ping_cbs.end();)
+                        {
+                            if (!iter->second(pm))
+                            {
+                                iter = self->m_ping_cbs.erase(iter);
+                            }
+                            else
+                            {
+                                ++iter;
+                            }
+                        }
+                    }
+                    else if (evt == "pong")
+                    {
+                        assert(!msg->ack());
+                        auto pm = std::make_shared<msg::PongMessage>();
+                        nlohmann::from_json(msg->payload(), *pm);
+                        for (auto iter = self->m_pong_cbs.begin(); iter != self->m_pong_cbs.end();)
+                        {
+                            if (!iter->second(pm))
+                            {
+                                iter = self->m_pong_cbs.erase(iter);
+                            }
+                            else
+                            {
+                                ++iter;
+                            }
+                        }
+                    }
+                    else if (evt == "candidate")
+                    {
+                        assert(msg->ack());
                         co_await acker->ack(nlohmann::json ("ack"));
                         auto sm = std::make_shared<msg::CandidateMessage>();
                         nlohmann::from_json(msg->payload(), *sm);
@@ -704,6 +841,7 @@ namespace cfgo
                             }
                         }
                     } else if (evt == "sdp") {
+                        assert(msg->ack());
                         co_await acker->ack(nlohmann::json ("ack"));
                         auto sm = std::make_shared<msg::SdpMessage>();
                         nlohmann::from_json(msg->payload(), *sm);
@@ -717,9 +855,10 @@ namespace cfgo
                             }
                         }
                     } else if (evt == "custom-ack") {
+                        assert(!msg->ack());
                         auto sm = std::make_unique<msg::CustomAckMessage>();
                         nlohmann::from_json(msg->payload(), *sm);
-                        CustomAckKey key {.id = sm->msgId, .room = sm->router.room, .user = sm->router.userFrom};
+                        CustomAckKey key {.id = sm->msgId, .room = sm->router.room, .user = sm->router.socketFrom};
                         auto ch_iter = self->m_custom_ack_chans.find(key);
                         if (ch_iter != self->m_custom_ack_chans.end())
                         {
@@ -727,10 +866,11 @@ namespace cfgo
                             self->m_custom_ack_chans.erase(ch_iter);
                         }
                     } else if (evt.starts_with("custom:")) {
+                        assert(!msg->ack());
                         auto cevt = evt.substr(7);
                         msg::CustomMessage cm;
                         nlohmann::from_json(msg->payload(), cm);
-                        SignalMsgPtr s_msg = SignalMsg::create(cevt, cm.ack, cm.router.room, cm.router.userFrom, std::move(cm.content), cm.msgId);
+                        SignalMsgPtr s_msg = SignalMsg::create(cevt, cm.ack, cm.router.room, cm.router.socketFrom, std::move(cm.content), cm.msgId);
                         auto s_acker = SignalAcker::create(self, s_msg);
                         auto executor = co_await asio::this_coro::executor;
                         self->m_custom_msg_cbs.start_loop();
@@ -841,7 +981,7 @@ namespace cfgo
             m_next_custom_msg_id ++;
             auto evt = msg->evt();
             msg::CustomMessage cm {
-                .router = msg::Router {.room = std::string{msg->room()}, .userTo = std::string{msg->user()}},
+                .router = msg::Router {.room = std::string{msg->room()}, .socketTo = std::string{msg->socket_id()}},
                 .content = msg->consume(),
                 .msgId = msg->msg_id(),
                 .ack = msg->ack(),
@@ -849,7 +989,7 @@ namespace cfgo
             CustomAckKey key {
                 .id = msg_id,
                 .room = cm.router.room,
-                .user = cm.router.userTo,
+                .user = cm.router.socketTo,
             };
             nlohmann::json js_msg;
             nlohmann::to_json(js_msg, cm);
@@ -874,7 +1014,191 @@ namespace cfgo
                 co_return "";
             }
         }
+
+        auto Signal::keep_alive(close_chan closer, std::string room, std::string socket_id, bool active, duration_t timeout, KeepAliveCb cb) -> asio::awaitable<void> {
+            auto self = shared_from_this();
+            closer = closer.create_child();
+            auto signal_closer = self->m_raw_signal->get_notify_closer();
+            co_await closer.depend_on(signal_closer, "The underneath signal is closed.");
+            co_await self->connect(closer);
+
+            auto executor = co_await asio::this_coro::executor;
+            asio::co_spawn(executor, fix_async_lambda(log_error([
+                self = std::move(self),
+                closer = std::move(closer),
+                room = std::move(room),
+                socket_id = std::move(socket_id),
+                active,
+                timeout,
+                cb = std::move(cb)
+            ]() -> asio::awaitable<void> {
+                KeepAliveContext kaCtx{};
+                if (active)
+                {
+                    do
+                    {
+                        try
+                        {
+                            unique_void_chan pong_ch {};
+                            auto start_pt = std::chrono::high_resolution_clock::now();
+                            auto msg_id = self->m_next_ping_msg_id ++;
+                            auto timeout_closer = closer.create_child();
+                            timeout_closer.set_timeout(timeout);
+                            auto cb_id = self->_on_pong([pong_ch, msg_id, room, socket_id](PongMsgPtr pong) -> bool {
+                                if (pong->msgId == msg_id && pong->router.socketFrom == socket_id && pong->router.room == room)
+                                {
+                                    chan_must_write(pong_ch);
+                                    return false;
+                                }
+                                return true;
+                            });
+                            DEFER({
+                                self->_off_pong(cb_id);
+                            });
+                            co_await self->_send_ping(timeout_closer, msg_id, room, socket_id);
+                            auto res = co_await chan_read<void>(pong_ch, timeout_closer);
+                            if (!res)
+                            {
+                                if (timeout_closer.is_timeout())
+                                {
+                                    kaCtx.timeout_num ++;
+                                    kaCtx.timeout_dur += std::chrono::high_resolution_clock::now() - start_pt;
+                                    if (cb(kaCtx))
+                                    {
+                                        co_return;
+                                    }
+                                }
+                                else
+                                {
+                                    assert(timeout_closer.is_closed());
+                                    co_return;
+                                }
+                            }
+                            else
+                            {
+                                kaCtx.timeout_num = 0;
+                                kaCtx.timeout_dur = duration_t{0};
+                                kaCtx.warmup = false;
+                            }
+                        }
+                        catch(...)
+                        {
+                            kaCtx.err = std::current_exception();
+                            if (cb(kaCtx))
+                            {
+                                co_return;
+                            }
+                            else
+                            {
+                                kaCtx.err = nullptr;
+                            }
+                        }
+                    } while (true);
+                }
+                else
+                {
+                    asiochan::unbounded_channel<PingMsgPtr> ping_ch {};
+                    auto cb_id = self->_on_ping([ping_ch, room, socket_id](PingMsgPtr ping) -> bool {
+                        if (ping->router.room == room && ping->router.socketFrom == socket_id)
+                        {
+                            chan_must_write(ping_ch, ping);
+                        }
+                        return true;
+                    });
+                    DEFER({
+                        self->_off_ping(cb_id);
+                    });
+                    do
+                    {
+                        try
+                        {
+                            auto start_pt = std::chrono::high_resolution_clock::now();
+                            auto timeout_closer = closer.create_child();
+                            timeout_closer.set_timeout(timeout);
+                            auto ping_res = co_await chan_read<PingMsgPtr>(ping_ch, timeout_closer);
+                            if (ping_res)
+                            {
+                                kaCtx.timeout_num = 0;
+                                kaCtx.timeout_dur = duration_t{0};
+                                kaCtx.warmup = false;
+                            }
+                            else
+                            {
+                                if (timeout_closer.is_timeout())
+                                {
+                                    kaCtx.timeout_num ++;
+                                    kaCtx.timeout_dur += std::chrono::high_resolution_clock::now() - start_pt;
+                                    if (cb(kaCtx))
+                                    {
+                                        co_return;
+                                    }
+                                }
+                                else
+                                {
+                                    assert(timeout_closer.is_closed());
+                                    co_return;
+                                }
+                            }
+                        }
+                        catch(...)
+                        {
+                            kaCtx.err = std::current_exception();
+                            if (cb(kaCtx))
+                            {
+                                co_return;
+                            }
+                            else
+                            {
+                                kaCtx.err = nullptr;
+                            }
+                        }
+                    } while (true);
+                }
+            })), asio::detached);
+        }
     } // namespace impl
+
+    auto make_keep_alive_callback(close_chan signal, int timeout_num, duration_t timeout_dur, int timeout_num_when_warmup, duration_t timeout_dur_when_warmup, bool term_when_err, Logger logger) -> KeepAliveCb {
+        return [=](const KeepAliveContext & ctx) -> bool {
+            if (ctx.err && term_when_err)
+            {
+                auto reason = what(ctx.err);
+                if (logger)
+                {
+                    logger->error("Keep alive failed because of err: {}", reason);
+                }
+                signal.close(std::move(reason));
+                return true;
+            }
+            if (ctx.warmup)
+            {
+                if (timeout_num_when_warmup >= 0 && ctx.timeout_num > timeout_num_when_warmup)
+                {
+                    signal.close("Keep alive timeout.");
+                    return true;
+                }
+                if (timeout_dur_when_warmup > duration_t{0} && ctx.timeout_dur > timeout_dur_when_warmup)
+                {
+                    signal.close("Keep alive timeout.");
+                    return true;
+                }
+            }
+            else
+            {
+                if (timeout_num >= 0 && ctx.timeout_num > timeout_num)
+                {
+                    signal.close("Keep alive timeout.");
+                    return true;
+                }
+                if (timeout_dur > duration_t{0} && ctx.timeout_dur > timeout_dur)
+                {
+                    signal.close("Keep alive timeout.");
+                    return true;
+                }
+            }
+            return false;
+        };
+    }
 
     auto make_websocket_signal(close_chan closer, const WebsocketSignalConfigure & conf) -> SignalPtr {
         auto raw_signal = impl::WebsocketRawSignal::create(std::move(closer), conf);

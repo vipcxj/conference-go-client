@@ -10,10 +10,10 @@ namespace cfgo
     {
         struct Router {
             std::string room {};
-            std::string userFrom {};
-            std::string userTo {};
+            std::string socketFrom {};
+            std::string socketTo {};
 
-            NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Router, room, userFrom, userTo)
+            NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Router, room, socketFrom, socketTo)
         };
 
         constexpr const char* SDP_TYPE_ANSWER = "answer";
@@ -163,12 +163,13 @@ namespace cfgo
         };
 
         struct UserInfoMessage {
+            std::string socketId {};
             std::string key {};
             std::string userId {};
             std::string userName {};
             std::string role {};
             std::vector<std::string> rooms {};
-            NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(UserInfoMessage, key, userId, userName, role, rooms)
+            NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(UserInfoMessage, socketId, key, userId, userName, role, rooms)
         };
         
     } // namespace msg
