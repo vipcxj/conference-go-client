@@ -56,6 +56,11 @@ namespace cfgo
         [[nodiscard]]
         virtual close_chan get_notify_closer() = 0;
         /**
+         * close this closer will close the raw signal.
+         */
+        [[nodiscard]]
+        virtual close_chan get_closer() noexcept = 0;
+        /**
          * close the raw signal.
          */
         virtual void close() = 0;
@@ -128,6 +133,16 @@ namespace cfgo
         virtual ~Signal() = 0;
         [[nodiscard]]
         virtual auto connect(close_chan closer) -> asio::awaitable<void> = 0;
+        /**
+         * used to get the close event, close this closer will not close the signal.
+         */
+        [[nodiscard]]
+        virtual close_chan get_notify_closer() = 0;
+        /**
+         * close this closer will close the signal.
+         */
+        [[nodiscard]]
+        virtual close_chan get_closer() noexcept = 0;
         virtual void close() = 0;
         [[nodiscard]]
         virtual auto id(close_chan closer) -> asio::awaitable<std::string> = 0;

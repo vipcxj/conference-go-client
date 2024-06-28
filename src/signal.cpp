@@ -274,6 +274,9 @@ namespace cfgo
             close_chan get_notify_closer() override {
                 return m_closer.create_child();
             }
+            close_chan get_closer() noexcept override {
+                return m_closer;
+            }
             void close() override {
                 m_closer.close_no_except();
             }
@@ -640,6 +643,12 @@ namespace cfgo
             ~Signal() noexcept {}
             auto connect(close_chan closer) -> asio::awaitable<void> override {
                 return m_connect(std::move(closer));
+            }
+            close_chan get_notify_closer() override {
+                return m_raw_signal->get_notify_closer();
+            }
+            close_chan get_closer() noexcept override {
+                return m_raw_signal->get_closer();
             }
             void close() override {
                 m_raw_signal->close();
