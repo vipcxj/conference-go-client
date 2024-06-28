@@ -151,7 +151,7 @@ endif()
 
 message(STATUS "find packages")
 find_path(ASIOCHAN_INCLUDE_DIRS "asiochan/asiochan.hpp")
-find_package(proxy CONFIG REQUIRED)
+#find_package(proxy CONFIG REQUIRED)
 find_package(Boost REQUIRED COMPONENTS url)
 #find_package(CxxUrl CONFIG REQUIRED)
 find_package(cpptrace CONFIG REQUIRED)
@@ -415,6 +415,7 @@ file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_PROJECT_NAME}-config.cmake"
     "find_dependency(cpptrace CONFIG REQUIRED)\n"
     "find_dependency(spdlog CONFIG REQUIRED)\n"
     "find_dependency(fmt CONFIG REQUIRED)\n"
+    "find_dependency(Boost CONFIG REQUIRED COMPONENTS url)\n"
     #"find_dependency(sioclient CONFIG REQUIRED)\n"
     "find_dependency(LibDataChannel CONFIG REQUIRED)\n"
     "find_dependency(nlohmann_json CONFIG REQUIRED)\n"
