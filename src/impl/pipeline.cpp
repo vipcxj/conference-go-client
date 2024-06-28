@@ -167,12 +167,8 @@ namespace cfgo
                 return TRUE;
             }
 
-            Pipeline::Pipeline(const std::string & name, CtxPtr exec_ctx): m_exec_ctx(exec_ctx)
+            Pipeline::Pipeline(const std::string & name)
             {
-                if (!m_exec_ctx)
-                {
-                    m_exec_ctx = std::make_shared<asio::io_context>();
-                }
                 
                 m_pipeline = GST_PIPELINE (gst_pipeline_new(name.c_str()));
                 if (!m_pipeline)

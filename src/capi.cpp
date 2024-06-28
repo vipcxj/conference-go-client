@@ -160,22 +160,23 @@ namespace cfgo
 
     cfgo::Configuration cfgo_config_to_cpp(const cfgoConfiguration * conf)
     {
-        if (conf->signal_url == nullptr)
+        if (conf->signal_config.url == nullptr)
         {
             throw cpptrace::invalid_argument("The signal url is required.");
         }
-        if (conf->token == nullptr)
+        if (conf->signal_config.token == nullptr)
         {
             throw cpptrace::invalid_argument("The token is required.");
         }
-        if (conf->rtc_config)
-        {
-            return {conf->signal_url, conf->token, std::chrono::milliseconds{conf->ready_timeout},  rtc_config_to_cpp(conf->rtc_config), conf->thread_safe};
-        }
-        else
-        {
-            return {conf->signal_url, conf->token, std::chrono::milliseconds{conf->ready_timeout}, conf->thread_safe};
-        }
+        return cfgo::Configuration (
+            cfgo::SignalConfigure{
+                .url = conf->signal_config.url,
+                .token = conf->signal_config.token,
+                .ready_timeout = std::chrono::milliseconds{conf->signal_config.ready_timeout},
+                .ack_timeout = std::chrono::milliseconds{conf->signal_config.ack_timeout},
+            }, 
+            rtc_config_to_cpp(&conf->rtc_config)
+        );
     }
 
     template<typename I, typename T>

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.21)
+cmake_minimum_required(VERSION 3.24)
 project(conference-go-client)
 #set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -14,7 +14,7 @@ set(WIN_TARGET_VER 0x0601)
 
 option(GSTREAMER_SUPPORT "gstreamer support")
 option(USE_GSTREAMER_FULL_STATIC "use gstreamer full static" ON)
-option(STANDALONE_ASIO "using standalone asio instead of boost-asio" OFF)
+#option(STANDALONE_ASIO "using standalone asio instead of boost-asio" OFF)
 option(ENABLE_TEST "enable testing" ON)
 if(GSTREAMER_SUPPORT)
     set(SUPPORT_GSTREAMER 1)
@@ -75,6 +75,7 @@ set(MY_GST_PLUGIN_PUBLIC_HEADERS
     "${H_PUBLIC_PATH}/gst/boxed.h"
     "${H_PUBLIC_PATH}/gst/buffer_pool.hpp"
     "${H_PUBLIC_PATH}/gst/gstcfgosrc.h"
+    "${H_PUBLIC_PATH}/gst/gstcfgosrc_public_api.hpp"
     "${H_PUBLIC_PATH}/gst/error.h"
     "${H_PUBLIC_PATH}/gst/error.hpp"
     "${H_PUBLIC_PATH}/gst/pipeline.hpp"
@@ -205,9 +206,9 @@ function(link_common_libs target)
 endfunction(link_common_libs target)
 
 function(include_asiochan target)
-    if(STANDALONE_ASIO)
-        target_compile_definitions(${target} PUBLIC ASIOCHAN_USE_STANDALONE_ASIO)
-    endif()
+    # if(STANDALONE_ASIO)
+    #     target_compile_definitions(${target} PUBLIC ASIOCHAN_USE_STANDALONE_ASIO)
+    # endif()
     target_include_directories(${target} PRIVATE ${ASIOCHAN_INCLUDE_DIRS})
 endfunction(include_asiochan target)
 
@@ -347,8 +348,8 @@ if(ENABLE_TEST)
         # link_gstreamer(test-gst true)
         target_link_libraries(test-gst PRIVATE PkgConfig::gstreamer-cuda)
         include_asiochan(test-gst)
-        find_package(Poco REQUIRED COMPONENTS Net Foundation)
-        target_link_libraries(test-gst PRIVATE Poco::Foundation Poco::Net)
+        #find_package(Poco REQUIRED COMPONENTS Net Foundation)
+        #target_link_libraries(test-gst PRIVATE Poco::Foundation Poco::Net)
         #target_link_libraries(test-gst PRIVATE opencv_ml opencv_dnn opencv_dpm opencv_hdf)
         target_link_libraries(test-gst PRIVATE cuda-api-wrappers::runtime-and-driver)
         target_link_libraries(test-gst PRIVATE onnxruntime::onnxruntime)
@@ -370,8 +371,8 @@ if(ENABLE_TEST)
         target_include_directories(test-gstreamer PRIVATE ${H_PRIVATE})
         include_asiochan(test-gstreamer)
         link_gstreamer(test-gstreamer true)
-        find_package(Poco REQUIRED COMPONENTS Net Foundation)
-        target_link_libraries(test-gstreamer PRIVATE Poco::Foundation Poco::Net)
+        #find_package(Poco REQUIRED COMPONENTS Net Foundation)
+        #target_link_libraries(test-gstreamer PRIVATE Poco::Foundation Poco::Net)
         target_link_libraries(test-gstreamer PRIVATE cfgoclient cfgogst)
     endif()
 endif()

@@ -5,28 +5,25 @@
 #include "rtc/rtc.hpp"
 
 namespace cfgo {
+
+    struct SignalConfigure {
+        std::string url;
+        std::string token;
+        duration_t ready_timeout = std::chrono::seconds {10};
+        duration_t ack_timeout = std::chrono::seconds {10};
+    };
+
     struct Configuration
     {
-        const std::string m_signal_url;
-        const std::string m_token;
-        const duration_t m_ready_timeout;
+        SignalConfigure m_signal_config;
         ::rtc::Configuration m_rtc_config;
-        const bool m_thread_safe;
+        const bool m_thread_safe {false};
 
         Configuration(
-            const std::string& signal_url,
-            const std::string& token,
-            const duration_t ready_timeout,
+            const SignalConfigure & signal_config,
+            const ::rtc::Configuration & rtc_config,
             const bool thread_safe = false
-        );
-
-        Configuration(
-            const std::string& signal_url,
-            const std::string& token,
-            const duration_t ready_timeout,
-            const ::rtc::Configuration& rtc_config,
-            const bool thread_safe = false
-        );
+        ): m_signal_config(signal_config), m_rtc_config(rtc_config) {}
     };
     
 }

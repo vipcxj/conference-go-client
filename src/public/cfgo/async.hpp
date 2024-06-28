@@ -7,6 +7,7 @@
 #include <unordered_set>
 #include <unordered_map>
 #include <atomic>
+#include <source_location>
 #include <type_traits>
 #include "cfgo/asio.hpp"
 #include "cfgo/alias.hpp"
@@ -102,6 +103,7 @@ namespace cfgo
         [[nodiscard]] const char * get_close_reason() const noexcept;
         [[nodiscard]] const char * get_timeout_reason() const noexcept;
         [[nodiscard]] auto depend_on(close_chan closer, std::string reason = "") const -> asio::awaitable<void>;
+        [[nodiscard]] auto after_close(std::function<asio::awaitable<void>()> cb) const -> asio::awaitable<void>;
 
         friend class detail::CloseSignalState;
         friend class WeakCloseSignal;
@@ -1585,7 +1587,7 @@ namespace cfgo
 
     auto wrap_cancel(std::function<asio::awaitable<void>()> func) -> asio::awaitable<void>;
 
-    auto log_error(std::function<asio::awaitable<void>()> func, Logger logger = Log::instance().default_logger()) -> std::function<asio::awaitable<void>()>;
+    auto log_error(std::function<asio::awaitable<void>()> func, Logger logger = Log::instance().default_logger(), const std::source_location loc = std::source_location::current()) -> std::function<asio::awaitable<void>()>;
 
     template<typename T>
     class manually_ptr
@@ -1618,9 +1620,9 @@ namespace cfgo
         }
         friend void manually_ptr_unref<T>(manually_ptr<T> ** ptr);
     private:
-        std::uint32_t m_ref_count;
         mutex m_mutex;
         T m_data;
+        std::uint32_t m_ref_count;
     };
 
     template<typename T, typename... Args>
@@ -1773,7 +1775,7 @@ namespace cfgo
             bool done = m_done.load(std::memory_order::acquire);
             if (!done)
             {
-                *m_data = std::move(data);
+                m_data = std::move(data);
                 m_done.store(true, std::memory_order::release);
                 chan_must_write(m_ch);
             }

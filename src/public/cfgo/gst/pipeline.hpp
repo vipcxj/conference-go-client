@@ -24,7 +24,7 @@ namespace cfgo
         public:
             using CtxPtr = std::shared_ptr<asio::execution_context>;
         public:
-            Pipeline(const std::string & name, CtxPtr exec_ctx = nullptr);
+            Pipeline(const std::string & name);
             void run();
             void stop();
             [[nodiscard]] auto await(close_chan & close_ch = INVALID_CLOSE_CHAN) -> asio::awaitable<bool>;
@@ -37,7 +37,6 @@ namespace cfgo
             [[nodiscard]] GstElementSPtr node(const std::string & name) const;
             [[nodiscard]] GstElementSPtr require_node(const std::string & name) const;
             [[nodiscard]] const char * name() const noexcept;
-            [[nodiscard]] const CtxPtr exec_ctx() const noexcept;
         };
     } // namespace gst
 } // namespace cfgo

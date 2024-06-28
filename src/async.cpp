@@ -199,6 +199,20 @@ namespace cfgo
                     }
                 }), asio::detached);
             }
+
+            auto after_close(std::function<asio::awaitable<void>()> cb) -> asio::awaitable<void>
+            {
+                auto self = shared_from_this();
+                auto executor = co_await asio::this_coro::executor;
+                asio::co_spawn(executor, fix_async_lambda([self = std::move(self), cb = std::move(cb)]() -> asio::awaitable<void> {
+                    auto waiter = self->get_waiter();
+                    if (waiter)
+                    {
+                        co_await waiter->read();
+                        co_await cb();
+                    }
+                }), asio::detached);
+            }
         };
 
         CloseSignalState::CloseSignalState(): m_parent() {}
@@ -710,6 +724,15 @@ namespace cfgo
         }
     }
 
+    auto CloseSignal::after_close(std::function<asio::awaitable<void>()> cb) const -> asio::awaitable<void>
+    {
+        if (m_state)
+        {
+            co_await m_state->after_close(std::move(cb));
+        }
+        co_return;
+    }
+
     auto wrap_cancel(std::function<asio::awaitable<void>()> func) -> asio::awaitable<void> {
         try
         {
@@ -718,19 +741,19 @@ namespace cfgo
         catch(const CancelError& e) {}
     }
 
-    auto log_error(std::function<asio::awaitable<void>()> func, Logger logger) -> std::function<asio::awaitable<void>()> {
-        return [logger = std::move(logger), func = std::move(func)]() -> asio::awaitable<void> {
+    auto log_error(std::function<asio::awaitable<void>()> func, Logger logger, const std::source_location loc) -> std::function<asio::awaitable<void>()> {
+        return [logger = std::move(logger), func = std::move(func), loc = std::move(loc)]() -> asio::awaitable<void> {
             try
             {
                 co_await func();
             }
             catch(const CancelError& e)
             {
-                logger->debug(e.what());
+                logger->debug("<{}:{}:{}>[{}] {}", loc.file_name(), loc.line(), loc.column(), loc.function_name(), e.what());
             }
             catch(...)
             {
-                logger->error(what());
+                logger->error("<{}:{}:{}>[{}] {}", loc.file_name(), loc.line(), loc.column(), loc.function_name(), what());
             }
         };
     }

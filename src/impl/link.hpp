@@ -16,16 +16,16 @@ namespace cfgo
             
             class Link
             {
+                Pipeline * m_pipeline;
                 GstElement * m_src;
                 std::string m_src_pad_name;
                 GstPad * m_src_pad = nullptr;
                 GstElement * m_tgt;
                 std::string m_tgt_pad_name;
                 GstPad * m_tgt_pad = nullptr;
-                asiochan::channel<bool, 1> m_linked_ch;
-                mutex m_mutex;
-                cfgo::AsyncMutex m_a_mutex;
-                Pipeline * m_pipeline;
+                asiochan::channel<bool, 1> m_linked_ch {};
+                mutex m_mutex {};
+                cfgo::AsyncMutex m_a_mutex {};
 
             public:
                 Link(Pipeline * pipeline, GstElement * src, const std::string & src_pad_name, GstPad * src_pad, GstElement * tgt, const std::string & tgt_pad_name, GstPad * tgt_pad);
@@ -91,9 +91,9 @@ namespace cfgo
                 using Ptr = std::shared_ptr<AsyncLink>;
                 using LinkPtr = std::shared_ptr<Link>;
             private:
-                bool m_done;
                 std::shared_ptr<Pipeline> m_pipeline;
                 LinkPtr m_link;
+                bool m_done;
             public:
                 AsyncLink(std::shared_ptr<Pipeline> pipeline, LinkPtr link, bool done);
                 auto await(close_chan closer) -> asio::awaitable<LinkPtr>;

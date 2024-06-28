@@ -3,6 +3,7 @@
 
 #include "cfgo/pattern.hpp"
 #include <memory>
+#include <optional>
 
 namespace cfgo
 {
@@ -43,9 +44,9 @@ namespace cfgo
 
         struct RTCIceCandidateInit {
             std::string candidate {};
-            std::uint16_t sdpMLineIndex {0};
-            std::string sdpMid {};
-            std::string usernameFragment {};
+            std::optional<std::uint16_t> sdpMLineIndex {0};
+            std::optional<std::string> sdpMid {};
+            std::optional<std::string> usernameFragment {};
 
             NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(RTCIceCandidateInit, candidate, sdpMLineIndex, sdpMid, usernameFragment)
         };

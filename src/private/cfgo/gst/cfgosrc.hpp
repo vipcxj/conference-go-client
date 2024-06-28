@@ -70,9 +70,9 @@ namespace cfgo
             };
         private:
             Logger m_logger;
-            State m_state;
+            State m_state {INITED};
             mutex m_state_mutex;
-            GstCfgoSrcMode m_mode;
+            GstCfgoSrcMode m_mode {GstCfgoSrcMode::GST_CFGO_SRC_MODE_RAW};
             Client::Ptr m_client;
             Pattern m_pattern;
             std::vector<std::string> m_req_types;
@@ -83,7 +83,7 @@ namespace cfgo
             TryOption m_read_try_option;
             recursive_mutex m_mutex;
             GstCfgoSrc * m_owner = nullptr;
-            bool m_detached = false;
+            bool m_detached = true;
             GstElement * m_rtp_bin = nullptr;
             gulong m_request_pt_map = 0;
             gulong m_pad_added_handler = 0;

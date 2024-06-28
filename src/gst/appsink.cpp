@@ -31,15 +31,15 @@ namespace cfgo
             private:
                 GstAppSink * m_sink;
                 SampleBuffer m_cache;
-                unique_void_chan m_sample_notify;
-                unique_void_chan m_eos_notify;
-                OnSampleCb m_on_sample;
-                Statistics m_stat;
-                OnStatCb m_on_stat;
-                mutex m_mutex;
-                std::uint32_t m_seq;
-                bool m_eos;
-                bool m_init;
+                unique_void_chan m_sample_notify {};
+                unique_void_chan m_eos_notify {};
+                OnSampleCb m_on_sample {nullptr};
+                Statistics m_stat {};
+                OnStatCb m_on_stat {nullptr};
+                mutex m_mutex {};
+                std::uint32_t m_seq {0};
+                bool m_eos {false};
+                bool m_init {false};
 
                 static void on_eos(GstAppSink *appsink, gpointer userdata);
                 static GstFlowReturn on_new_preroll(GstAppSink *appsink, gpointer userdata);
@@ -51,7 +51,9 @@ namespace cfgo
                 std::uint32_t _makesure_min_seq() const noexcept;
             };
             
-            AppSink::AppSink(GstAppSink * sink, int cache_capicity): m_sink(sink), m_seq(0), m_eos(false), m_cache(cache_capicity), m_init(false)
+            AppSink::AppSink(GstAppSink * sink, int cache_capicity): 
+                m_sink(sink),
+                m_cache(cache_capicity)
             {
                 gst_object_ref(m_sink);
             }

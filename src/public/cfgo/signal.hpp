@@ -190,21 +190,7 @@ namespace cfgo
     using Rooms = std::vector<std::string>;
     using RoomSet = std::unordered_set<std::string>;
 
-    struct WebsocketSignalConfigure {
-        std::string url;
-        std::string token;
-        duration_t ready_timeout;
-
-        static WebsocketSignalConfigure from_conf(const Configuration & conf) {
-            return WebsocketSignalConfigure{
-                .url = conf.m_signal_url,
-                .token = conf.m_token,
-                .ready_timeout = conf.m_ready_timeout,
-            };
-        }
-    };
-
-    auto make_websocket_signal(close_chan closer, const WebsocketSignalConfigure & conf) -> SignalPtr;
+    auto make_websocket_signal(close_chan closer, const SignalConfigure & conf) -> SignalPtr;
 
 } // namespace cfgo
 

@@ -51,7 +51,7 @@ TEST(Signal, JoinAndLeave) {
         using namespace cfgo;
         close_chan closer {};
         auto token = co_await get_token("1", "root.*", false);
-        auto signal = make_websocket_signal(closer, cfgo::WebsocketSignalConfigure{
+        auto signal = make_websocket_signal(closer, cfgo::SignalConfigure{
             .url = fmt::format("ws://{}:{}/ws", SIGNAL_HOST, SIGNAL_PORT),
             .token = token,
             .ready_timeout = std::chrono::seconds(30),
@@ -131,14 +131,14 @@ TEST(Signal, SendMessage) {
         using namespace cfgo;
         close_chan closer {};
         auto token1 = co_await get_token("1", "room", true);
-        auto signal1 = make_websocket_signal(closer, cfgo::WebsocketSignalConfigure{
+        auto signal1 = make_websocket_signal(closer, cfgo::SignalConfigure{
             .url = fmt::format("ws://{}:{}/ws", SIGNAL_HOST, SIGNAL_PORT),
             .token = token1,
             .ready_timeout = std::chrono::seconds(30),
         });
         auto id1 = co_await signal1->id(closer);
         auto token2 = co_await get_token("2", "room", true);
-        auto signal2 = make_websocket_signal(closer, cfgo::WebsocketSignalConfigure{
+        auto signal2 = make_websocket_signal(closer, cfgo::SignalConfigure{
             .url = fmt::format("ws://{}:{}/ws", SIGNAL_HOST, SIGNAL_PORT),
             .token = token2,
             .ready_timeout = std::chrono::seconds(30),
@@ -193,14 +193,14 @@ TEST(Signal, KeepAlive) {
             closer.close();
         });
         auto token1 = co_await get_token("1", "room", true);
-        auto signal1 = make_websocket_signal(closer, cfgo::WebsocketSignalConfigure{
+        auto signal1 = make_websocket_signal(closer, cfgo::SignalConfigure{
             .url = fmt::format("ws://{}:{}/ws", SIGNAL_HOST, SIGNAL_PORT),
             .token = token1,
             .ready_timeout = std::chrono::seconds(30),
         });
         auto id1 = co_await signal1->id(closer);
         auto token2 = co_await get_token("2", "room", true);
-        auto signal2 = make_websocket_signal(closer, cfgo::WebsocketSignalConfigure{
+        auto signal2 = make_websocket_signal(closer, cfgo::SignalConfigure{
             .url = fmt::format("ws://{}:{}/ws", SIGNAL_HOST, SIGNAL_PORT),
             .token = token2,
             .ready_timeout = std::chrono::seconds(30),

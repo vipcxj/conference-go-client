@@ -4,11 +4,6 @@
 
 #include "cpptrace/cpptrace.hpp"
 
-#include "Poco/URI.h"
-#include "Poco/Net/HTTPClientSession.h"
-#include "Poco/Net/HTTPRequest.h"
-#include "Poco/Net/HTTPResponse.h"
-
 #include "spdlog/spdlog.h"
 
 #include "cfgo/client.hpp"
@@ -16,6 +11,7 @@
 #include "cfgo/subscribation.hpp"
 #include "cfgo/async.hpp"
 #include "cfgo/defer.hpp"
+#include "cfgo/token.hpp"
 #include "cfgo/gst/helper.h"
 #include <fstream>
 
@@ -568,25 +564,16 @@ static gboolean on_bus_message(GstBus *bus, GstMessage *message, App *app)
     return TRUE;
 }
 
-auto get_token() -> std::string {
-    using namespace Poco::Net;
-    Poco::URI uri("http://localhost:3100/token?key=10000&uid=10000&uname=user10000&role=parent&room=room0&nonce=12345&autojoin=true");
-    HTTPClientSession session(uri.getHost(), uri.getPort());
-    HTTPRequest request(HTTPRequest::HTTP_GET, uri.getPathAndQuery(), HTTPMessage::HTTP_1_1);
-    HTTPResponse response;
-    session.sendRequest(request);
-    auto&& rs = session.receiveResponse(response);
-    if (response.getStatus() != HTTPResponse::HTTP_OK)
-    {
-        throw cpptrace::runtime_error(fmt::format("unable to get the token. status code: {}.", (int) response.getStatus()));
-    }
-    return std::string{ std::istreambuf_iterator<char>(rs), std::istreambuf_iterator<char>() };
-}
-
-auto main_task(const std::string & token, const cfgo::Client::CtxPtr & io_ctx, GMainLoop *loop) -> asio::awaitable<void> {
+auto main_task(cfgo::StandardStrand strand, GMainLoop *loop) -> asio::awaitable<void> {
     std::cout << "start main task." << std::endl;
-    cfgo::Configuration conf { "http://localhost:8080", token };
-    cfgo::Client client(conf, io_ctx);
+    auto token = co_await cfgo::utils::get_token("localhost", 3100, "10000", "10000", "user10000", "parent", "room0", true);
+    cfgo::Configuration conf {
+        cfgo::SignalConfigure {
+            "ws://localhost:8080/ws", token
+        },
+        rtc::Configuration {}
+    };
+    cfgo::Client client(conf, strand);
     // client.set_sio_logs_verbose();
     std::cout << "client created." << std::endl;
     cfgo::Pattern pattern {
@@ -654,11 +641,10 @@ int main(int argc, char **argv) {
     }
     g_print("found %d plugins\n", plugins_num);
 
-    auto token = get_token();
-    std::cout << "got token: " << token << std::endl;
-    auto pool = std::make_shared<asio::thread_pool>();
+    asio::io_context io_ctx {};
+    cfgo::StandardStrand strand (io_ctx.get_executor());
     GMainLoop *loop = g_main_loop_new(NULL, TRUE);
-    asio::co_spawn(*pool, main_task(token, pool, loop), asio::detached);
+    asio::co_spawn(strand, main_task(strand, loop), asio::detached);
     g_main_loop_run(loop);
     GST_DEBUG("stopping");
     g_main_loop_unref(loop);

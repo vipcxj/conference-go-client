@@ -211,7 +211,7 @@ namespace cfgo
             using WSAckChan = unique_chan<WSAck>;
 
             close_chan m_closer;
-            WebsocketSignalConfigure m_config;
+            SignalConfigure m_config;
             int ws_state = 0;
             Logger m_logger = Log::instance().create_logger(Log::Category::WEBSOCKET);
             const std::string m_id {boost::uuids::to_string(boost::uuids::random_generator()())};
@@ -249,15 +249,15 @@ namespace cfgo
             auto run() -> asio::awaitable<void>;
             auto _connect(close_chan closer) -> asio::awaitable<void>;
         public:
-            WebsocketRawSignal(close_chan closer, const WebsocketSignalConfigure & conf):
-                m_closer(closer.create_child()),
+            WebsocketRawSignal(close_chan closer, const SignalConfigure & conf):
+                m_closer(closer),
                 m_config(conf),
                 m_connect([this](auto closer) {
                     return _connect(std::move(closer));
                 }, false)
             {}
             ~WebsocketRawSignal() noexcept {}
-            static auto create(close_chan closer, const WebsocketSignalConfigure & conf) -> RawSignalPtr {
+            static auto create(close_chan closer, const SignalConfigure & conf) -> RawSignalPtr {
                 return std::make_shared<WebsocketRawSignal>(std::move(closer), conf);
             }
             auto create_msg(const std::string_view & evt, nlohmann::json && payload, bool ack) -> RawSigMsgUPtr override {
@@ -393,7 +393,7 @@ namespace cfgo
                     }
                     else
                     {
-                        self->m_logger->debug("The raw signal closed, %s.", reason);
+                        self->m_logger->debug("The raw signal closed, {}.", reason);
                     }
                     self->process_peer_closers(reason);
                     self->m_ws->next_layer().close();
@@ -449,6 +449,7 @@ namespace cfgo
 
         auto WebsocketRawSignal::send_msg(close_chan closer, RawSigMsgUPtr msg) -> asio::awaitable<nlohmann::json> {
             auto self = shared_from_this();
+            CFGO_SELF_DEBUG("sending {} msg with id {} and ack {}", msg->evt(), msg->msg_id(), msg->ack());
             closer = closer.create_child();
             register_listen_closer(closer);
             DEFER({
@@ -468,15 +469,23 @@ namespace cfgo
             });
             co_await m_ws->async_write(asio::buffer(payload));
             if (msg->ack()) {
-                auto && ack = co_await chan_read_or_throw<WSAck>(ch, closer);
+                auto timeout_closer = closer.create_child();
+                if (m_config.ack_timeout > duration_t{0})
+                {
+                    timeout_closer.set_timeout(m_config.ack_timeout, std::format("ack of {} msg timeout after {} ms", msg->evt(), std::chrono::duration_cast<std::chrono::milliseconds>(m_config.ack_timeout).count()));
+                }  
+                auto && ack = co_await chan_read_or_throw<WSAck>(ch, timeout_closer);
                 if (ack.err()) {
                     ServerErrorObject error {};
                     nlohmann::from_json(ack.consume(), error);
+                    CFGO_SELF_DEBUG("send {} msg failed with id {} and ack {}", msg->evt(), msg->msg_id(), msg->ack());
                     throw ServerError(std::move(error), false);
                 } else {
+                    CFGO_SELF_DEBUG("send {} msg succeed with id {} and ack {}", msg->evt(), msg->msg_id(), msg->ack());
                     co_return ack.consume();
                 }
             } else {
+                CFGO_SELF_DEBUG("send {} msg succeed with id {} and ack {}", msg->evt(), msg->msg_id(), msg->ack());
                 co_return nlohmann::json {nullptr};
             }
         }
@@ -942,6 +951,7 @@ namespace cfgo
             self->m_raw_signal->on_msg([self, lazy_sub_id, closer, executor = std::move(executor)](RawSigMsgPtr msg, RawSigAckerPtr acker) -> asio::awaitable<bool> {
                 if (msg->evt() == "subscribed")
                 {
+                    co_await acker->ack("ack");
                     auto sub_id = co_await lazy_sub_id->get(closer);
                     if (msg->payload().value("subId", "") == sub_id)
                     {
@@ -962,7 +972,7 @@ namespace cfgo
             auto res = co_await m_raw_signal->send_msg(closer, m_raw_signal->create_msg("subscribe", std::move(js_msg), true));
             auto sub_res_msg = std::make_unique<msg::SubscribeResultMessage>();
             nlohmann::from_json(res, *sub_res_msg);
-            m_subscribed_msgs.emplace(std::make_pair(sub_res_msg->id, LazyBox<SubscribedMsgPtr>::create()));
+            m_subscribed_msgs.emplace(sub_res_msg->id, LazyBox<SubscribedMsgPtr>::create());
             lazy_sub_id->init(sub_res_msg->id);
             co_return sub_res_msg;
         }
@@ -971,8 +981,9 @@ namespace cfgo
             auto self = shared_from_this();
             auto lazy_sub_msg_iter = self->m_subscribed_msgs.find(sub->id);
             if (lazy_sub_msg_iter != self->m_subscribed_msgs.end()) {
+                auto res_msg = co_await lazy_sub_msg_iter->second->get(closer);
                 self->m_subscribed_msgs.erase(lazy_sub_msg_iter);
-                co_return co_await lazy_sub_msg_iter->second->get(closer);
+                co_return res_msg;
             } else {
                 throw cpptrace::runtime_error("call subsrcibe at first. ");
             }
@@ -1209,7 +1220,7 @@ namespace cfgo
         };
     }
 
-    auto make_websocket_signal(close_chan closer, const WebsocketSignalConfigure & conf) -> SignalPtr {
+    auto make_websocket_signal(close_chan closer, const SignalConfigure & conf) -> SignalPtr {
         auto raw_signal = impl::WebsocketRawSignal::create(std::move(closer), conf);
         return std::make_shared<impl::Signal>(std::move(raw_signal));
     }

@@ -11,4 +11,11 @@ namespace asio = boost::asio;
 
 #include "asiochan/asiochan.hpp"
 
+namespace cfgo
+{
+    using standard_executor_type = asio::io_context::executor_type;
+    using StandardStrand = asio::strand<standard_executor_type>;
+} // namespace cfgo
+
+
 #endif

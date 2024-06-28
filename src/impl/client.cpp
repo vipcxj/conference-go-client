@@ -24,13 +24,16 @@ namespace cfgo
 {
     namespace impl
     {
-        Client::Client(const Configuration &config, const IoCtxPtr & io_ctx, close_chan closer):
+        Client::Client(const Configuration &config, const Strand & strand, close_chan closer):
             m_config(config),
-            m_closer(closer.create_child()),
-            m_signal(make_websocket_signal(m_closer, WebsocketSignalConfigure::from_conf(m_config))),
-            m_webrtc(make_webrtc(m_closer, m_signal, m_config)),
-            m_io_ctx(io_ctx),
-            m_strand(asio::make_strand(m_io_ctx->get_executor()))
+            m_signal(make_websocket_signal(closer, m_config.m_signal_config)),
+            m_webrtc(make_webrtc(m_signal, m_config)),
+            m_closer(m_signal->get_closer()),
+            m_strand(strand)
+        {}
+
+        Client::Client(const Configuration &config, const IoCtxPtr & io_ctx, close_chan closer):
+            Client(config, Strand(io_ctx->get_executor()), std::move(closer))
         {}
 
         Client::~Client()

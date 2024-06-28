@@ -21,7 +21,7 @@ namespace cfgo
             class Pipeline : public std::enable_shared_from_this<Pipeline>
             {
             public:
-                using CtxPtr = std::shared_ptr<asio::execution_context>;
+                using Strand = StandardStrand;
                 using NODE_MAP = std::unordered_map<std::string, GstElement *>;
                 using NODE_HANDLER_MAP = std::unordered_map<std::string, gulong>;
                 using LinkPtr = std::shared_ptr<Link>;
@@ -38,7 +38,6 @@ namespace cfgo
                     ANY
                 };
             private:
-                CtxPtr m_exec_ctx;
                 GstPipeline * m_pipeline;
                 GstBus * m_bus;
                 NODE_MAP m_nodes;
@@ -63,7 +62,7 @@ namespace cfgo
                 [[nodiscard]] GstElement * _require_node(const std::string & name) const;
                 void _release_node(GstElement * node, bool remove);
             public:
-                Pipeline(const std::string & name, CtxPtr exec_ctx = nullptr);
+                Pipeline(const std::string & name);
                 ~Pipeline();
                 void add_node(const std::string & name, const std::string & type);
                 void run();
@@ -80,11 +79,7 @@ namespace cfgo
                 {
                     return GST_ELEMENT_NAME(m_pipeline);
                 }
-                [[nodiscard]] inline const CtxPtr exec_ctx() const noexcept
-                {
-                    return m_exec_ctx;
-                }
-
+ 
                 friend class AsyncLink;
                 friend void pad_added_handler(GstElement *src, GstPad *new_pad, gpointer user_data);
                 friend gboolean on_bus_message(GstBus *bus, GstMessage *message, gpointer user_data);

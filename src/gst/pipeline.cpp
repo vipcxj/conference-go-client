@@ -10,7 +10,7 @@ namespace cfgo
 {
     namespace gst
     {
-        Pipeline::Pipeline(const std::string & name, CtxPtr exec_ctx): ImplBy(name, exec_ctx) {}
+        Pipeline::Pipeline(const std::string & name): ImplBy(name) {}
 
         void Pipeline::run()
         {
@@ -72,11 +72,6 @@ namespace cfgo
         const char * Pipeline::name() const noexcept
         {
             return impl()->name();
-        }
-
-        const Pipeline::CtxPtr Pipeline::exec_ctx() const noexcept
-        {
-            return impl()->exec_ctx();
         }
     } // namespace gst
 } // namespace cfgo

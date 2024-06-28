@@ -24,10 +24,16 @@ typedef enum
 
 typedef struct
 {
-    const char * signal_url;
+    const char * url;
     const char * token;
     const unsigned long ready_timeout;
-    const rtcConfiguration * rtc_config;
+    const unsigned long ack_timeout;
+} cfgoSignalConfigure;
+
+typedef struct
+{
+    cfgoSignalConfigure signal_config;
+    rtcConfiguration rtc_config;
     bool thread_safe;
     int execution_context_handle;
 } cfgoConfiguration;

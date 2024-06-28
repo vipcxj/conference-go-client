@@ -252,8 +252,6 @@ namespace cfgo
 
         CfgoSrc::CfgoSrc(int client_handle, const char * pattern_json, const char * req_types_str, guint64 sub_timeout, guint64 read_timeout):
             m_logger(Log::instance().create_logger(Log::Category::CFGOSRC)),
-            m_state(INITED),
-            m_detached(true), 
             m_client(get_client(client_handle)), 
             m_sub_timeout(sub_timeout), 
             m_read_timeout(read_timeout)

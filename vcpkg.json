@@ -26,7 +26,6 @@
       "features": ["plugins-good", "nvcodec"]
     },
     "gtest",
-    "poco",
     {
       "name": "libunwind",
       "platform": "linux"

@@ -4,11 +4,6 @@
 
 #include "cpptrace/cpptrace.hpp"
 
-#include "Poco/URI.h"
-#include "Poco/Net/HTTPClientSession.h"
-#include "Poco/Net/HTTPRequest.h"
-#include "Poco/Net/HTTPResponse.h"
-
 #include <string>
 #include <cstdlib>
 #include <thread>
@@ -66,22 +61,6 @@ ControlCHandler::ControlCHandler(cfgo::close_chan closer): m_closer(closer)
 ControlCHandler::~ControlCHandler()
 {}
 
-
-auto get_token() -> std::string {
-    using namespace Poco::Net;
-    Poco::URI uri("http://localhost:3100/token?key=10000&uid=10000&uname=user10000&role=parent&room=room0&nonce=12345&autojoin=true");
-    HTTPClientSession session(uri.getHost(), uri.getPort());
-    HTTPRequest request(HTTPRequest::HTTP_GET, uri.getPathAndQuery(), HTTPMessage::HTTP_1_1);
-    HTTPResponse response;
-    session.sendRequest(request);
-    auto&& rs = session.receiveResponse(response);
-    if (response.getStatus() != HTTPResponse::HTTP_OK)
-    {
-        throw cpptrace::runtime_error("unable to get the token. status code: " + std::to_string((int) response.getStatus()) + ".");
-    }
-    return std::string{ std::istreambuf_iterator<char>(rs), std::istreambuf_iterator<char>() };
-}
-
 // std::string cv_type2str(int type)
 // {
 //     std::string r;
@@ -131,16 +110,15 @@ GstBuffer * allocate_buffer(GstElement * element, gpointer user_data)
 
 struct track_data
 {
-    cfgo::Client::CtxPtr exec_ctx;
+    cfgo::StandardStrand strand;
     cfgo::close_chan closer;
-    cfgo::Track::Ptr track;
 };
 
 void on_track(GstElement * element, CfgoBoxedTrack * track, gpointer user_data)
 {
     auto & data = cfgo::cast_shared_holder_ref<track_data>(user_data);
     asio::co_spawn(
-        asio::get_associated_executor(*data->exec_ctx), 
+        data->strand, 
         cfgo::fix_async_lambda([closer = data->closer, track = track->ptr]() -> asio::awaitable<void> {
             auto begin = std::chrono::high_resolution_clock::now();
             while (true)
@@ -156,17 +134,22 @@ void on_track(GstElement * element, CfgoBoxedTrack * track, gpointer user_data)
     );
 }
 
-auto main_task(cfgo::Client::CtxPtr exec_ctx, const std::string & token, cfgo::close_chan closer) -> asio::awaitable<void> {
+auto main_task(cfgo::Client::Strand strand, cfgo::close_chan closer) -> asio::awaitable<void> {
     using namespace cfgo;
-    cfgo::Configuration conf { "http://localhost:8080", token };
-    auto client_ptr = std::make_shared<Client>(conf, exec_ctx, closer);
-    client_ptr->init();
-    gst::Pipeline pipeline("test pipeline", exec_ctx);
+    auto token = co_await utils::get_token("localhost", 3100, "10000", "10000", "user10000", "parent", "room0", true);
+    cfgo::Configuration conf {
+        cfgo::SignalConfigure {
+            "ws://localhost:8080/ws", token
+        },
+        rtc::Configuration {}
+    };
+    auto client_ptr = std::make_shared<Client>(conf, strand, closer);
+    gst::Pipeline pipeline("test pipeline");
     pipeline.add_node("cfgosrc", "cfgosrc");
     auto decode_caps = gst_caps_from_string("video/x-raw(memory:CUDAMemory)");
     std::shared_ptr<gst::BufferPool> buffer_pool = std::make_shared<gst::BufferPool>(1600, 16, 48);
-    std::shared_ptr<track_data> track_data_ptr = std::make_shared<track_data>();
-    track_data_ptr->exec_ctx = exec_ctx;
+    std::shared_ptr<track_data> track_data_ptr = std::make_shared<track_data>(strand, closer);
+    track_data_ptr->strand = strand;
     track_data_ptr->closer = closer;
     g_object_set(
         pipeline.require_node("cfgosrc").get(),
@@ -885,12 +868,12 @@ int main(int argc, char **argv) {
 
     ControlCHandler ctrl_c_handler(closer);
 
-    auto pool = std::make_shared<asio::thread_pool>();
-    auto token = get_token();
-    auto f = asio::co_spawn(asio::get_associated_executor(pool), cfgo::fix_async_lambda([pool, token, closer]() mutable -> asio::awaitable<void> {
+    asio::io_context io_ctx;
+    auto strand = asio::make_strand(io_ctx);
+    auto f = asio::co_spawn(strand, cfgo::fix_async_lambda([strand, closer]() mutable -> asio::awaitable<void> {
         try
         {
-            co_await main_task(pool, token, closer);
+            co_await main_task(strand, closer);
         }
         catch(const cfgo::CancelError & e)
         {
@@ -902,8 +885,7 @@ int main(int argc, char **argv) {
             spdlog::error(cfgo::what());
         }
     }), asio::use_future);
-    GST_DEBUG("stopping");
-    f.get();
+    io_ctx.run();
     spdlog::debug("main end");
     return 0;
 }

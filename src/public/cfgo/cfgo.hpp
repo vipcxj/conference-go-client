@@ -14,6 +14,7 @@
 #include "cfgo/pattern.hpp"
 #include "cfgo/spd_helper.hpp"
 #include "cfgo/subscribation.hpp"
+#include "cfgo/token.hpp"
 #include "cfgo/track.hpp"
 #include "cfgo/utils.hpp"
 

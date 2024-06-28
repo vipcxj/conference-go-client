@@ -35,13 +35,14 @@ namespace cfgo {
         private:
             Logger m_logger;
             Configuration m_config;
-            close_chan m_closer;
             cfgo::SignalPtr m_signal;
             cfgo::WebrtcPtr m_webrtc;
+            close_chan m_closer;
             IoCtxPtr m_io_ctx;
             Strand m_strand;
         public:
             Client() = delete;
+            Client(const Configuration& config, const Strand & strand, close_chan closer);
             Client(const Configuration& config, const IoCtxPtr & io_context, close_chan closer);
             Client(Client&&) = default;
             ~Client();

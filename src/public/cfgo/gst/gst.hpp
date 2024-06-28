@@ -2,6 +2,7 @@
 #define _CFGO_GST_GST_HPP_
 
 #include "cfgo/gst/gst.h"
+#include "cfgo/gst/gstcfgosrc_public_api.hpp"
 #include "cfgo/gst/buffer_pool.hpp"
 #include "cfgo/gst/error.hpp"
 #include "cfgo/gst/link.hpp"
