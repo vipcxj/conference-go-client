@@ -969,6 +969,29 @@ namespace cfgo
         }
     }
 
+    auto chan_write(asiochan::writable_channel_type<void> auto ch, close_chan close_ch = nullptr) -> asio::awaitable<cancelable<void>> {
+        if (close_ch)
+        {
+            auto && res = co_await select(
+                close_ch,
+                asiochan::ops::write(ch)
+            );
+            if (!res)
+            {
+                co_return make_canceled();
+            }
+            else
+            {
+                co_return make_resolved();
+            }
+        }
+        else
+        {
+            co_await ch.write();
+            co_return make_resolved();
+        }
+    }
+
     template<typename T>
     auto chan_write_or_throw(asiochan::writable_channel_type<T> auto ch, T && data, close_chan close_ch = INVALID_CLOSE_CHAN) -> asio::awaitable<void> {
         if (is_valid_close_chan(close_ch))
@@ -981,6 +1004,20 @@ namespace cfgo
         else
         {
             co_await ch.write(std::forward<T>(data));
+        }
+    }
+
+    auto chan_write_or_throw(asiochan::writable_channel_type<void> auto ch, close_chan close_ch = nullptr) -> asio::awaitable<void> {
+        if (close_ch)
+        {
+            co_await select_or_throw(
+                close_ch,
+                asiochan::ops::write(ch)
+            );
+        }
+        else
+        {
+            co_await ch.write();
         }
     }
 

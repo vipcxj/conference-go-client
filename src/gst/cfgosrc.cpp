@@ -1033,6 +1033,7 @@ namespace cfgo
                     }
                     CFGO_SELF_TRACE("Arg pattern: {}", self->m_pattern);
                     CFGO_SELF_TRACE("Arg req_types: {}", self->m_req_types);
+                    CFGO_SELF_DEBUG("strand run in this thread: {}", self->m_client->strand().running_in_this_thread());
                     auto sub = co_await self->m_client->subscribe(self->m_pattern, self->m_req_types, timeout_closer);
                     co_return sub;
                 };

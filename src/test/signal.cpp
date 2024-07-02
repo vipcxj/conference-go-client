@@ -35,9 +35,11 @@ void do_async(std::function<asio::awaitable<void>()> func, bool multithread = tr
         {
             co_await func();
         }
+        catch(const cfgo::CancelError & e)
+        {}
         catch(...)
         {
-            CFGO_ERROR("{}", cfgo::what());
+            ADD_FAILURE() << cfgo::what();
         }
     }), asio::detached);
     for (size_t i = 0; i < nthread; i++)
@@ -185,6 +187,71 @@ TEST(Signal, SendMessage) {
     });
 }
 
+TEST(Signal, SendParallelismMessage) {
+    do_async([]() -> asio::awaitable<void> {
+        using namespace cfgo;
+        close_chan closer {};
+        auto token1 = co_await get_token("1", "room", true);
+        auto signal1 = make_websocket_signal(closer, cfgo::SignalConfigure{
+            .url = fmt::format("ws://{}:{}/ws", SIGNAL_HOST, SIGNAL_PORT),
+            .token = token1,
+            .ready_timeout = std::chrono::seconds(30),
+        });
+        auto id1 = co_await signal1->id(closer);
+        auto token2 = co_await get_token("2", "room", true);
+        auto signal2 = make_websocket_signal(closer, cfgo::SignalConfigure{
+            .url = fmt::format("ws://{}:{}/ws", SIGNAL_HOST, SIGNAL_PORT),
+            .token = token2,
+            .ready_timeout = std::chrono::seconds(30),
+        });
+        auto id2 = co_await signal2->id(closer);
+        auto executor = co_await asio::this_coro::executor;
+        int flag = 0;
+        std::vector<unique_void_chan> chs {};
+        auto count = 30;
+        for (size_t i = 0; i < count; i++)
+        {
+            unique_void_chan ch {};
+            chs.push_back(ch);
+            asio::co_spawn(executor, fix_async_lambda([i, closer, signal1, signal2, id1, id2, ch]() -> asio::awaitable<void> {
+                auto evt = std::format("hello{:03}", i);
+                auto cb_id_2 = signal2->on_message(fix_async_lambda([evt, closer, id1](SignalMsgPtr msg, SignalAckerPtr acker) -> asio::awaitable<bool> {
+                    if (msg->evt() == evt)
+                    {
+                        EXPECT_EQ("room", msg->room());
+                        EXPECT_EQ(id1, msg->socket_id());
+                        EXPECT_EQ("world from 1", msg->payload());
+                        EXPECT_EQ(true, msg->ack());
+                        auto content = msg->consume();
+                        EXPECT_EQ("world from 1", content);
+                        co_await acker->ack(closer, "accepted");
+                        co_return false;
+                    }
+                    co_return true;
+                }));
+                DEFER({
+                    signal2->off_message(cb_id_2);
+                });
+                auto resp = co_await signal1->send_message(closer, signal1->create_message(evt, true, "room", id2, "world from 1"));
+                EXPECT_EQ("accepted", resp);
+                co_await chan_write(ch, closer);
+            }), asio::detached);
+        }
+        auto timeouter = closer.create_child();
+        auto successes = 0;
+        timeouter.set_timeout(std::chrono::seconds {10});
+        for (size_t i = 0; i < count; i++)
+        {
+            auto success = co_await chan_read<void>(chs[i], timeouter);
+            if (success)
+            {
+                ++successes;
+            }
+        }
+        EXPECT_EQ(count, successes);
+    });
+}
+
 TEST(Signal, KeepAlive) {
     do_async([]() -> asio::awaitable<void> {
         using namespace cfgo;
@@ -253,6 +320,6 @@ TEST(Signal, KeepAlive) {
 
 int main(int argc, char **argv) {
     testing::InitGoogleTest(&argc, argv);
-    // cfgo::Log::instance().set_level(cfgo::Log::DEFAULT, spdlog::level::trace);
+    // cfgo::Log::instance().set_level(cfgo::Log::DEFAULT, spdlog::level::debug);
     return RUN_ALL_TESTS();
 }

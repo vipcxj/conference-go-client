@@ -282,11 +282,13 @@ namespace cfgo
                             chan_must_write(answer_sdp_ch, std::move(req_sdp));
                         });
                         box->peer.setLocalDescription(rtc::Description::Type::Answer);
+                        std::string sdp_type;
                         do
                         {
                             sdp = co_await chan_read_or_throw<Signal::SdpMsgPtr>(answer_sdp_ch, closer);
+                            sdp_type = sdp->type;
                             co_await self->m_signal->send_sdp(closer, std::move(sdp));
-                        } while (sdp->type != msg::SDP_TYPE_ANSWER);
+                        } while (sdp_type != msg::SDP_TYPE_ANSWER);
                     } else {
                         throw cpptrace::runtime_error(fmt::format("Expect an offer sdp msg, but got {}. The sdp: {}.", sdp->type, sdp->sdp));
                     }

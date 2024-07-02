@@ -134,6 +134,53 @@ void on_track(GstElement * element, CfgoBoxedTrack * track, gpointer user_data)
     );
 }
 
+void cfgosrc_deep_element_added_callback (
+    GstBin * self,
+    GstBin * sub_bin,
+    GstElement * element,
+    gpointer user_data) {
+    if (g_str_equal(GST_ELEMENT_NAME(element), "rtpjitterbuffer0"))
+    {
+        gst_object_ref(element);
+        auto & data = cfgo::cast_shared_holder_ref<track_data>(user_data);
+        asio::co_spawn(
+            data->strand, 
+            cfgo::fix_async_lambda([element, closer = data->closer]() -> asio::awaitable<void> {
+                DEFER({
+                    gst_object_unref(element);
+                });
+                do
+                {
+                    co_await cfgo::wait_timeout(std::chrono::seconds {1}, closer);
+                    GstStructure * stats = nullptr;
+                    g_object_get(G_OBJECT (element), "stats", &stats, NULL);
+                    if (stats)
+                    {
+                        guint64 num_pushed;
+                        guint64 num_lost;
+                        guint64 num_late;
+                        guint64 num_duplicates;
+                        guint64 avg_jitter;
+                        if (gst_structure_get(stats,
+                            "num-pushed", G_TYPE_UINT64, &num_pushed,
+                            "num-lost", G_TYPE_UINT64, &num_lost,
+                            "num-late", G_TYPE_UINT64, &num_late,
+                            "num-duplicates", G_TYPE_UINT64, &num_duplicates,
+                            "avg-jitter", G_TYPE_UINT64, &avg_jitter,
+                            NULL
+                        ))
+                        {
+                            CFGO_DEBUG("pushed: {}, lost: {}, late: {}, duplicates: {}, avg: {} ms", num_pushed, num_lost, num_late, num_duplicates, std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::nanoseconds{avg_jitter}).count());
+                        }
+                    }
+                } while (true);
+            }), 
+            asio::detached
+        );
+    }
+    
+}
+
 auto main_task(cfgo::Client::Strand strand, cfgo::close_chan closer) -> asio::awaitable<void> {
     using namespace cfgo;
     auto token = co_await utils::get_token("localhost", 3100, "10000", "10000", "user10000", "parent", "room0", true);
@@ -190,6 +237,15 @@ auto main_task(cfgo::Client::Strand strand, cfgo::close_chan closer) -> asio::aw
         pipeline.require_node("cfgosrc").get(),
         "on-track",
         G_CALLBACK(on_track),
+        cfgo::make_shared_holder(track_data_ptr), [](gpointer data, GClosure *closure) {
+            cfgo::destroy_shared_holder<track_data>(data);
+        },
+        GConnectFlags::G_CONNECT_DEFAULT
+    );
+    g_signal_connect_data(
+        pipeline.require_node("cfgosrc").get(),
+        "deep-element-added",
+        G_CALLBACK(cfgosrc_deep_element_added_callback),
         cfgo::make_shared_holder(track_data_ptr), [](gpointer data, GClosure *closure) {
             cfgo::destroy_shared_holder<track_data>(data);
         },
@@ -314,14 +370,23 @@ auto main_task(cfgo::Client::Strand strand, cfgo::close_chan closer) -> asio::aw
                 OrtCUDAProviderOptions cuda_options {};
                 cuda_options.device_id = device_id;
                 session_options.AppendExecutionProvider_CUDA(cuda_options);
-                auto session = Ort::Session(env, (getexedir() / "model_fp16.onnx").c_str(), session_options);
+                unique_void_chan session_ch {};
+                Ort::Session session {nullptr};
+                std::thread t0([&]() mutable {
+                    CFGO_DEBUG("creating session...");
+                    session = Ort::Session(env, (getexedir() / "model_fp16.onnx").c_str(), session_options);
+                    chan_must_write(session_ch);
+                    CFGO_DEBUG("session created.");
+                });
+                t0.detach();
+                co_await session_ch.read();
                 auto cuda_memory_info = Ort::MemoryInfo("Cuda", OrtAllocatorType::OrtArenaAllocator, device_id, OrtMemType::OrtMemTypeDefault);
                 const int64_t shape[] = {1, 3, 16, 224, 224};
                 const char * input_names[] = {"frames"};
                 const char * output_names[] = {"output"};
                 unique_void_chan ready_ch {};
                 std::thread t([&]() mutable {
-                    spdlog::debug("warmup...");
+                    CFGO_DEBUG("warmup...");
                     try
                     {
                         gst_cuda_context_push(gst_cuda_ctx);
@@ -853,6 +918,7 @@ int main(int argc, char **argv) {
     GST_PLUGIN_STATIC_REGISTER(cfgosrc);
     spdlog::set_level(spdlog::level::debug);
     cfgo::Log::instance().set_level(cfgo::Log::DEFAULT, spdlog::level::debug);
+    cfgo::Log::instance().set_pattern(cfgo::Log::DEFAULT, "[%H:%M:%S %z] [%n] [%^---%L---%$] [thread %t] %v");
     gst_debug_set_threshold_for_name("cfgosrc", GST_LEVEL_TRACE);
 
     debug_plugins();
@@ -868,7 +934,7 @@ int main(int argc, char **argv) {
 
     ControlCHandler ctrl_c_handler(closer);
 
-    asio::io_context io_ctx;
+    asio::io_context io_ctx {};
     auto strand = asio::make_strand(io_ctx);
     auto f = asio::co_spawn(strand, cfgo::fix_async_lambda([strand, closer]() mutable -> asio::awaitable<void> {
         try

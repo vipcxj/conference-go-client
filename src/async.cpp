@@ -749,11 +749,11 @@ namespace cfgo
             }
             catch(const CancelError& e)
             {
-                logger->debug("<{}:{}:{}>[{}] {}", loc.file_name(), loc.line(), loc.column(), loc.function_name(), e.what());
+                logger->debug("[{}:{}:{}]<{}> canceled, {}", loc.file_name(), loc.line(), loc.column(), loc.function_name(), e.what());
             }
             catch(...)
             {
-                logger->error("<{}:{}:{}>[{}] {}", loc.file_name(), loc.line(), loc.column(), loc.function_name(), what());
+                logger->error("[{}:{}:{}]<{}> error found, {}", loc.file_name(), loc.line(), loc.column(), loc.function_name(), what());
             }
         };
     }
