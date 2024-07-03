@@ -2,6 +2,8 @@
 #define _CFGO_ALIAS_HPP_
 
 #include <memory>
+#include <mutex>
+#include <chrono>
 // #include "sio_message.h"
 // #include "cfgo/asio.hpp"
 #include "cfgo/macros.h"
