@@ -930,13 +930,19 @@ int main(int argc, char **argv) {
         gst_object_unref(nvdec);
     }
 
+    auto loop = g_main_loop_new(nullptr, FALSE);
+    std::thread loop_t([loop]() {
+        g_main_loop_run(loop);
+    });
+    loop_t.detach();
+
     cfgo::close_chan closer;
 
     ControlCHandler ctrl_c_handler(closer);
 
     asio::io_context io_ctx {};
     auto strand = asio::make_strand(io_ctx);
-    auto f = asio::co_spawn(strand, cfgo::fix_async_lambda([strand, closer]() mutable -> asio::awaitable<void> {
+    auto f = asio::co_spawn(strand, cfgo::fix_async_lambda([strand, closer, loop]() mutable -> asio::awaitable<void> {
         try
         {
             co_await main_task(strand, closer);
@@ -950,6 +956,7 @@ int main(int argc, char **argv) {
             closer.close();
             spdlog::error(cfgo::what());
         }
+        g_main_loop_quit(loop);
     }), asio::use_future);
     io_ctx.run();
     spdlog::debug("main end");

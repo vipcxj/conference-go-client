@@ -159,9 +159,9 @@ namespace cfgo
 
             gboolean on_bus_message(GstBus *bus, GstMessage *message, gpointer user_data) 
             {   
-                gst_message_ref(message);
                 if (auto pipeline = cast_weak_holder<Pipeline>(user_data)->lock())
                 {
+                    gst_message_ref(message);
                     pipeline->m_msg_ch.write(message);
                 }
                 return TRUE;
@@ -180,7 +180,6 @@ namespace cfgo
                 {
                     throw cpptrace::runtime_error("Unable to get the bus from the pipeline " + name + ".");
                 }
-                gst_bus_add_watch_full(m_bus, G_PRIORITY_DEFAULT, on_bus_message, make_weak_holder(weak_from_this()), destroy_weak_holder<Pipeline>);
             }
 
             Pipeline::~Pipeline()
@@ -209,6 +208,7 @@ namespace cfgo
 
             void Pipeline::run()
             {
+                gst_bus_add_watch_full(m_bus, G_PRIORITY_DEFAULT, on_bus_message, make_weak_holder(weak_from_this()), destroy_weak_holder<Pipeline>);
                 auto ret = gst_element_set_state (GST_ELEMENT (m_pipeline), GST_STATE_PLAYING);
                 if (ret == GST_STATE_CHANGE_FAILURE)
                 {

@@ -1104,8 +1104,8 @@ namespace cfgo
             if (auto owner = _safe_get_owner())
             {
                 CFGO_SELF_DEBUG("Send eos event to the owner.");
-                gst_element_send_event(owner.get(), gst_event_new_eos());
-                CFGO_SELF_DEBUG("after send eos event");
+                auto ret = gst_element_send_event(owner.get(), gst_event_new_eos());
+                CFGO_SELF_DEBUG("after send eos event with ret {}", ret);
             }
             co_return;
         }
