@@ -109,9 +109,13 @@ namespace cfgo
             {   
                 _cache_trace(e.trace(), false);
                 m_message = e.message();
-                return;
             }
-            m_message = cfgo::what(m_except_ptr);
+            catch(...)
+            {
+                m_trace_str = "";
+                m_trace_color_str = "";
+                m_message = cfgo::what();
+            }
         }
 
         const char * ErrorPrivateState::get_trace_str()
