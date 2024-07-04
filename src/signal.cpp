@@ -293,7 +293,7 @@ namespace cfgo
                 auto payload = encodeWsTextData("", m_msg_id, WS_MSG_FLAG_IS_ACK_NORMAL, payload_str);
                 CFGO_LOGGER_TRACE(signal->m_logger, "Normal raw ack sending... Id: {}; Content: {}.", m_msg_id, payload_str);
                 co_await signal->m_ws->async_write(asio::buffer(payload));
-                CFGO_LOGGER_TRACE(signal->m_logger, "Normal raw ack sended. Id: {}", m_msg_id)
+                CFGO_LOGGER_TRACE(signal->m_logger, "Normal raw ack sended. Id: {}", m_msg_id);
             }
             co_return;
         }
