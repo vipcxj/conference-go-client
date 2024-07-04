@@ -1097,7 +1097,6 @@ namespace cfgo
 
         auto Signal::keep_alive(close_chan closer, std::string room, std::string socket_id, bool active, duration_t timeout, KeepAliveCb cb) -> asio::awaitable<void> {
             auto self = shared_from_this();
-            closer = closer.create_child();
             auto signal_closer = self->m_raw_signal->get_notify_closer();
             co_await closer.depend_on(signal_closer, "The underneath signal is closed.");
             co_await self->connect(closer);
