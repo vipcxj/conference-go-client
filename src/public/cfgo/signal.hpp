@@ -32,9 +32,9 @@ namespace cfgo
     struct RawSigAcker {
         virtual ~RawSigAcker() = 0;
         [[nodiscard]]
-        virtual auto ack(nlohmann::json payload) -> asio::awaitable<void> = 0;
+        virtual auto ack(close_chan closer, nlohmann::json payload) -> asio::awaitable<void> = 0;
         [[nodiscard]]
-        virtual auto ack(std::unique_ptr<ServerErrorObject> err) -> asio::awaitable<void> = 0;
+        virtual auto ack(close_chan closer, std::unique_ptr<ServerErrorObject> err) -> asio::awaitable<void> = 0;
     };
     inline RawSigAcker::~RawSigAcker() {}
     using RawSigAckerPtr = std::shared_ptr<RawSigAcker>;

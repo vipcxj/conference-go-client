@@ -1,0 +1,41 @@
+{
+  "name": "asiochan",
+  "version": "0.4.5",
+  "description": "Go-like channels for ASIO C++20 coroutines",
+  "homepage": "https://github.com/vipcxj/asiochan",
+  "dependencies": [
+    {
+      "name": "vcpkg-cmake",
+      "host": true
+    },
+    {
+      "name": "vcpkg-cmake-config",
+      "host": true
+    }
+  ],
+  "default-features": [
+    "boost-asio"
+  ],
+  "features": {
+    "standalone-asio": {
+      "description": "use stand alone asio",
+      "dependencies": [
+        {
+          "name": "asiochan",
+          "default-features": false
+        },
+        "asio"
+      ]
+    },
+    "boost-asio": {
+      "description": "use boost asio",
+      "dependencies": [
+        {
+          "name": "asiochan",
+          "default-features": false
+        },
+        "boost-asio"
+      ]
+    }
+  }
+}

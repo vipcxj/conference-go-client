@@ -161,15 +161,15 @@ namespace cfgo
             static auto create(std::weak_ptr<WebsocketRawSignal> signal, std::uint64_t msg_id) -> RawSigAckerPtr {
                 return std::make_shared<WSAcker>(signal, msg_id);
             }
-            auto ack(nlohmann::json payload) -> asio::awaitable<void> override;
-            auto ack(std::unique_ptr<ServerErrorObject> eo) -> asio::awaitable<void> override;
+            auto ack(close_chan closer, nlohmann::json payload) -> asio::awaitable<void> override;
+            auto ack(close_chan closer, std::unique_ptr<ServerErrorObject> eo) -> asio::awaitable<void> override;
         };
 
         struct WSFakeAcker : public RawSigAcker {
-            auto ack(nlohmann::json payload) -> asio::awaitable<void> override {
+            auto ack(close_chan closer, nlohmann::json payload) -> asio::awaitable<void> override {
                 co_return;
             }
-            auto ack(std::unique_ptr<ServerErrorObject> eo) -> asio::awaitable<void> override {
+            auto ack(close_chan closer, std::unique_ptr<ServerErrorObject> eo) -> asio::awaitable<void> override {
                 co_return;
             }
         };
@@ -188,28 +188,37 @@ namespace cfgo
         private:
             nlohmann::json m_payload;
             bool m_err;
-            bool m_consumed {false};
         public:
             WSAck(nlohmann::json && payload, bool err): m_payload(std::move(payload)), m_err(err) {}
-            const nlohmann::json & payload() const noexcept {
+            nlohmann::json & payload() & noexcept {
                 return m_payload;
             }
-            nlohmann::json && consume() noexcept {
-                m_consumed = true;
+            const nlohmann::json & payload() const & noexcept {
+                return m_payload;
+            }
+            nlohmann::json && payload() && noexcept {
+                return std::move(m_payload);
+            }
+            const nlohmann::json && payload() const && noexcept {
                 return std::move(m_payload);
             }
             bool err() const noexcept {
                 return m_err;
             }
-            bool is_consumed() const noexcept {
-                return m_consumed;
-            }
         };
+
+        struct WSAckPackage {
+            std::uint64_t msg_id;
+            std::string payload;
+            bool err {false};
+            unique_void_chan done_ch {};
+        };
+
+        using WSAckChan = unique_chan<WSAck>;
+        using WSAckOrMsg = std::variant<RawSigMsgUPtr, WSAckPackage>;
 
         class WebsocketRawSignal : public cfgo::RawSignal, public std::enable_shared_from_this<WebsocketRawSignal> {
         private:
-            using WSAckChan = unique_chan<WSAck>;
-
             close_chan m_closer;
             SignalConfigure m_config;
             int ws_state = 0;
@@ -219,8 +228,8 @@ namespace cfgo
             std::uint64_t m_next_msg_id {1};
             std::uint64_t m_next_msg_cb_id {0};
             LzayRemoveMap<std::uint64_t, RawSigMsgCb> m_msg_cbs {};
-            asiochan::channel<RawSigMsgUPtr, 0> m_msg_ch {};
-            std::unordered_map<std::uint64_t, WSAckChan> m_ack_chs {};
+            asiochan::channel<WSAckOrMsg> m_outgoing_ch {};
+            std::unordered_map<std::uint64_t, WSAckChan> m_incoming_ack_chs {};
 
             std::unordered_set<close_chan> m_listen_closers {};
             InitableBox<void> m_connect;
@@ -286,26 +295,37 @@ namespace cfgo
             friend class WSAcker;
         };
 
-        auto WSAcker::ack(nlohmann::json payload) -> asio::awaitable<void> {
+        auto WSAcker::ack(close_chan closer, nlohmann::json payload) -> asio::awaitable<void> {
             if (auto signal = m_signal.lock())
             {
                 auto payload_str = payload.dump();
-                auto payload = encodeWsTextData("", m_msg_id, WS_MSG_FLAG_IS_ACK_NORMAL, payload_str);
+                WSAckPackage ack_pkg {
+                    .msg_id = m_msg_id,
+                    .payload = std::move(payload_str),
+                };
+                auto done_ch = ack_pkg.done_ch;
                 CFGO_LOGGER_TRACE(signal->m_logger, "Normal raw ack sending... Id: {}; Content: {}.", m_msg_id, payload_str);
-                co_await signal->m_ws->async_write(asio::buffer(payload));
+                co_await chan_write_or_throw<WSAckOrMsg>(signal->m_outgoing_ch, std::move(ack_pkg), closer);
+                co_await chan_read_or_throw<void>(done_ch, closer);
                 CFGO_LOGGER_TRACE(signal->m_logger, "Normal raw ack sended. Id: {}", m_msg_id);
             }
             co_return;
         }
-        auto WSAcker::ack(std::unique_ptr<ServerErrorObject> eo) -> asio::awaitable<void> {
+        auto WSAcker::ack(close_chan closer, std::unique_ptr<ServerErrorObject> eo) -> asio::awaitable<void> {
             if (auto signal = m_signal.lock())
             {
                 nlohmann::json payload_js {};
                 nlohmann::to_json(payload_js, *eo);
                 auto payload_str = payload_js.dump();
-                auto payload = encodeWsTextData("", m_msg_id, WS_MSG_FLAG_IS_ACK_ERR, payload_str);
+                WSAckPackage ack_pkg {
+                    .msg_id = m_msg_id,
+                    .payload = std::move(payload_str),
+                    .err = true,
+                };
+                auto done_ch = ack_pkg.done_ch;
                 CFGO_LOGGER_TRACE(signal->m_logger, "Error raw ack sending... Id: {}; Content: {}.", m_msg_id, payload_str);
-                co_await signal->m_ws->async_write(asio::buffer(payload));
+                co_await chan_write_or_throw<WSAckOrMsg>(signal->m_outgoing_ch, std::move(ack_pkg), closer);
+                co_await chan_read_or_throw<void>(done_ch, closer);
                 CFGO_LOGGER_TRACE(signal->m_logger, "Error raw ack sended. Id: {}; What: {}.", m_msg_id, eo->msg);
             }
             co_return;
@@ -429,7 +449,7 @@ namespace cfgo
             }), asio::detached);
             asio::co_spawn(executor, self->_wrap_background_task([self]() -> asio::awaitable<void> {
                 auto executor = co_await asio::this_coro::executor;
-                while (true) {
+                do {
                     beast::flat_buffer buffer;
                     auto [ec, bytes] = co_await self->m_ws->async_read(buffer, asio::as_tuple(asio::use_awaitable));
                     if (ec != beast::errc::success)
@@ -446,8 +466,8 @@ namespace cfgo
                     if (flag == WS_MSG_FLAG_IS_ACK_ERR || flag == WS_MSG_FLAG_IS_ACK_NORMAL) {
                         CFGO_SELF_DEBUG("receive ack msg, err: {}, id: {}", flag == WS_MSG_FLAG_IS_ACK_ERR, msg_id);
                         WSAck msg(std::move(payload), flag == WS_MSG_FLAG_IS_ACK_ERR);
-                        auto ch_iter = self->m_ack_chs.find(msg_id);
-                        if (ch_iter != self->m_ack_chs.end()) {
+                        auto ch_iter = self->m_incoming_ack_chs.find(msg_id);
+                        if (ch_iter != self->m_incoming_ack_chs.end()) {
                             chan_must_write(ch_iter->second, std::move(msg));
                         }
                     } else {
@@ -465,24 +485,35 @@ namespace cfgo
                         }
                         self->m_msg_cbs.complete_loop();
                     }
-                }
+                } while (true);
             }), asio::detached);
             asio::co_spawn(executor, self->_wrap_background_task([self]() -> asio::awaitable<void> {
-                while (true)
+                do
                 {
-                    auto msg = co_await chan_read_or_throw<RawSigMsgUPtr>(self->m_msg_ch, self->m_closer);
-                    auto payload_str = msg->payload().dump();
-                    auto payload = encodeWsTextData(msg->evt(), msg->msg_id(), msg->ack() ? WS_MSG_FLAG_NEED_ACK : WS_MSG_FLAG_NO_ACK, payload_str);
-                    co_await self->m_ws->async_write(asio::buffer(payload));
-                    if (!msg->ack())
+                    auto ack_or_msg = co_await chan_read_or_throw<WSAckOrMsg>(self->m_outgoing_ch, self->m_closer);
+                    if (std::holds_alternative<RawSigMsgUPtr>(ack_or_msg))
                     {
-                        WSAck ack_msg(nullptr, false);
-                        auto ch_iter = self->m_ack_chs.find(msg->msg_id());
-                        if (ch_iter != self->m_ack_chs.end()) {
-                            chan_must_write(ch_iter->second, std::move(ack_msg));
+                        auto msg = std::get<RawSigMsgUPtr>(std::move(ack_or_msg));
+                        auto payload_str = msg->payload().dump();
+                        auto payload = encodeWsTextData(msg->evt(), msg->msg_id(), msg->ack() ? WS_MSG_FLAG_NEED_ACK : WS_MSG_FLAG_NO_ACK, payload_str);
+                        co_await self->m_ws->async_write(asio::buffer(payload));
+                        if (!msg->ack())
+                        {
+                            WSAck ack_msg(nullptr, false);
+                            auto ch_iter = self->m_incoming_ack_chs.find(msg->msg_id());
+                            if (ch_iter != self->m_incoming_ack_chs.end()) {
+                                chan_must_write(ch_iter->second, std::move(ack_msg));
+                            }
                         }
                     }
-                }
+                    else
+                    {
+                        auto ack_pkg = std::get<WSAckPackage>(std::move(ack_or_msg));
+                        auto payload = encodeWsTextData("", ack_pkg.msg_id, ack_pkg.err ? WS_MSG_FLAG_IS_ACK_ERR : WS_MSG_FLAG_IS_ACK_NORMAL, ack_pkg.payload);
+                        co_await self->m_ws->async_write(asio::buffer(payload));
+                        chan_must_write(ack_pkg.done_ch);
+                    }
+                } while (true);
             }), asio::detached);
         }
 
@@ -498,11 +529,11 @@ namespace cfgo
             auto msg_id = msg->msg_id();
             auto ack = msg->ack();
             WSAckChan ch {};
-            m_ack_chs.insert(std::make_pair(msg_id, ch));
+            m_incoming_ack_chs.insert(std::make_pair(msg_id, ch));
             DEFER({
-                m_ack_chs.erase(msg_id);
+                m_incoming_ack_chs.erase(msg_id);
             });
-            co_await chan_write_or_throw<RawSigMsgUPtr>(self->m_msg_ch, std::move(msg));
+            co_await chan_write_or_throw<WSAckOrMsg>(self->m_outgoing_ch, std::move(msg), closer);
             CFGO_SELF_DEBUG("after async write {} msg with id {}", evt, msg_id);
 
             if (m_config.ack_timeout > duration_t{0})
@@ -512,12 +543,12 @@ namespace cfgo
             auto && ack_msg = co_await chan_read_or_throw<WSAck>(ch, closer);
             if (ack_msg.err()) {
                 ServerErrorObject error {};
-                nlohmann::from_json(ack_msg.consume(), error);
+                nlohmann::from_json(ack_msg.payload(), error);
                 CFGO_SELF_DEBUG("send {} msg failed with id {} and ack {}", evt, msg_id, ack);
                 throw ServerError(std::move(error), false);
             } else {
                 CFGO_SELF_DEBUG("send {} msg succeed with id {} and ack {}", evt, msg_id, ack);
-                co_return ack_msg.consume();
+                co_return std::move(ack_msg).payload();
             }
         }
 
@@ -877,7 +908,7 @@ namespace cfgo
                     else if (evt == "candidate")
                     {
                         assert(msg->ack());
-                        co_await acker->ack(nlohmann::json ("ack"));
+                        co_await acker->ack(closer, nlohmann::json ("ack"));
                         auto sm = std::make_shared<msg::CandidateMessage>();
                         nlohmann::from_json(msg->payload(), *sm);
                         for (auto iter = self->m_cand_cbs.begin(); iter != self->m_cand_cbs.end();)
@@ -891,7 +922,7 @@ namespace cfgo
                         }
                     } else if (evt == "sdp") {
                         assert(msg->ack());
-                        co_await acker->ack(nlohmann::json ("ack"));
+                        co_await acker->ack(closer, nlohmann::json ("ack"));
                         auto sm = std::make_shared<msg::SdpMessage>();
                         nlohmann::from_json(msg->payload(), *sm);
                         for (auto iter = self->m_sdp_cbs.begin(); iter != self->m_sdp_cbs.end();)
@@ -982,7 +1013,7 @@ namespace cfgo
             self->m_raw_signal->on_msg([self, lazy_sub_id, closer, executor = std::move(executor)](RawSigMsgPtr msg, RawSigAckerPtr acker) -> asio::awaitable<bool> {
                 if (msg->evt() == "subscribed")
                 {
-                    co_await acker->ack("ack");
+                    co_await acker->ack(closer, "ack");
                     auto sub_id = co_await lazy_sub_id->get(closer);
                     if (msg->payload().value("subId", "") == sub_id)
                     {
