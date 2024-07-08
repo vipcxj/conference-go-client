@@ -66,4 +66,9 @@ namespace cfgo
     {
         return impl()->get_closer();
     }
+
+    SignalPtr Client::get_signal() const noexcept
+    {
+        return impl()->get_signal();
+    }
 }
