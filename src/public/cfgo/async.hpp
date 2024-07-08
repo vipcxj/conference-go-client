@@ -1834,10 +1834,10 @@ namespace cfgo
         DONE,
     };
 
-    template<typename T>
+    template<typename T, typename... Args>
     class InitableBox {
     public:
-        using FUN = std::function<asio::awaitable<T>(close_chan)>;
+        using FUN = std::function<asio::awaitable<T>(close_chan, Args...)>;
     private:
         mutable AsyncInitState m_state {AsyncInitState::NEW};
         mutable FUN m_task;
@@ -1882,7 +1882,7 @@ namespace cfgo
             }
         }
 
-        auto operator()(close_chan closer) -> asio::awaitable<T> {
+        auto operator()(close_chan closer, Args &&... args) -> asio::awaitable<T> {
             do
             {
                 bool run = false;
@@ -1920,7 +1920,7 @@ namespace cfgo
                 {
                     try
                     {
-                        m_res = co_await m_task(closer);
+                        m_res = co_await m_task(closer, std::forward<Args>(args)...);
                     }
                     catch(...)
                     {
@@ -1943,10 +1943,10 @@ namespace cfgo
         }
     };
 
-    template<>
-    class InitableBox<void> {
+    template<typename... Args>
+    class InitableBox<void, Args...> {
     public:
-        using FUN = std::function<asio::awaitable<void>(close_chan)>;
+        using FUN = std::function<asio::awaitable<void>(close_chan, Args...)>;
     private:
         mutable AsyncInitState m_state {AsyncInitState::NEW};
         mutable FUN m_task;
@@ -1991,7 +1991,7 @@ namespace cfgo
             }
         }
 
-        auto operator()(close_chan closer) const -> asio::awaitable<void> {
+        auto operator()(close_chan closer, Args &&... args) const -> asio::awaitable<void> {
             do
             {
                 bool run = false;
@@ -2029,7 +2029,7 @@ namespace cfgo
                 {
                     try
                     {
-                        co_await m_task(closer);
+                        co_await m_task(closer, std::forward<Args>(args)...);
                     }
                     catch(...)
                     {
@@ -2052,10 +2052,10 @@ namespace cfgo
         }
     };
 
-    template<>
-    class InitableBox<std::exception_ptr> {
+    template<typename... Args>
+    class InitableBox<std::exception_ptr, Args...> {
     public:
-        using FUN = std::function<asio::awaitable<std::exception_ptr>(close_chan)>;
+        using FUN = std::function<asio::awaitable<std::exception_ptr>(close_chan, Args...)>;
     private:
         mutable AsyncInitState m_state {AsyncInitState::NEW};
         mutable FUN m_task;
@@ -2099,7 +2099,7 @@ namespace cfgo
             }
         }
 
-        auto operator()(close_chan closer) const -> asio::awaitable<std::exception_ptr> {
+        auto operator()(close_chan closer, Args &&... args) const -> asio::awaitable<std::exception_ptr> {
             do
             {
                 bool run = false;
@@ -2138,7 +2138,7 @@ namespace cfgo
                 {
                     try
                     {
-                        m_res = std::make_tuple(co_await m_task(closer), nullptr);
+                        m_res = std::make_tuple(co_await m_task(closer, std::forward<Args>(args)...), nullptr);
                     }
                     catch(...)
                     {

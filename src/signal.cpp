@@ -223,7 +223,7 @@ namespace cfgo
             SignalConfigure m_config;
             int ws_state = 0;
             Logger m_logger = Log::instance().create_logger(Log::Category::WEBSOCKET);
-            const std::string m_id {boost::uuids::to_string(boost::uuids::random_generator()())};
+            std::string m_id {boost::uuids::to_string(boost::uuids::random_generator()())};
             std::optional<Websocket> m_ws {std::nullopt};
             std::uint64_t m_next_msg_id {1};
             std::uint64_t m_next_msg_cb_id {0};
@@ -232,7 +232,7 @@ namespace cfgo
             std::unordered_map<std::uint64_t, WSAckChan> m_incoming_ack_chs {};
 
             std::unordered_set<close_chan> m_listen_closers {};
-            InitableBox<void> m_connect;
+            InitableBox<void, std::string> m_connect;
 
             void register_listen_closer(const close_chan & closer) {
                 if (m_closer.is_closed())
@@ -257,14 +257,14 @@ namespace cfgo
             }
 
             auto run() -> asio::awaitable<void>;
-            auto _connect(close_chan closer) -> asio::awaitable<void>;
+            auto _connect(close_chan closer, std::string socket_id) -> asio::awaitable<void>;
             auto _wrap_background_task(std::function<asio::awaitable<void>()> && task) -> std::function<asio::awaitable<void>()>;
         public:
             WebsocketRawSignal(close_chan closer, const SignalConfigure & conf):
                 m_closer(closer),
                 m_config(conf),
-                m_connect([this](auto closer) {
-                    return _connect(std::move(closer));
+                m_connect([this](auto closer, std::string socket_id) {
+                    return _connect(std::move(closer), std::move(socket_id));
                 }, false)
             {}
             ~WebsocketRawSignal() noexcept {}
@@ -276,8 +276,8 @@ namespace cfgo
                 m_next_msg_id += 2;
                 return WSMsg::create(msg_id, evt, std::move(payload), ack);
             }
-            auto connect(close_chan closer) -> asio::awaitable<void> override {
-                return m_connect(std::move(closer));
+            auto connect(close_chan closer, std::string socket_id) -> asio::awaitable<void> override {
+                return m_connect(std::move(closer), std::move(socket_id));
             }
             auto send_msg(close_chan closer, RawSigMsgUPtr msg) -> asio::awaitable<nlohmann::json> override;
             std::uint64_t on_msg(RawSigMsgCb cb) override;
@@ -331,8 +331,12 @@ namespace cfgo
             co_return;
         }
 
-        auto WebsocketRawSignal::_connect(close_chan closer) -> asio::awaitable<void> {
+        auto WebsocketRawSignal::_connect(close_chan closer, std::string socket_id) -> asio::awaitable<void> {
             auto self = shared_from_this();
+            if (!socket_id.empty())
+            {
+                m_id = socket_id;
+            }
             if (self->ws_state == 0)
             {
                 self->ws_state = 1;
@@ -655,9 +659,9 @@ namespace cfgo
             std::unordered_map<CustomAckKey, unique_chan<CustomAckMessagePtr>> m_custom_ack_chans {};
             std::unordered_map<std::string, std::shared_ptr<LazyBox<SubscribedMsgPtr>>> m_subscribed_msgs {};
             std::unordered_set<std::string> m_rooms {};
-            InitableBox<void> m_connect;
+            InitableBox<void, std::string> m_connect;
 
-            auto _connect(close_chan closer) -> asio::awaitable<void>;
+            auto _connect(close_chan closer, std::string socket_id) -> asio::awaitable<void>;
 
             auto _send_ping(close_chan closer, std::uint32_t msg_id, std::string room, std::string socket_id) -> asio::awaitable<void> {
                 auto self = shared_from_this();
@@ -707,13 +711,13 @@ namespace cfgo
         public:
             Signal(RawSignalPtr raw_signal):
                 m_raw_signal(std::move(raw_signal)),
-                m_connect([this](auto closer) {
-                    return _connect(std::move(closer));
+                m_connect([this](auto closer, std::string socket_id) {
+                    return _connect(std::move(closer), std::move(socket_id));
                 }, false)
             {}
             ~Signal() noexcept {}
-            auto connect(close_chan closer) -> asio::awaitable<void> override {
-                return m_connect(std::move(closer));
+            auto connect(close_chan closer, std::string socket_id = "") -> asio::awaitable<void> override {
+                return m_connect(std::move(closer), std::move(socket_id));
             }
             close_chan get_notify_closer() override {
                 return m_raw_signal->get_notify_closer();
@@ -863,7 +867,7 @@ namespace cfgo
             }
         }
 
-        auto Signal::_connect(close_chan closer) -> asio::awaitable<void> {
+        auto Signal::_connect(close_chan closer, std::string socket_id) -> asio::awaitable<void> {
             auto self = shared_from_this();
             auto executor = co_await asio::this_coro::executor;
             auto signal_closer = self->m_raw_signal->get_notify_closer();
@@ -980,7 +984,7 @@ namespace cfgo
                 }
                 co_return true;
             });
-            co_await m_raw_signal->connect(closer);
+            co_await m_raw_signal->connect(closer, std::move(socket_id));
             self->m_user_info = co_await chan_read_or_throw<UserInfoPtr>(ready_ch, closer);
             self->m_rooms = std::unordered_set<std::string>(self->m_user_info->rooms.begin(), self->m_user_info->rooms.end());
             self->m_user_info->rooms.clear();

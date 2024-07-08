@@ -48,6 +48,22 @@ void do_async(std::function<asio::awaitable<void>()> func, bool multithread = tr
     }
 }
 
+TEST(Signal, Connect) {
+    do_async([]() -> asio::awaitable<void> {
+        using namespace cfgo;
+        close_chan closer {};
+        auto token = co_await get_token("1", "room", true);
+        auto signal = make_websocket_signal(closer, cfgo::SignalConfigure{
+            .url = fmt::format("ws://{}:{}/ws", SIGNAL_HOST, SIGNAL_PORT),
+            .token = token,
+            .ready_timeout = std::chrono::seconds(30),
+        });
+        co_await signal->connect(closer, "123456789");
+        auto id = co_await signal->id(closer);
+        EXPECT_EQ("123456789", id);
+    });
+}
+
 TEST(Signal, JoinAndLeave) {
     do_async([]() -> asio::awaitable<void> {
         using namespace cfgo;

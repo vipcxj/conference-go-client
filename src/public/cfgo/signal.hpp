@@ -43,7 +43,7 @@ namespace cfgo
     struct RawSignal {
         virtual ~RawSignal() = 0;
         [[nodiscard]]
-        virtual auto connect(close_chan closer) -> asio::awaitable<void> = 0;
+        virtual auto connect(close_chan closer, std::string socket_id = "") -> asio::awaitable<void> = 0;
         [[nodiscard]]
         virtual auto send_msg(close_chan closer, RawSigMsgUPtr msg) -> asio::awaitable<nlohmann::json> = 0;
         virtual std::uint64_t on_msg(RawSigMsgCb cb) = 0;
@@ -132,7 +132,7 @@ namespace cfgo
 
         virtual ~Signal() = 0;
         [[nodiscard]]
-        virtual auto connect(close_chan closer) -> asio::awaitable<void> = 0;
+        virtual auto connect(close_chan closer, std::string socket_id = "") -> asio::awaitable<void> = 0;
         /**
          * used to get the close event, close this closer will not close the signal.
          */
