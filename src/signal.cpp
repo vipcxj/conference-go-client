@@ -1138,9 +1138,24 @@ namespace cfgo
                             DEFER({
                                 self->_off_pong(cb_id);
                             });
-                            co_await self->_send_ping(timeout_closer, msg_id, room, socket_id);
-                            auto res = co_await chan_read<void>(pong_ch, timeout_closer);
-                            if (!res)
+                            bool timeout = false;
+                            try
+                            {
+                                co_await self->_send_ping(timeout_closer, msg_id, room, socket_id);
+                            }
+                            catch(const cfgo::CancelError & e)
+                            {
+                                if (e.is_timeout())
+                                {
+                                    timeout = true;
+                                }
+                                else
+                                {
+                                    assert(timeout_closer.is_closed());
+                                    co_return;
+                                }
+                            }                          
+                            if (timeout || !co_await chan_read<void>(pong_ch, timeout_closer))
                             {
                                 if (timeout_closer.is_timeout())
                                 {
