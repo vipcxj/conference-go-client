@@ -601,6 +601,24 @@ TEST(Closer, DependOnSelf) {
     }), true);
 }
 
+// TEST(Asio, CoSpawn) {
+//     asio::io_context io_ctx {};
+//     auto strand = asio::make_strand(io_ctx.get_executor());
+//     asio::co_spawn(strand, cfgo::fix_async_lambda([]() -> asio::awaitable<void> {
+//         auto executor = co_await asio::this_coro::executor;
+//         asio::co_spawn(executor, cfgo::fix_async_lambda([]() -> asio::awaitable<void> {
+//             throw cpptrace::runtime_error("error");
+//         }), asio::detached);
+//         asio::co_spawn(executor, cfgo::fix_async_lambda([]() -> asio::awaitable<void> {
+//             co_await cfgo::wait_timeout(std::chrono::seconds{1});
+//             CFGO_INFO("should not be here 2.");
+//         }), asio::detached);
+//         co_await cfgo::wait_timeout(std::chrono::seconds{1});
+//         CFGO_INFO("should not be here 1.");
+//     }), asio::detached);
+//     io_ctx.run();
+// }
+
 TEST(AsyncBlocker, CheckDeadLock) {
     using namespace cfgo;
     AsyncBlockerManager::Configure conf {

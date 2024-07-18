@@ -155,11 +155,12 @@ namespace cfgo
     protected:
         Reason m_reason;
         bool m_trace;
+        std::source_location m_loc;
     public:
-        explicit CancelError(std::string&& message, Reason reason = CANCEL, bool trace = false) noexcept;
-        explicit CancelError(Reason reason = CANCEL, bool trace = false) noexcept;
-        explicit CancelError(bool is_timeout, bool trace = false) noexcept;
-        explicit CancelError(const close_chan & close_ch, bool trace = false) noexcept;
+        explicit CancelError(std::string&& message, Reason reason = CANCEL, bool trace = false, std::source_location && source_loc = std::source_location::current()) noexcept;
+        explicit CancelError(Reason reason = CANCEL, bool trace = false, std::source_location && source_loc = std::source_location::current()) noexcept;
+        explicit CancelError(bool is_timeout, bool trace = false, std::source_location && source_loc = std::source_location::current()) noexcept;
+        explicit CancelError(const close_chan & close_ch, bool trace = false, std::source_location && source_loc = std::source_location::current()) noexcept;
         const char* what() const noexcept override;
         inline bool is_timeout() const noexcept
         {

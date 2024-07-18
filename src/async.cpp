@@ -10,23 +10,78 @@ namespace cfgo
 {
     close_chan INVALID_CLOSE_CHAN {nullptr};
 
-    CancelError::CancelError(std::string&& message, Reason reason, bool trace) noexcept:
-        cpptrace::exception_with_message(std::move(message), trace ? cpptrace::detail::get_raw_trace_and_absorb() : cpptrace::raw_trace{}),
+    std::string create_cancel_error_msg(std::string&& message, CancelError::Reason reason, bool trace, const std::source_location & source_loc) {
+        if (message.empty())
+        {
+            if (trace)
+            {
+                if (reason == CancelError::CANCEL)
+                {
+                    return "closer canceled";
+                }
+                else
+                {
+                    return "closer closed";
+                }
+            }
+            else
+            {
+                if (reason == CancelError::CANCEL)
+                {
+                    return fmt::format("closer canceled [{} - {}:{}:{}]", source_loc.file_name(), source_loc.function_name(), source_loc.line(), source_loc.column());
+                }
+                else
+                {
+                    return fmt::format("closer closed [{} - {}:{}:{}]", source_loc.file_name(), source_loc.function_name(), source_loc.line(), source_loc.column());
+                }
+            }
+        }
+        else
+        {
+            if (trace)
+            {
+                if (reason == CancelError::CANCEL)
+                {
+                    return fmt::format("closer canceled, {}", message);
+                }
+                else
+                {
+                    return fmt::format("closer closed, {}", message);
+                }
+            }
+            else
+            {
+                if (reason == CancelError::CANCEL)
+                {
+                    return fmt::format("closer canceled, {} [{} - {}:{}:{}]", message, source_loc.file_name(), source_loc.function_name(), source_loc.line(), source_loc.column());
+                }
+                else
+                {
+                    return fmt::format("closer closed, {} [{} - {}:{}:{}]", message, source_loc.file_name(), source_loc.function_name(), source_loc.line(), source_loc.column());
+                }
+            }
+        }
+    }
+
+    CancelError::CancelError(std::string&& message, Reason reason, bool trace, std::source_location && source_loc) noexcept:
+        cpptrace::exception_with_message(create_cancel_error_msg(std::move(message), reason, trace, source_loc), trace ? cpptrace::detail::get_raw_trace_and_absorb() : cpptrace::raw_trace{}),
         m_reason(reason),
-        m_trace(trace)
+        m_trace(trace),
+        m_loc(std::move(source_loc))
     {}
 
-    CancelError::CancelError(Reason reason, bool trace) noexcept: CancelError("", reason, trace)
+    CancelError::CancelError(Reason reason, bool trace, std::source_location && source_loc) noexcept: CancelError("", reason, trace, std::move(source_loc))
     {}
 
-    CancelError::CancelError(bool is_timeout, bool trace) noexcept: CancelError(is_timeout ? TIMEOUT : CANCEL, trace)
+    CancelError::CancelError(bool is_timeout, bool trace, std::source_location && source_loc) noexcept: CancelError(is_timeout ? TIMEOUT : CANCEL, trace, std::move(source_loc))
     {}
 
-    CancelError::CancelError(const close_chan & close_ch, bool trace) noexcept:
+    CancelError::CancelError(const close_chan & close_ch, bool trace, std::source_location && source_loc) noexcept:
         CancelError(
             close_ch.is_timeout() ? std::move(close_ch.get_timeout_reason()) : std::move(close_ch.get_close_reason()),
             close_ch.is_timeout() ? TIMEOUT : CANCEL,
-            trace
+            trace,
+            std::move(source_loc)
         )
     {}
 
