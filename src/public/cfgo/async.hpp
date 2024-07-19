@@ -1832,7 +1832,7 @@ namespace cfgo
             bool done = m_done.load(std::memory_order::acquire);
             if (done)
             {
-                return std::make_optional(m_data.data());
+                return std::make_optional(m_data.value());
             }
             else
             {
