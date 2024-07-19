@@ -8,6 +8,8 @@ namespace cfgo
 {
     namespace magic
     {
+        template <typename...> struct WhichType;
+
         template <bool B, typename... Ts>
         constexpr auto pick_if(Ts &&...xs)
         {

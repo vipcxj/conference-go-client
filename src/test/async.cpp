@@ -563,6 +563,27 @@ TEST(Helper, SharedPtrHolder) {
     EXPECT_EQ(ptr.use_count(), 1);
 }
 
+TEST(LazyBox, Get) {
+    using namespace cfgo;
+    do_async([]() -> asio::awaitable<void> {
+        auto sbox = LazyBox<shared_ptr<int>>::create();
+        sbox->init(std::make_shared<int>(0));
+        auto sdata = co_await sbox->get(nullptr);
+        EXPECT_TRUE((bool) sdata);
+        EXPECT_EQ(0, *sdata);
+        sdata = co_await sbox->get(nullptr);
+        EXPECT_TRUE((bool) sdata);
+        EXPECT_EQ(0, *sdata);
+        auto ubox = LazyBox<unique_ptr<int>>::create();
+        ubox->init(std::make_unique<int>(0));
+        auto udata = co_await ubox->move(nullptr);
+        EXPECT_TRUE((bool) udata);
+        EXPECT_EQ(0, *udata);
+        udata = co_await ubox->move(nullptr);
+        EXPECT_FALSE((bool) udata);
+    }, true);
+}
+
 TEST(Closer, ParentAndChildrenCloseTogether) {
     using namespace cfgo;
     std::random_device rd {};

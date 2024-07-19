@@ -1047,7 +1047,7 @@ namespace cfgo
             auto self = shared_from_this();
             auto lazy_sub_msg_iter = self->m_subscribed_msgs.find(sub->id);
             if (lazy_sub_msg_iter != self->m_subscribed_msgs.end()) {
-                auto res_msg = co_await lazy_sub_msg_iter->second->get(closer);
+                auto res_msg = co_await lazy_sub_msg_iter->second->move(closer);
                 self->m_subscribed_msgs.erase(lazy_sub_msg_iter);
                 co_return res_msg;
             } else {

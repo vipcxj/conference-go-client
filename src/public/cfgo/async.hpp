@@ -1820,12 +1820,24 @@ namespace cfgo
         }
 
         auto get(close_chan closer) -> asio::awaitable<T> {
+            if constexpr(!std::is_copy_constructible_v<std::decay_t<T>>) {
+                throw cpptrace::logic_error(fmt::format("The type {} is not copy constructible.", typeid(T).name()));
+            }
             bool done = m_done.load(std::memory_order::acquire);
             if (done) {
-                co_return std::forward<T>(m_data.value());
+                co_return m_data.value();
             }
             co_await chan_read_or_throw<void>(m_ch, closer);
-            co_return std::forward<T>(m_data.value());
+            co_return m_data.value();
+        }
+
+        auto move(close_chan closer) -> asio::awaitable<T> {
+            bool done = m_done.load(std::memory_order::acquire);
+            if (done) {
+                co_return std::move(m_data.value());
+            }
+            co_await chan_read_or_throw<void>(m_ch, closer);
+            co_return std::move(m_data.value());
         }
 
         auto maybe_get() -> std::optional<T> {
