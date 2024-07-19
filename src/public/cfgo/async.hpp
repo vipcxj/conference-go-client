@@ -1827,6 +1827,18 @@ namespace cfgo
             co_await chan_read_or_throw<void>(m_ch, closer);
             co_return std::forward<T>(m_data.value());
         }
+
+        auto maybe_get() -> std::optional<T> {
+            bool done = m_done.load(std::memory_order::acquire);
+            if (done)
+            {
+                return std::make_optional(m_data.data());
+            }
+            else
+            {
+                return std::nullopt;
+            }            
+        }
     };
 
     enum class AsyncInitState {
