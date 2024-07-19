@@ -468,14 +468,14 @@ namespace cfgo
                     decodeWsTextData(buffer, evt, msg_id, flag, svPayload);
                     auto payload = nlohmann::json::parse(svPayload);
                     if (flag == WS_MSG_FLAG_IS_ACK_ERR || flag == WS_MSG_FLAG_IS_ACK_NORMAL) {
-                        CFGO_SELF_DEBUG("receive ack msg, err: {}, id: {}", flag == WS_MSG_FLAG_IS_ACK_ERR, msg_id);
+                        CFGO_SELF_TRACE("receive ack msg, err: {}, id: {}", flag == WS_MSG_FLAG_IS_ACK_ERR, msg_id);
                         WSAck msg(std::move(payload), flag == WS_MSG_FLAG_IS_ACK_ERR);
                         auto ch_iter = self->m_incoming_ack_chs.find(msg_id);
                         if (ch_iter != self->m_incoming_ack_chs.end()) {
                             chan_must_write(ch_iter->second, std::move(msg));
                         }
                     } else {
-                        CFGO_SELF_DEBUG("receive {} msg, id: {}, need ack: {}, content: {}", evt, msg_id, flag == WS_MSG_FLAG_NEED_ACK, svPayload);
+                        CFGO_SELF_TRACE("receive {} msg, id: {}, need ack: {}, content: {}", evt, msg_id, flag == WS_MSG_FLAG_NEED_ACK, svPayload);
                         RawSigMsgPtr msg = WSMsg::create(msg_id, evt, std::move(payload), flag == WS_MSG_FLAG_NEED_ACK);
                         auto acker = make_acker(self->weak_from_this(), flag == WS_MSG_FLAG_NEED_ACK, msg_id);
                         self->m_msg_cbs.start_loop();
@@ -523,7 +523,7 @@ namespace cfgo
 
         auto WebsocketRawSignal::send_msg(close_chan closer, RawSigMsgUPtr msg) -> asio::awaitable<nlohmann::json> {
             auto self = shared_from_this();
-            CFGO_SELF_DEBUG("sending {} msg with id {} and ack {}", msg->evt(), msg->msg_id(), msg->ack());
+            CFGO_SELF_TRACE("sending {} msg with id {} and ack {}", msg->evt(), msg->msg_id(), msg->ack());
             closer = closer.create_child();
             register_listen_closer(closer);
             DEFER({
@@ -538,7 +538,7 @@ namespace cfgo
                 m_incoming_ack_chs.erase(msg_id);
             });
             co_await chan_write_or_throw<WSAckOrMsg>(self->m_outgoing_ch, std::move(msg), closer);
-            CFGO_SELF_DEBUG("after async write {} msg with id {}", evt, msg_id);
+            CFGO_SELF_TRACE("after async write {} msg with id {}", evt, msg_id);
 
             if (m_config.ack_timeout > duration_t{0})
             {
@@ -548,10 +548,10 @@ namespace cfgo
             if (ack_msg.err()) {
                 ServerErrorObject error {};
                 nlohmann::from_json(ack_msg.payload(), error);
-                CFGO_SELF_DEBUG("send {} msg failed with id {} and ack {}", evt, msg_id, ack);
+                CFGO_SELF_TRACE("send {} msg failed with id {} and ack {}", evt, msg_id, ack);
                 throw ServerError(std::move(error), false);
             } else {
-                CFGO_SELF_DEBUG("send {} msg succeed with id {} and ack {}", evt, msg_id, ack);
+                CFGO_SELF_TRACE("send {} msg succeed with id {} and ack {}", evt, msg_id, ack);
                 co_return std::move(ack_msg).payload();
             }
         }
@@ -1260,7 +1260,7 @@ namespace cfgo
         }
     } // namespace impl
 
-    auto make_keep_alive_callback(close_chan signal, int timeout_num, duration_t timeout_dur, int timeout_num_when_warmup, duration_t timeout_dur_when_warmup, bool term_when_err, Logger logger) -> KeepAliveCb {
+    auto make_keep_alive_callback(close_chan closer, int timeout_num, duration_t timeout_dur, int timeout_num_when_warmup, duration_t timeout_dur_when_warmup, bool term_when_err, Logger logger) -> KeepAliveCb {
         return [=](const KeepAliveContext & ctx) -> bool {
             if (ctx.err && term_when_err)
             {
@@ -1269,19 +1269,19 @@ namespace cfgo
                 {
                     logger->error("Keep alive failed because of err: {}", reason);
                 }
-                signal.close(std::move(reason));
+                closer.close(std::move(reason));
                 return true;
             }
             if (ctx.warmup)
             {
                 if (timeout_num_when_warmup >= 0 && ctx.timeout_num > timeout_num_when_warmup)
                 {
-                    signal.close("Keep alive timeout.");
+                    closer.close("Keep alive timeout.");
                     return true;
                 }
                 if (timeout_dur_when_warmup > duration_t{0} && ctx.timeout_dur > timeout_dur_when_warmup)
                 {
-                    signal.close("Keep alive timeout.");
+                    closer.close("Keep alive timeout.");
                     return true;
                 }
             }
@@ -1289,12 +1289,12 @@ namespace cfgo
             {
                 if (timeout_num >= 0 && ctx.timeout_num > timeout_num)
                 {
-                    signal.close("Keep alive timeout.");
+                    closer.close("Keep alive timeout.");
                     return true;
                 }
                 if (timeout_dur > duration_t{0} && ctx.timeout_dur > timeout_dur)
                 {
-                    signal.close("Keep alive timeout.");
+                    closer.close("Keep alive timeout.");
                     return true;
                 }
             }
