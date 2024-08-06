@@ -107,6 +107,10 @@ namespace cfgo
             void reset_rtcp_data() noexcept;
             float get_drop_bytes_rate() noexcept;
             float get_drop_packets_rate() noexcept;
+            std::uint16_t get_rtp_cache_size() noexcept;
+            std::uint16_t get_rtcp_cache_size() noexcept;
+            std::uint16_t get_rtp_cache_capicity() const noexcept;
+            std::uint16_t get_rtcp_cache_capicity() const noexcept;
         };
     } // namespace impl
     

@@ -169,5 +169,21 @@ namespace cfgo
     {
         return impl()->get_drop_packets_rate();
     }
+    std::uint16_t Track::get_rtp_cache_size() const noexcept
+    {
+        return impl()->get_rtp_cache_size();
+    }
+    std::uint16_t Track::get_rtcp_cache_size() const noexcept
+    {
+        return impl()->get_rtcp_cache_size();
+    }
+    std::uint16_t Track::get_rtp_cache_capicity() const noexcept
+    {
+        return impl()->get_rtp_cache_capicity();
+    }
+    std::uint16_t Track::get_rtcp_cache_capicity() const noexcept
+    {
+        return impl()->get_rtcp_cache_capicity();
+    }
 
 } // namespace cfgo

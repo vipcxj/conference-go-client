@@ -555,6 +555,25 @@ namespace cfgo
             std::lock_guard g(m_lock);
             return m_statistics.drop_packets_rate();
         }
+
+        std::uint16_t Track::get_rtp_cache_size() noexcept
+        {
+            std::lock_guard g(m_lock);
+            return m_rtp_cache.size();
+        }
+        std::uint16_t Track::get_rtcp_cache_size() noexcept
+        {
+            std::lock_guard g(m_lock);
+            return m_rtcp_cache.size();
+        }
+        std::uint16_t Track::get_rtp_cache_capicity() const noexcept
+        {
+            return m_rtp_cache.capacity();
+        }
+        std::uint16_t Track::get_rtcp_cache_capicity() const noexcept
+        {
+            return m_rtcp_cache.capacity();
+        }
     } // namespace impl
     
 } // namespace cfgo

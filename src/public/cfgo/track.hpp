@@ -210,6 +210,10 @@ namespace cfgo
         void reset_rtcp_data() const noexcept;
         float get_drop_bytes_rate() const noexcept;
         float get_drop_packets_rate() const noexcept;
+        std::uint16_t get_rtp_cache_size() const noexcept;
+        std::uint16_t get_rtcp_cache_size() const noexcept;
+        std::uint16_t get_rtp_cache_capicity() const noexcept;
+        std::uint16_t get_rtcp_cache_capicity() const noexcept;
 
         friend class impl::Client;
     };
