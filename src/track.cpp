@@ -4,7 +4,7 @@
 namespace cfgo
 {
     Track::Track(std::nullptr_t state): ImplBy(std::shared_ptr<impl::Track>(nullptr)) {}
-    Track::Track(const msg::Track & msg, int cache_capicity): ImplBy<impl::Track>(msg, cache_capicity) {}
+    Track::Track(const msg::Track & msg, int rtp_cache_capicity, int rtcp_cache_capicity): ImplBy<impl::Track>(msg, rtp_cache_capicity, rtcp_cache_capicity) {}
     void Track::prepare_track(
         #ifdef CFGO_SUPPORT_GSTREAMER
         GstSDPMessage *sdp

@@ -60,7 +60,7 @@ namespace cfgo
             const GstSDPMedia * gst_media() const;
             #endif
 
-            Track(const msg::Track & msg, int cache_capicity);
+            Track(const msg::Track & msg, int rtp_cache_capicity, int rtcp_cache_capicity);
             ~Track();
 
             uint32_t makesure_min_seq();

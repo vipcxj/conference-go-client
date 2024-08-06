@@ -32,8 +32,15 @@ typedef struct
 
 typedef struct
 {
+    uint16_t rtp_cache_capicity;
+    uint16_t rtcp_cache_capicity;
+} cfgoTrackConfigure;
+
+typedef struct
+{
     cfgoSignalConfigure signal_config;
     rtcConfiguration rtc_config;
+    cfgoTrackConfigure track_config;
     bool thread_safe;
     int execution_context_handle;
 } cfgoConfiguration;

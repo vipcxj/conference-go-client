@@ -175,7 +175,11 @@ namespace cfgo
                 .ready_timeout = std::chrono::milliseconds{conf->signal_config.ready_timeout},
                 .ack_timeout = std::chrono::milliseconds{conf->signal_config.ack_timeout},
             }, 
-            rtc_config_to_cpp(&conf->rtc_config)
+            rtc_config_to_cpp(&conf->rtc_config),
+            cfgo::TrackConfigure{
+                .rtp_cache_capicity = conf->track_config.rtp_cache_capicity,
+                .rtcp_cache_capicity = conf->track_config.rtcp_cache_capicity,
+            }
         );
     }
 

@@ -315,7 +315,7 @@ namespace cfgo
             }
             for (auto && track : sub_res->tracks)
             {
-                sub_ptr->tracks().push_back(std::make_shared<cfgo::Track>(track));
+                sub_ptr->tracks().push_back(std::make_shared<cfgo::Track>(track, m_conf.m_track_config.rtp_cache_capicity, m_conf.m_track_config.rtcp_cache_capicity));
             }
             std::vector<cfgo::TrackPtr> uncompleted_tracks(sub_ptr->tracks());
             auto box = co_await self->access_peer_box(closer);

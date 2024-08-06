@@ -13,10 +13,10 @@ namespace cfgo
 {
     namespace impl
     {
-        Track::Track(const msg::Track & msg, int cache_capicity): 
+        Track::Track(const msg::Track & msg, int rtp_cache_capicity, int rtcp_cache_capicity): 
             m_logger(Log::instance().create_logger(Log::Category::TRACK)),
-            m_rtp_cache(cache_capicity), 
-            m_rtcp_cache(cache_capicity)
+            m_rtp_cache(rtp_cache_capicity), 
+            m_rtcp_cache(rtcp_cache_capicity)
         {
             type = msg.type;
             pubId = msg.pubId;
