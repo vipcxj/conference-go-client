@@ -36,10 +36,12 @@ namespace cfgo
             std::uint32_t m_rtp_drops_packets = 0;
             std::uint64_t m_rtp_receives_bytes = 0;
             std::uint32_t m_rtp_receives_packets = 0;
+            std::uint16_t m_rtp_cache_size = 0;
             std::uint64_t m_rtcp_drops_bytes = 0;
             std::uint32_t m_rtcp_drops_packets = 0;
             std::uint64_t m_rtcp_receives_bytes = 0;
             std::uint32_t m_rtcp_receives_packets = 0;
+            std::uint16_t m_rtcp_cache_size = 0;
 
             inline float rtp_drop_bytes_rate() const noexcept
             {

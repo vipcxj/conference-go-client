@@ -178,6 +178,7 @@ namespace cfgo
                         m_statistics.m_rtcp_drops_bytes += cache.front().second->size();
                         ++m_statistics.m_rtcp_drops_packets;
                     }
+                    m_statistics.m_rtcp_cache_size = std::min(cache.size() + 1, cache.max_size());
                 }
                 else
                 {
@@ -188,6 +189,7 @@ namespace cfgo
                         m_statistics.m_rtp_drops_bytes += cache.front().second->size();
                         ++m_statistics.m_rtp_drops_packets;
                     }
+                    m_statistics.m_rtp_cache_size = std::min(cache.size() + 1, cache.max_size());
                 }
                 if (m_on_data)
                 {
