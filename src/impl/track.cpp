@@ -213,6 +213,11 @@ namespace cfgo
         {
             CFGO_THIS_DEBUG("The track is closed.");
             chan_must_write(m_closed_notify);
+            std::lock_guard g(m_close_cb_lock);
+            if (m_on_close)
+            {
+                m_on_close();
+            }
         }
 
         void Track::on_track_error(std::string error)
@@ -417,6 +422,24 @@ namespace cfgo
         {
             std::lock_guard g(m_lock);
             m_on_stat = nullptr;
+        }
+
+        void Track::set_on_close(const OnCloseCb & cb)
+        {
+            std::lock_guard g(m_close_cb_lock);
+            m_on_close = cb;
+        }
+
+        void Track::set_on_close(OnCloseCb && cb)
+        {
+            std::lock_guard g(m_close_cb_lock);
+            m_on_close = std::move(cb);
+        }
+
+        void Track::unset_on_close() noexcept
+        {
+            std::lock_guard g(m_close_cb_lock);
+            m_on_close = nullptr;
         }
 
         std::uint64_t Track::get_rtp_drops_bytes() noexcept

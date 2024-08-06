@@ -32,6 +32,7 @@ namespace cfgo
             using MsgBuffer = boost::circular_buffer<std::pair<std::uint32_t, cfgo::Track::MsgPtr>>;
             using OnDataCb = cfgo::Track::OnDataCb;
             using OnStatCb = cfgo::Track::OnStatCb;
+            using OnCloseCb = cfgo::Track::OnCloseCb;
             using Statistics = cfgo::Track::Statistics;
             
             std::string type;
@@ -52,6 +53,8 @@ namespace cfgo
             OnDataCb m_on_data = nullptr;
             Statistics m_statistics;
             OnStatCb m_on_stat = nullptr;
+            OnCloseCb m_on_close = nullptr;
+            mutex m_close_cb_lock;
             unique_void_chan m_msg_notify;
             unique_void_chan m_open_notify;
             unique_void_chan m_closed_notify;
@@ -83,6 +86,9 @@ namespace cfgo
             void set_on_stat(const OnStatCb & cb);
             void set_on_stat(OnStatCb && cb);
             void unset_on_stat() noexcept;
+            void set_on_close(const OnCloseCb & cb);
+            void set_on_close(OnCloseCb && cb);
+            void unset_on_close() noexcept;
             std::uint64_t get_rtp_drops_bytes() noexcept;
             std::uint32_t get_rtp_drops_packets() noexcept;
             std::uint64_t get_rtp_receives_bytes() noexcept;

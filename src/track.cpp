@@ -85,6 +85,18 @@ namespace cfgo
     {
         impl()->unset_on_stat();
     }
+    void Track::set_on_close(const OnCloseCb & cb) const
+    {
+        impl()->set_on_close(cb);
+    }
+    void Track::set_on_close(OnCloseCb && cb) const
+    {
+        impl()->set_on_close(std::move(cb));
+    }
+    void Track::unset_on_close() const noexcept
+    {
+        impl()->unset_on_close();
+    }
     std::uint64_t Track::get_rtp_drops_bytes() const noexcept
     {
         return impl()->get_rtp_drops_bytes();

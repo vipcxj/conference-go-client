@@ -145,6 +145,7 @@ namespace cfgo
         using MsgSharedPtr = std::shared_ptr<rtc::binary>;
         using OnDataCb = std::function<void(const rtc::binary &, bool)>;
         using OnStatCb = std::function<void(const Statistics &)>;
+        using OnCloseCb = std::function<void()>;
         enum MsgType
         {
             RTP,
@@ -175,6 +176,9 @@ namespace cfgo
         void set_on_stat(const OnStatCb & cb) const;
         void set_on_stat(OnStatCb && cb) const;
         void unset_on_stat() const noexcept;
+        void set_on_close(const OnCloseCb & cb) const;
+        void set_on_close(OnCloseCb && cb) const;
+        void unset_on_close() const noexcept;
         /**
          * wait until track open or closed. return false if close_ch is closed.
         */
