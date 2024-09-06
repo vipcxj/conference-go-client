@@ -46,6 +46,7 @@ set(MY_PUBLIC_HEADERS
     "${H_PUBLIC_PATH}/basesink.hpp"
     "${H_PUBLIC_PATH}/defer.hpp"
     "${H_PUBLIC_PATH}/pattern.hpp"
+    "${H_PUBLIC_PATH}/ring_buffer.hpp"
     "${H_PUBLIC_PATH}/signal.hpp"
     "${H_PUBLIC_PATH}/exports.h"
     "${H_PUBLIC_PATH}/fmt_helper.hpp"
@@ -115,6 +116,7 @@ set(MY_SOURCES
     "${SRC_PATH}/log.cpp"
     "${SRC_PATH}/message.cpp"
     #"${SRC_PATH}/sio_helper.cpp"
+    "${SRC_PATH}/ring_buffer.cpp"
     "${SRC_PATH}/rtc_helper.cpp"
     "${SRC_PATH}/signal.cpp"
     "${SRC_PATH}/token.cpp"
@@ -300,6 +302,11 @@ if(ENABLE_TEST)
     target_link_libraries(test-async PRIVATE cfgoclient)
     target_link_libraries(test-async PRIVATE GTest::gtest GTest::gtest_main GTest::gmock GTest::gmock_main)
     add_test(NAME test-async COMMAND test-async)
+
+    add_executable(test-ring-buffer "${MY_TEST_PATH}/ring_buffer.cpp")
+    target_link_libraries(test-ring-buffer PRIVATE cfgoclient)
+    target_link_libraries(test-ring-buffer PRIVATE GTest::gtest GTest::gtest_main GTest::gmock GTest::gmock_main)
+    add_test(NAME test-ring-buffer COMMAND test-ring-buffer)
 
     add_executable(test-signal "${MY_TEST_PATH}/signal.cpp")
     include_asiochan(test-signal)
