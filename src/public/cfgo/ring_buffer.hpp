@@ -4,6 +4,7 @@
 #include <vector>
 #include <cstdint>
 #include <cassert>
+#include <type_traits>
 
 namespace cfgo
 {
@@ -151,6 +152,10 @@ namespace cfgo
             return e - m_outlet_offset;
         }
 
+        std::size_t capacity() const noexcept {
+            return m_nodes * m_segment_capacity - 1;
+        }
+
         bool empty() const noexcept {
             return !m_head || (m_inlet_node == m_outlet_node && m_inlet_offset == m_outlet_offset);
         }
@@ -192,6 +197,15 @@ namespace cfgo
             return true;
         }
 
+        bool dequeue() {
+            if (empty())
+            {
+                return false;
+            }
+            _step_outlet(1);
+            return true;
+        }
+
         const T * queue_head() const noexcept {
             if (empty())
             {
@@ -201,6 +215,58 @@ namespace cfgo
             {
                 return &m_outlet_node->data[m_outlet_offset];
             }
+        }
+
+        T * queue_head() noexcept {
+            if (empty())
+            {
+                return nullptr;
+            }
+            else
+            {
+                return &m_outlet_node->data[m_outlet_offset];
+            }
+        }
+
+        template<typename CB>
+        requires requires(CB cb, T & v) {
+            requires (
+                requires { { cb(v) } -> std::same_as<bool>; } ||
+                requires { { cb(v) } -> std::same_as<void>; }
+            );
+        }
+        void foreach(CB && cb) {
+            if (empty())
+            {
+                return;
+            }
+            Node * node = m_outlet_node;
+            auto offset = m_outlet_offset;
+            do
+            {
+                auto & v = node->data[offset++];
+                if constexpr (std::is_same_v<decltype(cb(v), bool)>)
+                {
+                    if (!cb(v))
+                    {
+                        break;
+                    }
+                } else {
+                    cb(v);
+                }
+                if (node == m_inlet_node && offset == m_inlet_offset)
+                {
+                    break;
+                }
+                if (offset == m_segment_capacity)
+                {
+                    node = node->next;
+                    if (!node)
+                    {
+                        node = m_head;
+                    }
+                }
+            } while (true);
         }
     };
     

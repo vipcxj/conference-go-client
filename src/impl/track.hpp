@@ -12,6 +12,7 @@
 #include "cfgo/track.hpp"
 #include "cfgo/async.hpp"
 #include "cfgo/log.hpp"
+#include "cfgo/ring_buffer.hpp"
 #include "boost/circular_buffer.hpp"
 #ifdef CFGO_SUPPORT_GSTREAMER
 #include "gst/sdp/sdp.h"
@@ -29,7 +30,8 @@ namespace cfgo
         struct Track : public std::enable_shared_from_this<Track>
         {
             using Ptr = std::shared_ptr<Track>;
-            using MsgBuffer = boost::circular_buffer<std::pair<std::uint32_t, cfgo::Track::MsgPtr>>;
+            using MsgBufferElement = std::pair<std::uint32_t, cfgo::Track::MsgPtr>;
+            using MsgBuffer = AdaptiveRingBuffer<MsgBufferElement>;
             using OnDataCb = cfgo::Track::OnDataCb;
             using OnStatCb = cfgo::Track::OnStatCb;
             using OnCloseCb = cfgo::Track::OnCloseCb;
@@ -63,7 +65,15 @@ namespace cfgo
             const GstSDPMedia * gst_media() const;
             #endif
 
-            Track(const msg::Track & msg, int rtp_cache_capicity, int rtcp_cache_capicity);
+            Track(
+                const msg::Track & msg, 
+                std::int32_t rtp_cache_min_segments,
+                std::int32_t rtp_cache_max_segments,
+                std::int32_t rtp_cache_segment_capicity,
+                std::int32_t rtcp_cache_min_segments,
+                std::int32_t rtcp_cache_max_segments,
+                std::int32_t rtcp_cache_segment_capicity
+            );
             ~Track();
 
             uint32_t makesure_min_seq();

@@ -13,10 +13,18 @@ namespace cfgo
 {
     namespace impl
     {
-        Track::Track(const msg::Track & msg, int rtp_cache_capicity, int rtcp_cache_capicity): 
+        Track::Track(
+            const msg::Track & msg, 
+            std::int32_t rtp_cache_min_segments,
+            std::int32_t rtp_cache_max_segments,
+            std::int32_t rtp_cache_segment_capicity,
+            std::int32_t rtcp_cache_min_segments,
+            std::int32_t rtcp_cache_max_segments,
+            std::int32_t rtcp_cache_segment_capicity
+        ): 
             m_logger(Log::instance().create_logger(Log::Category::TRACK)),
-            m_rtp_cache(rtp_cache_capicity), 
-            m_rtcp_cache(rtcp_cache_capicity)
+            m_rtp_cache(rtp_cache_segment_capicity, rtp_cache_max_segments, rtp_cache_min_segments), 
+            m_rtcp_cache(rtcp_cache_segment_capicity, rtcp_cache_max_segments, rtcp_cache_min_segments)
         {
             type = msg.type;
             pubId = msg.pubId;
@@ -96,10 +104,10 @@ namespace cfgo
             }
             else if (m_rtp_cache.empty())
             {
-                auto min_seq = m_rtcp_cache.front().first;
+                auto min_seq = m_rtcp_cache.queue_head()->first;
                 if (min_seq == 0)
                 {
-                    m_rtcp_cache.pop_front();
+                    m_rtcp_cache.dequeue();
                     return makesure_min_seq();
                 }
                 else
@@ -109,10 +117,10 @@ namespace cfgo
             }
             else if (m_rtcp_cache.empty())
             {
-                auto min_seq = m_rtp_cache.front().first;
+                auto min_seq = m_rtp_cache.queue_head()->first;
                 if (min_seq == 0)
                 {
-                    m_rtp_cache.pop_front();
+                    m_rtp_cache.dequeue();
                     return makesure_min_seq();
                 }
                 else
@@ -122,13 +130,13 @@ namespace cfgo
             }
             else
             {
-                auto min_seq_rtp = m_rtp_cache.front().first;
-                auto min_seq_rtcp = m_rtcp_cache.front().first;
+                auto min_seq_rtp = m_rtp_cache.queue_head()->first;
+                auto min_seq_rtcp = m_rtcp_cache.queue_head()->first;
                 if (min_seq_rtp < min_seq_rtcp)
                 {
                     if (min_seq_rtp == 0)
                     {
-                        m_rtp_cache.pop_front();
+                        m_rtp_cache.dequeue();
                         return makesure_min_seq();
                     }
                     else
@@ -140,7 +148,7 @@ namespace cfgo
                 {
                     if (min_seq_rtcp == 0)
                     {
-                        m_rtcp_cache.pop_front();
+                        m_rtcp_cache.dequeue();
                         return makesure_min_seq();
                     }
                     else
@@ -159,14 +167,12 @@ namespace cfgo
                 if (m_seq == 0xffffffff)
                 {
                     auto offset = makesure_min_seq();
-                    for (auto &&v : m_rtcp_cache)
-                    {
+                    m_rtcp_cache.foreach([offset](MsgBufferElement & v) {
                         v.first -= offset;
-                    }
-                    for (auto &&v : m_rtp_cache)
-                    {
+                    });
+                    m_rtp_cache.foreach([offset](MsgBufferElement & v) {
                         v.first -= offset;
-                    }
+                    });
                     m_seq -= offset;
                 }
                 if (is_rtcp)
@@ -175,10 +181,10 @@ namespace cfgo
                     ++m_statistics.m_rtcp_receives_packets;
                     if (cache.full())
                     {
-                        m_statistics.m_rtcp_drops_bytes += cache.front().second->size();
+                        m_statistics.m_rtcp_drops_bytes += cache.queue_head()->second->size();
                         ++m_statistics.m_rtcp_drops_packets;
                     }
-                    m_statistics.m_rtcp_cache_size = std::min(cache.size() + 1, cache.max_size());
+                    m_statistics.m_rtcp_cache_size = std::min(cache.size() + 1, cache.capacity());
                 }
                 else
                 {
@@ -186,10 +192,10 @@ namespace cfgo
                     ++m_statistics.m_rtp_receives_packets;
                     if (cache.full())
                     {
-                        m_statistics.m_rtp_drops_bytes += cache.front().second->size();
+                        m_statistics.m_rtp_drops_bytes += cache.queue_head()->second->size();
                         ++m_statistics.m_rtp_drops_packets;
                     }
-                    m_statistics.m_rtp_cache_size = std::min(cache.size() + 1, cache.max_size());
+                    m_statistics.m_rtp_cache_size = std::min(cache.size() + 1, cache.capacity());
                 }
                 if (m_on_data)
                 {
@@ -199,7 +205,7 @@ namespace cfgo
                 {
                     m_on_stat(m_statistics);
                 }
-                cache.push_back(std::make_pair(++m_seq, std::make_unique<rtc::binary>(std::move(data))));
+                cache.enqueue(std::make_pair(++m_seq, std::make_unique<rtc::binary>(std::move(data))), true);
             }
             chan_maybe_write(m_msg_notify);
         }
@@ -317,27 +323,27 @@ namespace cfgo
                 }
                 else if (m_rtp_cache.empty())
                 {
-                    m_rtcp_cache.front().second.swap(msg_ptr);
-                    m_rtcp_cache.pop_front();
+                    m_rtcp_cache.queue_head()->second.swap(msg_ptr);
+                    m_rtcp_cache.dequeue();
                 }
                 else if (m_rtcp_cache.empty())
                 {
-                    m_rtp_cache.front().second.swap(msg_ptr);
-                    m_rtp_cache.pop_front();
+                    m_rtp_cache.queue_head()->second.swap(msg_ptr);
+                    m_rtp_cache.dequeue();
                 }
                 else
                 {
-                    auto & rtp = m_rtp_cache.front();
-                    auto & rtcp = m_rtcp_cache.front();
-                    if (rtp.first > rtcp.first)
+                    auto rtp = m_rtp_cache.queue_head();
+                    auto rtcp = m_rtcp_cache.queue_head();
+                    if (rtp->first > rtcp->first)
                     {
-                        rtcp.second.swap(msg_ptr);
-                        m_rtcp_cache.pop_front();
+                        rtcp->second.swap(msg_ptr);
+                        m_rtcp_cache.dequeue();
                     }
                     else
                     {
-                        rtp.second.swap(msg_ptr);
-                        m_rtp_cache.pop_front();
+                        rtp->second.swap(msg_ptr);
+                        m_rtp_cache.dequeue();
                     }
                 }
             }
@@ -347,8 +353,8 @@ namespace cfgo
                 {
                     return cfgo::Track::MsgPtr();
                 }
-                m_rtp_cache.front().second.swap(msg_ptr);
-                m_rtp_cache.pop_front();
+                m_rtp_cache.queue_head()->second.swap(msg_ptr);
+                m_rtp_cache.dequeue();
             }
             else
             {
@@ -356,8 +362,8 @@ namespace cfgo
                 {
                     return cfgo::Track::MsgPtr();
                 }
-                m_rtcp_cache.front().second.swap(msg_ptr);
-                m_rtcp_cache.pop_front();
+                m_rtcp_cache.queue_head()->second.swap(msg_ptr);
+                m_rtcp_cache.dequeue();
             }
             return msg_ptr;
         }
