@@ -32,8 +32,12 @@ typedef struct
 
 typedef struct
 {
-    uint16_t rtp_cache_capicity;
-    uint16_t rtcp_cache_capicity;
+    int32_t rtp_cache_min_segments;
+    int32_t rtp_cache_max_segments;
+    int32_t rtp_cache_segment_capicity;
+    int32_t rtcp_cache_min_segments;
+    int32_t rtcp_cache_max_segments;
+    int32_t rtcp_cache_segment_capicity;
 } cfgoTrackConfigure;
 
 typedef struct

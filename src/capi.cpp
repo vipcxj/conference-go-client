@@ -176,9 +176,13 @@ namespace cfgo
                 .ack_timeout = std::chrono::milliseconds{conf->signal_config.ack_timeout},
             }, 
             rtc_config_to_cpp(&conf->rtc_config),
-            cfgo::TrackConfigure{
-                .rtp_cache_capicity = conf->track_config.rtp_cache_capicity,
-                .rtcp_cache_capicity = conf->track_config.rtcp_cache_capicity,
+            cfgo::TrackConfigure {
+                .rtp_cache_min_segments = conf->track_config.rtp_cache_min_segments,
+                .rtp_cache_max_segments = conf->track_config.rtp_cache_max_segments,
+                .rtp_cache_segment_capicity = conf->track_config.rtp_cache_segment_capicity,
+                .rtcp_cache_min_segments = conf->track_config.rtcp_cache_min_segments,
+                .rtcp_cache_max_segments = conf->track_config.rtcp_cache_max_segments,
+                .rtcp_cache_segment_capicity = conf->track_config.rtcp_cache_segment_capicity
             }
         );
     }

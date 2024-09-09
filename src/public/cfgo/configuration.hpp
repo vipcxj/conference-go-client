@@ -13,12 +13,19 @@ namespace cfgo {
         duration_t ack_timeout = std::chrono::seconds {10};
     };
 
-    constexpr int DEFAULT_TRACK_RTP_CACHE_CAPICITY = 16;
-    constexpr int DEFAULT_TRACK_RTCP_CACHE_CAPICITY = 8;
-
+    constexpr std::int32_t DEFAULT_RTP_CACHE_MIN_SEGMENTS = 2;
+    constexpr std::int32_t DEFAULT_RTP_CACHE_MAX_SEGMENTS = 8;
+    constexpr std::int32_t DEFAULT_RTP_CACHE_SEGMENT_CAPICITY = 16;
+    constexpr std::int32_t DEFAULT_RTCP_CACHE_MIN_SEGMENTS = 1;
+    constexpr std::int32_t DEFAULT_RTCP_CACHE_MAX_SEGMENTS = 4;
+    constexpr std::int32_t DEFAULT_RTCP_CACHE_SEGMENT_CAPICITY = 16;
     struct TrackConfigure {
-        std::uint16_t rtp_cache_capicity = DEFAULT_TRACK_RTP_CACHE_CAPICITY;
-        std::uint16_t rtcp_cache_capicity = DEFAULT_TRACK_RTCP_CACHE_CAPICITY;
+        std::int32_t rtp_cache_min_segments = DEFAULT_RTP_CACHE_MIN_SEGMENTS;
+        std::int32_t rtp_cache_max_segments = DEFAULT_RTP_CACHE_MAX_SEGMENTS;
+        std::int32_t rtp_cache_segment_capicity = DEFAULT_RTP_CACHE_SEGMENT_CAPICITY;
+        std::int32_t rtcp_cache_min_segments = DEFAULT_RTCP_CACHE_MIN_SEGMENTS;
+        std::int32_t rtcp_cache_max_segments = DEFAULT_RTCP_CACHE_MAX_SEGMENTS;
+        std::int32_t rtcp_cache_segment_capicity = DEFAULT_RTCP_CACHE_SEGMENT_CAPICITY;
     };
 
     struct Configuration

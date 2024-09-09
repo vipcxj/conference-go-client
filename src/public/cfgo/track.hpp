@@ -153,7 +153,15 @@ namespace cfgo
             ALL
         };
         Track(std::nullptr_t);
-        Track(const msg::Track & msg, int rtp_cache_capicity = DEFAULT_TRACK_RTP_CACHE_CAPICITY, int rtcp_cache_capicity = DEFAULT_TRACK_RTCP_CACHE_CAPICITY);
+        Track(
+            const msg::Track & msg, 
+            std::int32_t rtp_cache_min_segments,
+            std::int32_t rtp_cache_max_segments,
+            std::int32_t rtp_cache_segment_capicity,
+            std::int32_t rtcp_cache_min_segments,
+            std::int32_t rtcp_cache_max_segments,
+            std::int32_t rtcp_cache_segment_capicity
+        );
         void prepare_track(
             #ifdef CFGO_SUPPORT_GSTREAMER
             GstSDPMessage *sdp

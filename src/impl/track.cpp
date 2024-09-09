@@ -167,12 +167,12 @@ namespace cfgo
                 if (m_seq == 0xffffffff)
                 {
                     auto offset = makesure_min_seq();
-                    m_rtcp_cache.foreach([offset](MsgBufferElement & v) {
+                    for (auto & v : m_rtp_cache) {
                         v.first -= offset;
-                    });
-                    m_rtp_cache.foreach([offset](MsgBufferElement & v) {
+                    }
+                    for (auto & v : m_rtcp_cache) {
                         v.first -= offset;
-                    });
+                    }
                     m_seq -= offset;
                 }
                 if (is_rtcp)
