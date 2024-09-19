@@ -1089,12 +1089,16 @@ namespace cfgo
                 }
                 catch(const cfgo::CancelError& e)
                 {
-                    CFGO_SELF_DEBUG(fmt::format("The loop task is canceled because {}", e.what()));
+                    CFGO_SELF_DEBUG("The loop task is canceled because {}", e.what());
                 }
+            }
+            catch(const cfgo::CancelError& e)
+            {
+                CFGO_SELF_DEBUG("The loop task is canceled because {}", e.what());
             }
             catch(...)
             {
-                CFGO_ERROR("{}", what());
+                CFGO_SELF_DEBUG("{}", what());
                 if (auto owner = _safe_get_owner())
                 {
                     auto error = steal_shared_g_error(create_gerror_from_except(std::current_exception(), true));
