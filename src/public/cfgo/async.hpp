@@ -1116,8 +1116,24 @@ namespace cfgo
         {
             close_chan timeout_closer = close_ch.create_child();
             timeout_closer.set_timeout(timeout, std::string(timeout_reason));
-            auto res = co_await func(tries - tried + 1, timeout_closer);
-            if (retry_checker(res) && timeout_closer.is_timeout())
+            bool timeout = false;
+            try
+            {
+                auto res = co_await func(tries - tried + 1, timeout_closer);
+                if (!retry_checker(res) || !timeout_closer.is_timeout())
+                {
+                    co_return make_resolved<T>(std::forward<T>(res));
+                }
+                else
+                {
+                    timeout = true;
+                }
+            }
+            catch(const std::exception& e)
+            {
+                timeout = true;
+            }
+            if (timeout)
             {
                 if (tried == 0)
                 {
@@ -1147,7 +1163,6 @@ namespace cfgo
                     }
                 }
             }
-            co_return make_resolved<T>(std::forward<T>(res));
         } while (true);
     }
 
