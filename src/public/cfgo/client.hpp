@@ -32,6 +32,7 @@ namespace cfgo {
         // std::optional<rtc::Description> peer_remote_desc() const;
         const Strand & strand() const noexcept;
         close_chan get_closer() const noexcept;
+        [[nodiscard]] auto connect(const std::string & socket_id, const close_chan & closer = nullptr) const -> asio::awaitable<void>;
         [[nodiscard]] auto subscribe(const Pattern& pattern, const std::vector<std::string>& req_types, const close_chan & closer = nullptr) const -> asio::awaitable<SubPtr>;
         [[nodiscard]] auto unsubscribe(const std::string& sub_id, const close_chan & closer = nullptr) const -> asio::awaitable<void>;
         // [[nodiscard]] auto send_custom_message_with_ack(const std::string & content, const std::string & to, const close_chan & close_chan) const -> asio::awaitable<cancelable<void>>;

@@ -28,6 +28,10 @@ namespace cfgo
     //     return impl()->peer_remote_desc();
     // }
 
+    auto Client::connect(const std::string & socket_id, const close_chan & closer) const -> asio::awaitable<void> {
+        return impl()->connect(socket_id, closer);
+    }
+
     auto Client::subscribe(const Pattern &pattern, const std::vector<std::string> &req_types, const close_chan & closer) const -> asio::awaitable<SubPtr> {
         return impl()->subscribe(pattern, req_types, closer);
     }

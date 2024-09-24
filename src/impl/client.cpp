@@ -53,6 +53,10 @@ namespace cfgo
             return m_signal;
         }
 
+        auto Client::connect(const std::string & socket_id, const close_chan & closer) -> asio::awaitable<void> {
+            return m_signal->connect(closer, socket_id);
+        }
+
         auto Client::subscribe(Pattern pattern, std::vector<std::string> req_types, const close_chan & close_chan) -> asio::awaitable<SubPtr> {
             return m_webrtc->subscribe(close_chan, std::move(pattern), std::move(req_types));
         }
