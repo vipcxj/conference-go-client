@@ -10,6 +10,10 @@ namespace cfgo
 {
     close_chan INVALID_CLOSE_CHAN {nullptr};
 
+    auto make_void_awaitable() -> asio::awaitable<void> {
+        co_return;
+    }
+
     std::string create_cancel_error_msg(std::string&& message, CancelError::Reason reason, bool trace, const std::source_location & source_loc) {
         if (message.empty())
         {
@@ -104,7 +108,7 @@ namespace cfgo
         return timeout;
     }
 
-    auto wait_timeout(const duration_t& dur, close_chan closer, std::string && reasion) -> asio::awaitable<void> {
+    auto wait_timeout(duration_t dur, close_chan closer, std::string && reasion) -> asio::awaitable<void> {
         if (closer)
         {
             auto timeout_closer = closer.create_child();

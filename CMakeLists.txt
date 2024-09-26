@@ -301,6 +301,9 @@ if(ENABLE_TEST)
     fix_win_version_warn(test-async)
     target_link_libraries(test-async PRIVATE cfgoclient)
     target_link_libraries(test-async PRIVATE GTest::gtest GTest::gtest_main GTest::gmock GTest::gmock_main)
+    target_compile_options(test-async PRIVATE $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:GNU>>:-fsanitize=address>)
+    target_link_options(test-async PRIVATE $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:GNU>>:-fsanitize=address>)
+
     add_test(NAME test-async COMMAND test-async)
 
     add_executable(test-ring-buffer "${MY_TEST_PATH}/ring_buffer.cpp")
@@ -314,6 +317,8 @@ if(ENABLE_TEST)
     #target_compile_options(test-signal PRIVATE -freport-bug)
     target_link_libraries(test-signal PRIVATE cfgoclient)
     target_link_libraries(test-signal PRIVATE GTest::gtest GTest::gtest_main GTest::gmock GTest::gmock_main)
+    target_compile_options(test-signal PRIVATE $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:GNU>>:-fsanitize=address>)
+    target_link_options(test-signal PRIVATE $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:GNU>>:-fsanitize=address>)
     add_test(NAME test-signal COMMAND test-signal)
 
     if(GSTREAMER_SUPPORT)

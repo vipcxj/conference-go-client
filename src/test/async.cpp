@@ -8,21 +8,31 @@
 #include <random>
 #include <sstream>
 
+std::shared_ptr<asio::thread_pool> TP = nullptr;
+
 void do_async(std::function<asio::awaitable<void>()> func, bool wait = false, std::shared_ptr<asio::thread_pool> tp_ptr = nullptr) {
-    auto tp = tp_ptr ? tp_ptr : std::make_shared<asio::thread_pool>();
+    auto tp = tp_ptr ? tp_ptr : TP;
+    auto executor = tp->get_executor();
     if (wait)
     {
-        auto res = asio::co_spawn(tp->get_executor(), func, asio::use_future);
+        auto res = asio::co_spawn(std::move(executor), std::move(func), asio::use_future);
         res.get();
     }
     else
     {
-        asio::co_spawn(tp->get_executor(), cfgo::fix_async_lambda([tp, func]() -> asio::awaitable<void> {
+        asio::co_spawn(std::move(executor), [func = std::move(func)]() -> asio::awaitable<void> {
             co_await func();
             co_return;
-        }), asio::detached);
+        }, asio::detached);
     }
 }
+
+template<typename T>
+struct Box {
+    T value;
+
+    Box(bool v): value(v) {}
+};
 
 TEST(Chan, CloseChan) {
     using namespace cfgo;
@@ -33,105 +43,118 @@ TEST(Chan, CloseChan) {
 
 TEST(Chan, WaitTimeout) {
     using namespace cfgo;
-    bool done = false;
-    do_async(cfgo::fix_async_lambda([&done]() -> asio::awaitable<void> {
+    auto done = std::make_shared<Box<bool>>(false);
+    auto task = cfgo::fix_async_lambda([done]() -> asio::awaitable<void> {
         co_await wait_timeout(std::chrono::milliseconds{500});
-        done = true;
+        done->value = true;
         co_return;
-    }), false);
+    });
+    do_async(std::move(task), false);
     std::this_thread::sleep_for(std::chrono::milliseconds{1600});
-    EXPECT_TRUE(done);
+    EXPECT_TRUE(done->value);
 }
 
 TEST(Chan, MakeTimeout) {
     using namespace cfgo;
-    bool done = false;
-    do_async(cfgo::fix_async_lambda([&done]() -> asio::awaitable<void> {
+    auto done = std::make_shared<Box<bool>>(false);
+    auto task = cfgo::fix_async_lambda([done]() -> asio::awaitable<void> {
         auto timeout = cfgo::make_timeout(std::chrono::milliseconds{500});
         co_await timeout.await();
-        done = true;
+        done->value = true;
         EXPECT_TRUE(timeout.is_closed());
         EXPECT_TRUE(timeout.is_timeout());
         co_return;
-    }));
+    });
+    do_async(std::move(task));
     std::this_thread::sleep_for(std::chrono::milliseconds{600});
-    EXPECT_TRUE(done);
+    EXPECT_TRUE(done->value);
 }
 
 TEST(Chan, ChanRead) {
     using namespace cfgo;
-    do_async([]() -> asio::awaitable<void> {
+    auto task = []() -> asio::awaitable<void> {
         asiochan::channel<int> ch{};
-        do_async(cfgo::fix_async_lambda(([ch]() mutable -> asio::awaitable<void> {
-            co_await wait_timeout(std::chrono::milliseconds{100});
-            co_await ch.write(1);
+        close_chan closer {};
+        DEFER({
+            closer.close();
+        });
+        do_async(cfgo::fix_async_lambda(([ch, closer]() mutable -> asio::awaitable<void> {
+            co_await wait_timeout(std::chrono::milliseconds{100}, closer);
+            co_await chan_write<int>(ch, 1, closer);
             co_return;
         })));
-        int res = 0;
-        do_async(cfgo::fix_async_lambda([ch, &res]() mutable -> asio::awaitable<void> {
-            auto res1 = co_await chan_read<int>(ch);
+        auto res = std::make_shared<Box<int>>(0);
+        do_async(cfgo::fix_async_lambda([ch, res, closer]() mutable -> asio::awaitable<void> {
+            auto res1 = co_await chan_read<int>(ch, closer);
             EXPECT_FALSE(res1.is_canceled());
             EXPECT_EQ(res1.value(), 1);
-            res = 1;
+            res->value = 1;
         }));
-        co_await wait_timeout(std::chrono::milliseconds{200});
-        EXPECT_EQ(res, 1);
+        co_await wait_timeout(std::chrono::milliseconds{200}, closer);
+        EXPECT_EQ(res->value, 1);
 
-        bool canceled = false;
-        do_async(cfgo::fix_async_lambda([ch]() mutable -> asio::awaitable<void> {
-            co_await wait_timeout(std::chrono::milliseconds{200});
-            co_await ch.write(1);
+        auto canceled = std::make_shared<Box<bool>>(false);
+        do_async([ch, closer]() mutable -> asio::awaitable<void> {
+            co_await wait_timeout(std::chrono::milliseconds{200}, closer);
+            co_await chan_write<int>(ch, 1, closer);
             co_return;
-        }));
-        do_async([ch, &canceled]() mutable -> asio::awaitable<void> {
-            auto timeout = cfgo::make_timeout(std::chrono::milliseconds{100});
-            auto res2 = co_await chan_read<int>(ch, timeout);
-            EXPECT_TRUE(res2.is_canceled());
-            canceled = true;
         });
-        co_await wait_timeout(std::chrono::milliseconds{300});
-        EXPECT_TRUE(canceled);
+        do_async([ch, canceled, closer]() mutable -> asio::awaitable<void> {
+            auto timeouter = closer.create_child();
+            timeouter.set_timeout(std::chrono::milliseconds{100});
+            auto res2 = co_await chan_read<int>(ch, timeouter);
+            EXPECT_TRUE(res2.is_canceled());
+            canceled->value = true;
+        });
+        co_await wait_timeout(std::chrono::milliseconds{300}, closer);
+        EXPECT_TRUE(canceled->value);
 
-    }, true);
+    };
+    do_async(std::move(task), true);
 }
 
 TEST(Chan, ChanReadOrThrow) {
     using namespace cfgo;
     do_async([]() -> asio::awaitable<void> {
         asiochan::channel<int> ch{};
-        do_async([ch]() mutable -> asio::awaitable<void> {
-            co_await wait_timeout(std::chrono::milliseconds{100});
-            co_await ch.write(1);
+        close_chan closer {};
+        DEFER({
+            closer.close();
+        });
+        do_async([ch, closer]() mutable -> asio::awaitable<void> {
+            co_await wait_timeout(std::chrono::milliseconds{100}, closer);
+            co_await chan_write<int>(ch, 1, closer);
             co_return;
         });
-        int res = 0;
-        do_async([ch, &res]() mutable -> asio::awaitable<void> {
-            res = co_await chan_read_or_throw<int>(ch);
+        auto res = std::make_shared<Box<int>>(0);
+        do_async([ch, res, closer]() mutable -> asio::awaitable<void> {
+            res->value = co_await chan_read_or_throw<int>(ch, closer);
         });
-        co_await wait_timeout(std::chrono::milliseconds{200});
-        EXPECT_EQ(res, 1);
+        co_await wait_timeout(std::chrono::milliseconds{200}, closer);
+        EXPECT_EQ(res->value, 1);
 
-        bool canceled = false;
-        do_async([ch]() mutable -> asio::awaitable<void> {
-            co_await wait_timeout(std::chrono::milliseconds{200});
-            co_await ch.write(1);
+        auto canceled = std::make_shared<Box<bool>>(false);
+        do_async([ch, closer]() mutable -> asio::awaitable<void> {
+            co_await wait_timeout(std::chrono::milliseconds{200}, closer);
+            co_await chan_write<int>(ch, 1, closer);
             co_return;
         });
-        res = 0;
-        do_async([ch, &res, &canceled]() mutable -> asio::awaitable<void> {
-            auto timeout = cfgo::make_timeout(std::chrono::milliseconds{100});
+        res->value = 0;
+        do_async([ch, res, canceled, closer]() mutable -> asio::awaitable<void> {
+            auto timeouter = closer.create_child();
+            timeouter.set_timeout(std::chrono::milliseconds{100});
             try
             {
-                res = co_await chan_read_or_throw<int>(ch, timeout);
+                res->value = co_await chan_read_or_throw<int>(ch, timeouter);
             }
             catch(const cfgo::CancelError& e)
             {
-                canceled = true;
+                canceled->value = true;
             }
         });
-        co_await wait_timeout(std::chrono::milliseconds{300});
-        EXPECT_TRUE(canceled);
-        EXPECT_EQ(res, 0);
+        co_await wait_timeout(std::chrono::milliseconds{300}, closer);
+        EXPECT_TRUE(canceled->value);
+        EXPECT_EQ(res->value, 0);
     }, true);
 }
 
@@ -622,24 +645,6 @@ TEST(Closer, DependOnSelf) {
     }), true);
 }
 
-// TEST(Asio, CoSpawn) {
-//     asio::io_context io_ctx {};
-//     auto strand = asio::make_strand(io_ctx.get_executor());
-//     asio::co_spawn(strand, cfgo::fix_async_lambda([]() -> asio::awaitable<void> {
-//         auto executor = co_await asio::this_coro::executor;
-//         asio::co_spawn(executor, cfgo::fix_async_lambda([]() -> asio::awaitable<void> {
-//             throw cpptrace::runtime_error("error");
-//         }), asio::detached);
-//         asio::co_spawn(executor, cfgo::fix_async_lambda([]() -> asio::awaitable<void> {
-//             co_await cfgo::wait_timeout(std::chrono::seconds{1});
-//             CFGO_INFO("should not be here 2.");
-//         }), asio::detached);
-//         co_await cfgo::wait_timeout(std::chrono::seconds{1});
-//         CFGO_INFO("should not be here 1.");
-//     }), asio::detached);
-//     io_ctx.run();
-// }
-
 TEST(AsyncBlocker, CheckDeadLock) {
     using namespace cfgo;
     AsyncBlockerManager::Configure conf {
@@ -686,6 +691,19 @@ TEST(AsyncBlocker, CheckDeadLock) {
         }
         closer.close();
         CFGO_INFO("closed");
+    }), true);
+}
+
+TEST(InitableBox, Invoke) {
+    using namespace cfgo;
+    do_async(fix_async_lambda([]() -> asio::awaitable<void> {
+        InitableBox<void, std::string> test([](close_chan closer, std::string arg) -> asio::awaitable<void> {
+            CFGO_INFO("{}", arg);
+            co_return;
+        }, false);
+        close_chan closer {};
+        std::string str = "test";
+        co_await test(std::move(closer), std::move(str));
     }), true);
 }
 
@@ -737,7 +755,10 @@ TEST(AsyncBlocker, CheckBlockedNum) {
 }
 
 int main(int argc, char **argv) {
+    TP = std::make_unique<asio::thread_pool>();
     testing::InitGoogleTest(&argc, argv);
     // cfgo::Log::instance().set_level(cfgo::Log::DEFAULT, spdlog::level::trace);
-    return RUN_ALL_TESTS();
+    auto ret = RUN_ALL_TESTS();
+    TP = nullptr;
+    return ret;
 }

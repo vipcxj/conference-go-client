@@ -33,8 +33,8 @@ namespace cfgo
     { co_return co_await f(args...); }
 
     template <typename F>
-    auto fix_async_lambda(F f) {
-        return [f](auto &&...args) {
+    auto fix_async_lambda(F && f) {
+        return [f = std::forward<F>(f)](auto &&...args) {
             return invoke_async_lambda(f, std::forward<decltype(args)>(args)...);
         };
     }
@@ -539,7 +539,7 @@ namespace cfgo
 
     close_chan make_timeout(const duration_t& dur);
 
-    auto wait_timeout(const duration_t& dur, close_chan closer = nullptr, std::string && reasion = "timeout") -> asio::awaitable<void>;
+    auto wait_timeout(duration_t dur, close_chan closer = nullptr, std::string && reasion = "timeout") -> asio::awaitable<void>;
 
     template<asiochan::select_op Op, asiochan::select_op... OtherOps>
     struct calc_sum_alternatives {
@@ -1874,6 +1874,8 @@ namespace cfgo
         DONE,
     };
 
+    auto make_void_awaitable() -> asio::awaitable<void>;
+
     template<typename T, typename... Args>
     class InitableBox {
     public:
@@ -2031,7 +2033,7 @@ namespace cfgo
             }
         }
 
-        auto operator()(close_chan closer, Args &&... args) const -> asio::awaitable<void> {
+        auto operator()(close_chan closer, Args ... args) const -> asio::awaitable<void> {
             do
             {
                 bool run = false;
@@ -2069,7 +2071,7 @@ namespace cfgo
                 {
                     try
                     {
-                        co_await m_task(closer, std::forward<Args>(args)...);
+                        co_await m_task(closer, std::move(args)...);
                     }
                     catch(...)
                     {

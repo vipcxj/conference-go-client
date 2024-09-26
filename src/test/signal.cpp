@@ -9,7 +9,7 @@
 #define AUTH_HOST "localhost"
 #define AUTH_PORT 3100
 #define SIGNAL_HOST "localhost"
-#define SIGNAL_PORT 8080
+#define SIGNAL_PORT 13087
 
 auto get_token(std::string_view uid, std::string_view room, bool auto_join = false) -> asio::awaitable<std::string> {
     return cfgo::utils::get_token(AUTH_HOST, AUTH_PORT, uid, uid, uid, "test", room, auto_join);
@@ -48,17 +48,26 @@ void do_async(std::function<asio::awaitable<void>()> func, bool multithread = tr
     }
 }
 
+auto connect(cfgo::SignalPtr signal, const std::string & socket_id, cfgo::close_chan closer = nullptr) -> asio::awaitable<void> {
+    return signal->connect(std::move(closer), socket_id);
+}
+
 TEST(Signal, Connect) {
     do_async([]() -> asio::awaitable<void> {
         using namespace cfgo;
         close_chan closer {};
+        DEFER({
+            closer.close();
+        });
         auto token = co_await get_token("1", "room", true);
         auto signal = make_websocket_signal(closer, cfgo::SignalConfigure{
             .url = fmt::format("ws://{}:{}/ws", SIGNAL_HOST, SIGNAL_PORT),
             .token = token,
             .ready_timeout = std::chrono::seconds(30),
         });
-        co_await signal->connect(closer, "123456789");
+        std::string socket_id = "123456789";
+        co_await connect(signal, socket_id, closer);
+        // co_await signal->connect(closer, "123456789");
         auto id = co_await signal->id(closer);
         EXPECT_EQ("123456789", id);
     });
@@ -68,6 +77,9 @@ TEST(Signal, JoinAndLeave) {
     do_async([]() -> asio::awaitable<void> {
         using namespace cfgo;
         close_chan closer {};
+        DEFER({
+            closer.close();
+        });
         auto token = co_await get_token("1", "root.*", false);
         auto signal = make_websocket_signal(closer, cfgo::SignalConfigure{
             .url = fmt::format("ws://{}:{}/ws", SIGNAL_HOST, SIGNAL_PORT),
@@ -148,6 +160,9 @@ TEST(Signal, SendMessage) {
     do_async([]() -> asio::awaitable<void> {
         using namespace cfgo;
         close_chan closer {};
+        DEFER({
+            closer.close();
+        });
         auto token1 = co_await get_token("1", "room", true);
         auto signal1 = make_websocket_signal(closer, cfgo::SignalConfigure{
             .url = fmt::format("ws://{}:{}/ws", SIGNAL_HOST, SIGNAL_PORT),
@@ -207,6 +222,9 @@ TEST(Signal, SendParallelismMessage) {
     do_async([]() -> asio::awaitable<void> {
         using namespace cfgo;
         close_chan closer {};
+        DEFER({
+            closer.close();
+        });
         auto token1 = co_await get_token("1", "room", true);
         auto signal1 = make_websocket_signal(closer, cfgo::SignalConfigure{
             .url = fmt::format("ws://{}:{}/ws", SIGNAL_HOST, SIGNAL_PORT),
@@ -324,7 +342,7 @@ TEST(Signal, KeepAlive) {
         });
         co_await wait_timeout(std::chrono::seconds{10}, closer);
         keep_alive_closer.close();
-        keep_alive_closer = close_chan {};
+        keep_alive_closer = closer.create_child();
         co_await signal1->keep_alive(keep_alive_closer, "room", id2, true, std::chrono::seconds{1}, make_keep_alive_callback(keep_alive_closer, 0, duration_t{2}, -1, duration_t{0}));
         co_await wait_timeout(std::chrono::seconds{5}, closer);
         EXPECT_FALSE(keep_alive_closer.is_closed());
