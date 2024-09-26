@@ -222,8 +222,8 @@ namespace cfgo
             close_chan m_closer;
             SignalConfigure m_config;
             int ws_state = 0;
-            Logger m_logger = Log::instance().create_logger(Log::Category::WEBSOCKET);
             std::string m_id {boost::uuids::to_string(boost::uuids::random_generator()())};
+            Logger m_logger = Log::instance().create_logger(Log::Category::WEBSOCKET, Log::make_logger_name(Log::Category::WEBSOCKET, m_id));
             std::optional<Websocket> m_ws {std::nullopt};
             std::uint64_t m_next_msg_id {1};
             std::uint64_t m_next_msg_cb_id {0};
@@ -339,6 +339,7 @@ namespace cfgo
             if (!socket_id.empty())
             {
                 m_id = socket_id;
+                m_logger = Log::instance().create_logger(Log::Category::WEBSOCKET, Log::make_logger_name(Log::Category::WEBSOCKET, m_id));
             }
             if (self->ws_state == 0)
             {
@@ -648,8 +649,8 @@ namespace cfgo
             using SubscribeResultPtr = cfgo::Signal::SubscribeResultPtr;
             using SubscribedMsgPtr = cfgo::Signal::SubscribedMsgPtr;
             using PingCh = asiochan::unbounded_channel<PingMsgPtr>;
-            Logger m_logger = Log::instance().create_logger(Log::Category::SIGNAL);
             RawSignalPtr m_raw_signal;
+            Logger m_logger;
             UserInfoPtr m_user_info {nullptr};
             std::uint64_t m_next_cb_id {0};
             std::uint32_t m_next_custom_msg_id {0};
@@ -714,6 +715,7 @@ namespace cfgo
         public:
             Signal(RawSignalPtr raw_signal):
                 m_raw_signal(std::move(raw_signal)),
+                m_logger(Log::instance().create_logger(Log::Category::SIGNAL, Log::make_logger_name(Log::Category::SIGNAL, raw_signal->id()))),
                 m_connect([this](auto closer, std::string socket_id) {
                     return _connect(std::move(closer), std::move(socket_id));
                 }, false)
@@ -990,7 +992,13 @@ namespace cfgo
                 }
                 co_return true;
             });
+            auto id = self->id();
             co_await m_raw_signal->connect(closer, std::move(socket_id));
+            auto new_id = self->id();
+            if (new_id != id)
+            {
+                self->m_logger = Log::instance().create_logger(Log::Category::SIGNAL, Log::make_logger_name(Log::Category::SIGNAL, new_id));
+            }
             self->m_user_info = co_await chan_read_or_throw<UserInfoPtr>(ready_ch, closer);
             self->m_rooms = std::unordered_set<std::string>(self->m_user_info->rooms.begin(), self->m_user_info->rooms.end());
             self->m_user_info->rooms.clear();
