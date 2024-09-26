@@ -271,6 +271,9 @@ namespace cfgo
             static auto create(close_chan closer, const SignalConfigure & conf) -> RawSignalPtr {
                 return std::make_shared<WebsocketRawSignal>(std::move(closer), conf);
             }
+            auto id() const noexcept -> std::string {
+                return m_id;
+            }
             auto create_msg(const std::string_view & evt, nlohmann::json && payload, bool ack) -> RawSigMsgUPtr override {
                 auto msg_id = m_next_msg_id;
                 m_next_msg_id += 2;
@@ -718,6 +721,9 @@ namespace cfgo
             ~Signal() noexcept {}
             auto connect(close_chan closer, std::string socket_id = "") -> asio::awaitable<void> override {
                 return m_connect(std::move(closer), std::move(socket_id));
+            }
+            auto id() const noexcept -> std::string {
+                return m_raw_signal->id();
             }
             close_chan get_notify_closer() override {
                 return m_raw_signal->get_notify_closer();

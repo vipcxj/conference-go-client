@@ -106,7 +106,7 @@ namespace cfgo
             close_chan m_closer;
             cfgo::SignalPtr m_signal;
             cfgo::Configuration m_conf;
-            Logger m_logger = Log::instance().create_logger(Log::Category::WEBRTC);
+            Logger m_logger;
             cfgo::AsyncMutex m_neg_mux {};
             InitableBox<PeerBoxPtr> m_access_peer;
             
@@ -162,10 +162,16 @@ namespace cfgo
                 return m_access_peer(std::move(closer));
             }
         public:
+            /**
+             * The logger name is cfgo::webrtc::${signal_id[0:4]}. 
+             * Because the logger name is determined when constructed, so signal id should be determined before it.
+             * signal->connect(closer, socket_id) may changed the id of the signal. So signal.connect should be called before webrtc created.
+             */
             Webrtc(SignalPtr signal, const cfgo::Configuration & conf):
                 m_closer(signal->get_notify_closer()),
                 m_signal(signal), 
                 m_conf(conf),
+                m_logger(Log::instance().create_logger(Log::Category::WEBRTC, Log::make_logger_name(Log::Category::WEBRTC, signal->id().substr(0, 4)))),
                 m_access_peer([this](auto closer) {
                     return _access_peer_box(std::move(closer));
                 }, false)

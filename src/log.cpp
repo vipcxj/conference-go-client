@@ -66,15 +66,12 @@ namespace cfgo
 
         void Log::set_logger_factory(Category category, LoggerFactory factory)
         {
+            auto [iter, _] = m_categories.try_emplace(category);
+            iter->second.factory = std::move(factory);
+            iter->second.factory_set = true;
             if (category == Category::DEFAULT)
             {
                 m_default_logger = create_logger(Category::DEFAULT, "");
-            }
-            else
-            {
-                auto [iter, _] = m_categories.try_emplace(category);
-                iter->second.factory = std::move(factory);
-                iter->second.factory_set = true;
             }
         }
 

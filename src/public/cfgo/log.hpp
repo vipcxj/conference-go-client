@@ -35,6 +35,19 @@ namespace cfgo
 
         static const Log & instance();
         static const char * get_category_name(Category category) noexcept;
+        /**
+         * create a logger name prefixed with category name -> cfgo::${category}:${name}
+         */
+        static auto make_logger_name(Category category, const std::string & name) -> std::string {
+            if (name.empty())
+            {
+                return fmt::format("cfgo::{}", get_category_name(category));
+            }
+            else
+            {
+                return fmt::format("cfgo::{}:{}", get_category_name(category), name);
+            }
+        }
         void set_logger_factory(Category category, LoggerFactory factory) const;
         void set_level(Category category, LogLevel level) const;
         LogLevel get_level(Category category) const;

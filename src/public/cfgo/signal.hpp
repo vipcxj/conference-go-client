@@ -43,6 +43,8 @@ namespace cfgo
     struct RawSignal {
         virtual ~RawSignal() = 0;
         [[nodiscard]]
+        virtual auto id() const noexcept -> std::string = 0;
+        [[nodiscard]]
         virtual auto connect(close_chan closer, std::string socket_id = "") -> asio::awaitable<void> = 0;
         [[nodiscard]]
         virtual auto send_msg(close_chan closer, RawSigMsgUPtr msg) -> asio::awaitable<nlohmann::json> = 0;
@@ -131,6 +133,8 @@ namespace cfgo
         using SubscribeResultPtr = std::unique_ptr<msg::SubscribeResultMessage>;
 
         virtual ~Signal() = 0;
+        [[nodiscard]]
+        virtual auto id() const noexcept -> std::string = 0;
         [[nodiscard]]
         virtual auto connect(close_chan closer, std::string socket_id = "") -> asio::awaitable<void> = 0;
         /**
