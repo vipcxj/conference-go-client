@@ -715,7 +715,7 @@ namespace cfgo
         public:
             Signal(RawSignalPtr raw_signal):
                 m_raw_signal(std::move(raw_signal)),
-                m_logger(Log::instance().create_logger(Log::Category::SIGNAL, Log::make_logger_name(Log::Category::SIGNAL, raw_signal->id()))),
+                m_logger(Log::instance().create_logger(Log::Category::SIGNAL, Log::make_logger_name(Log::Category::SIGNAL, m_raw_signal->id()))),
                 m_connect([this](auto closer, std::string socket_id) {
                     return _connect(std::move(closer), std::move(socket_id));
                 }, false)
