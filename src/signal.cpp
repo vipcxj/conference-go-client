@@ -433,15 +433,8 @@ namespace cfgo
             asio::co_spawn(executor, self->_wrap_background_task([weak_self = weak_from_this()]() -> asio::awaitable<void> {
                 if (auto self = weak_self.lock())
                 {
-                    std::string reason;
-                    if (co_await self->m_closer.await())
-                    {
-                        reason = self->m_closer.get_close_reason();
-                    }
-                    else
-                    {
-                        reason = self->m_closer.get_timeout_reason();
-                    }
+                    co_await self->m_closer.await();
+                    std::string reason = self->m_closer.get_close_reason();
                     if (reason.empty())
                     {
                         self->m_logger->debug("The raw signal closed.");

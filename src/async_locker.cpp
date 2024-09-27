@@ -39,8 +39,7 @@ namespace cfgo
             bool m_block = false;
             bool m_blocked = false;
             mutex m_mutex;
-            unique_void_chan m_request_chan;
-            unique_void_chan m_response_chan;
+            unique_void_chan m_state_maybe_changed_chan {};
             std::variant<std::nullptr_t, std::shared_ptr<void>, std::int64_t, double, std::string> m_user_data;
 
             bool request_block();
@@ -62,7 +61,7 @@ namespace cfgo
             else
             {
                 m_block = true;
-                chan_maybe_write(m_request_chan);
+                chan_maybe_write(m_state_maybe_changed_chan);
                 return true;
             }
         }
@@ -74,7 +73,7 @@ namespace cfgo
             if (m_block)
             {
                 m_block = false;
-                chan_maybe_write(m_request_chan);
+                chan_maybe_write(m_state_maybe_changed_chan);
                 return true;
             }
             else
@@ -105,7 +104,7 @@ namespace cfgo
                         }
                     }
                 }
-                if (!co_await chan_read<void>(m_response_chan, closer))
+                if (!co_await chan_read<void>(m_state_maybe_changed_chan, closer))
                 {
                     co_return false;
                 }
@@ -134,7 +133,7 @@ namespace cfgo
                         if (!m_block)
                         {
                             m_blocked = false;
-                            chan_maybe_write(m_response_chan);
+                            chan_maybe_write(m_state_maybe_changed_chan);
                             break;
                         }
                     }
@@ -143,7 +142,7 @@ namespace cfgo
                         if (m_block)
                         {
                             m_blocked = true;
-                            chan_maybe_write(m_response_chan);
+                            chan_maybe_write(m_state_maybe_changed_chan);
                         }
                         else
                         {
@@ -151,7 +150,7 @@ namespace cfgo
                         }
                     }
                 }
-                if (!co_await chan_read<void>(m_request_chan, closer))
+                if (!co_await chan_read<void>(m_state_maybe_changed_chan, closer))
                 {
                     co_return false;
                 }

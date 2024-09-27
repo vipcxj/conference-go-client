@@ -73,16 +73,13 @@ namespace cfgo
         [[nodiscard]] std::size_t hash() const noexcept {
             return std::hash<detail::CloseSignalState *>()(m_state.get());
         }
-        void close(const std::string & reason) const;
-        void close(std::string && reason = CLOSER_DEFAULT_CLOSE_REASON) const;
-        bool close_no_except(const std::string & reason) const noexcept;
-        bool close_no_except(std::string && reason = CLOSER_DEFAULT_CLOSE_REASON) const noexcept;
+        void close(std::string reason = CLOSER_DEFAULT_CLOSE_REASON, std::source_location src_loc = std::source_location::current()) const;
+        bool close_no_except(std::string reason = CLOSER_DEFAULT_CLOSE_REASON, std::source_location src_loc = std::source_location::current()) const noexcept;
         /**
          * Async wait until closed or timeout. Return false if timeout.
         */
         [[nodiscard]] auto await() const -> asio::awaitable<bool>;
-        void set_timeout(const duration_t& dur, const std::string & reason) const;
-        void set_timeout(const duration_t& dur, std::string && reason = CLOSER_DEFAULT_TIMEOUT_REASON) const;
+        void set_timeout(duration_t dur, std::string reason = CLOSER_DEFAULT_TIMEOUT_REASON, std::source_location src_loc = std::source_location::current()) const;
         duration_t get_timeout() const noexcept;
         [[nodiscard]] CloseSignal create_child() const;
         void stop(bool stop_timer = true) const;
@@ -101,8 +98,8 @@ namespace cfgo
         [[nodiscard]] auto get_waiter() const -> std::optional<Waiter>;
         [[nodiscard]] auto get_stop_waiter() const -> std::optional<Waiter>;
         [[nodiscard]] const char * get_close_reason() const noexcept;
-        [[nodiscard]] const char * get_timeout_reason() const noexcept;
-        [[nodiscard]] auto depend_on(close_chan closer, std::string reason = "") const -> asio::awaitable<void>;
+        [[nodiscard]] std::source_location get_close_source_location() const noexcept;
+        [[nodiscard]] auto depend_on(close_chan closer, std::string reason = "", std::source_location src_loc = std::source_location::current()) const -> asio::awaitable<void>;
         [[nodiscard]] auto after_close(std::function<asio::awaitable<void>()> cb) const -> asio::awaitable<void>;
 
         friend class detail::CloseSignalState;
@@ -157,10 +154,10 @@ namespace cfgo
         bool m_trace;
         std::source_location m_loc;
     public:
-        explicit CancelError(std::string&& message, Reason reason = CANCEL, bool trace = false, std::source_location && source_loc = std::source_location::current()) noexcept;
-        explicit CancelError(Reason reason = CANCEL, bool trace = false, std::source_location && source_loc = std::source_location::current()) noexcept;
-        explicit CancelError(bool is_timeout, bool trace = false, std::source_location && source_loc = std::source_location::current()) noexcept;
-        explicit CancelError(const close_chan & close_ch, bool trace = false, std::source_location && source_loc = std::source_location::current()) noexcept;
+        explicit CancelError(std::string message, Reason reason = CANCEL, bool trace = false, std::source_location source_loc = std::source_location::current()) noexcept;
+        explicit CancelError(Reason reason = CANCEL, bool trace = false, std::source_location source_loc = std::source_location::current()) noexcept;
+        explicit CancelError(bool is_timeout, bool trace = false, std::source_location source_loc = std::source_location::current()) noexcept;
+        explicit CancelError(close_chan close_ch, bool trace = false) noexcept;
         const char* what() const noexcept override;
         inline bool is_timeout() const noexcept
         {
