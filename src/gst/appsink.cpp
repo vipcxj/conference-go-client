@@ -31,8 +31,7 @@ namespace cfgo
             private:
                 GstAppSink * m_sink;
                 SampleBuffer m_cache;
-                unique_void_chan m_sample_notify {};
-                unique_void_chan m_eos_notify {};
+                state_notifier m_sample_or_eos_notifier {};
                 OnSampleCb m_on_sample {nullptr};
                 Statistics m_stat {};
                 OnStatCb m_on_stat {nullptr};
@@ -92,7 +91,7 @@ namespace cfgo
                 {
                     std::lock_guard lk(self->m_mutex);
                     self->m_eos = true;
-                    chan_maybe_write(self->m_eos_notify);
+                    self->m_sample_or_eos_notifier.notify();
                 }
             }
             GstFlowReturn AppSink::on_new_preroll(GstAppSink *appsink, gpointer userdata)
@@ -134,7 +133,7 @@ namespace cfgo
                             self->m_on_stat(self->m_stat);
                         }
                         self->m_cache.push_back(std::make_pair(self->m_seq++, steal_shared_gst_sample(sample)));
-                        chan_maybe_write(self->m_sample_notify);
+                        self->m_sample_or_eos_notifier.notify();
                     }
                 }
                 return GST_FLOW_OK;
@@ -166,27 +165,9 @@ namespace cfgo
                 auto self = shared_from_this();
                 init();
                 GstSampleSPtr sample_ptr = nullptr;
-                bool done = false;
-                {
-                    std::lock_guard lk(m_mutex);
-                    if (!m_cache.empty())
-                    {
-                        sample_ptr = m_cache.front().second;
-                        m_cache.pop_front();
-                        done = true;
-                    }
-                    else if (m_eos)
-                    {
-                        done = true;
-                    }
-                }
-                if (done)
-                {
-                    co_return sample_ptr;
-                }
                 do
                 {
-                    co_await select_or_throw(closer, asiochan::ops::read(m_sample_notify, m_eos_notify));
+                    auto ch = m_sample_or_eos_notifier.make_notfiy_receiver();
                     {
                         std::lock_guard lk(m_mutex);
                         if (!m_cache.empty() || m_eos)
@@ -199,6 +180,7 @@ namespace cfgo
                             break;
                         }
                     }
+                    co_await chan_read_or_throw<void>(ch, closer);
                 } while (true);
                 co_return sample_ptr;
             }

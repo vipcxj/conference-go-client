@@ -207,18 +207,20 @@ namespace cfgo
                 }
                 cache.enqueue(std::make_pair(++m_seq, std::make_unique<rtc::binary>(std::move(data))), true);
             }
-            chan_maybe_write(m_msg_notify);
+            m_state_notifier.notify();
         }
 
         void Track::on_track_open()
         {
-            chan_must_write(m_open_notify);
+            m_opened = true;
+            m_state_notifier.notify();
         }
 
         void Track::on_track_closed()
         {
+            m_closed = true;
             CFGO_THIS_DEBUG("The track is closed.");
-            chan_must_write(m_closed_notify);
+            m_state_notifier.notify();
             std::lock_guard g(m_close_cb_lock);
             if (m_on_close)
             {
@@ -231,76 +233,28 @@ namespace cfgo
             CFGO_THIS_ERROR("{}", error);
         }
 
-        auto Track::await_open_or_closed(close_chan closer) -> asio::awaitable<bool>
-        {
-            if (track->isOpen() || track->isClosed())
-            {
-                co_return true;
-            }
-            auto res = co_await cfgo::select(
-                closer,
-                asiochan::ops::read(m_open_notify, m_closed_notify)
-            );
-            if (!res)
-            {
-                co_return false;
-            }
-            else if (res.received_from(m_open_notify))
-            {
-                chan_must_write(m_open_notify);
-            }
-            else
-            {
-                chan_must_write(m_closed_notify);
-            }
-            co_return true;
-        }
-
         auto Track::await_msg(cfgo::Track::MsgType msg_type, close_chan close_ch) -> asio::awaitable<cfgo::Track::MsgPtr>
         {
             if (!m_inited)
             {
                 throw cpptrace::logic_error("Before call await_msg, call prepare_track at first.");
             }
-            auto msg_ptr = receive_msg(msg_type);
-            if (msg_ptr)
-            {
-                co_return std::move(msg_ptr);
-            }
-            if (is_valid_close_chan(close_ch) && close_ch.is_closed())
-            {
-                co_return nullptr;
-            }
-
-            if (!co_await await_open_or_closed(close_ch))
-            {
-                co_return nullptr;
-            }
-            if (is_valid_close_chan(close_ch) && close_ch.is_closed())
-            {
-                co_return nullptr;
-            }
             do
             {
-                auto res = co_await cfgo::select(
-                    close_ch,
-                    asiochan::ops::read(m_msg_notify, m_closed_notify)
-                );
-                if (!res)
+                auto ch = m_state_notifier.make_notfiy_receiver();
+                if (m_closed)
                 {
                     co_return nullptr;
                 }
-                else if (res.received_from(m_closed_notify))
+                else
                 {
-                    chan_must_write(m_closed_notify);
+                    auto msg_ptr = receive_msg(msg_type);
+                    if (msg_ptr)
+                    {
+                        co_return std::move(msg_ptr);
+                    }
                 }
-
-                msg_ptr = receive_msg(msg_type);
-                if (msg_ptr)
-                {
-                    co_return std::move(msg_ptr);
-                }
-                if (track->isClosed())
+                if (!co_await chan_read<void>(ch, close_ch))
                 {
                     co_return nullptr;
                 }

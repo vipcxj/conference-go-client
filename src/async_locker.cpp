@@ -39,7 +39,7 @@ namespace cfgo
             bool m_block = false;
             bool m_blocked = false;
             mutex m_mutex;
-            unique_void_chan m_state_maybe_changed_chan {};
+            state_notifier m_state_notifier {};
             std::variant<std::nullptr_t, std::shared_ptr<void>, std::int64_t, double, std::string> m_user_data;
 
             bool request_block();
@@ -61,7 +61,7 @@ namespace cfgo
             else
             {
                 m_block = true;
-                chan_maybe_write(m_state_maybe_changed_chan);
+                m_state_notifier.notify();
                 return true;
             }
         }
@@ -73,7 +73,7 @@ namespace cfgo
             if (m_block)
             {
                 m_block = false;
-                chan_maybe_write(m_state_maybe_changed_chan);
+                m_state_notifier.notify();
                 return true;
             }
             else
@@ -87,6 +87,7 @@ namespace cfgo
         {
             do
             {
+                auto ch = m_state_notifier.make_notfiy_receiver();
                 {
                     std::lock_guard g(m_mutex);
                     if (m_block)
@@ -104,7 +105,7 @@ namespace cfgo
                         }
                     }
                 }
-                if (!co_await chan_read<void>(m_state_maybe_changed_chan, closer))
+                if (!co_await chan_read<void>(ch, closer))
                 {
                     co_return false;
                 }
@@ -126,6 +127,7 @@ namespace cfgo
         {
             do
             {
+                auto ch = m_state_notifier.make_notfiy_receiver();
                 {
                     std::lock_guard g(m_mutex);
                     if (m_blocked)
@@ -133,7 +135,7 @@ namespace cfgo
                         if (!m_block)
                         {
                             m_blocked = false;
-                            chan_maybe_write(m_state_maybe_changed_chan);
+                            m_state_notifier.notify();
                             break;
                         }
                     }
@@ -142,7 +144,7 @@ namespace cfgo
                         if (m_block)
                         {
                             m_blocked = true;
-                            chan_maybe_write(m_state_maybe_changed_chan);
+                            m_state_notifier.notify();
                         }
                         else
                         {
@@ -150,7 +152,7 @@ namespace cfgo
                         }
                     }
                 }
-                if (!co_await chan_read<void>(m_state_maybe_changed_chan, closer))
+                if (!co_await chan_read<void>(ch, closer))
                 {
                     co_return false;
                 }
@@ -295,7 +297,7 @@ namespace cfgo
             std::uint32_t m_next_id = 0;
             std::uint32_t m_next_epoch = 0;
             bool m_locked = false;
-            unique_void_chan m_maybe_ready_ch;
+            state_notifier m_ready_notifier;
             mutex m_mutex;
         };
         
@@ -312,7 +314,7 @@ namespace cfgo
                 {
                     block_ptr = std::make_shared<AsyncBlocker>(m_next_id++);
                     m_blockers.push_back({block_ptr, m_next_epoch++, priority, true});
-                    chan_maybe_write(m_maybe_ready_ch);
+                    m_ready_notifier.notify();
                 }
                 else
                 {
@@ -395,6 +397,7 @@ namespace cfgo
             std::uint32_t batch;
             do
             {
+                auto ch = m_ready_notifier.make_notfiy_receiver();
                 {
                     std::lock_guard lk(m_mutex);
                     batch = _calc_batch();
@@ -409,7 +412,7 @@ namespace cfgo
                         break;
                     }
                 }
-                co_await chan_read_or_throw<void>(m_maybe_ready_ch, closer);
+                co_await chan_read_or_throw<void>(ch, closer);
             } while (true);
             // After here, m_locked == true
             try
@@ -532,7 +535,7 @@ namespace cfgo
                     auto block_ptr = std::make_shared<AsyncBlocker>(request.m_id);
                     m_blockers.push_back({block_ptr, m_next_epoch++, request.m_priority, true});
                     chan_must_write(request.m_chan, block_ptr);
-                    chan_maybe_write(m_maybe_ready_ch);
+                    m_ready_notifier.notify();
                 }
                 m_blocker_requests.clear();
             }

@@ -800,5 +800,42 @@ namespace cfgo
             }
         };
     }
+
+    namespace detail
+    {
+        struct StateMaybeChangedNotifierState {
+            std::vector<unique_void_chan> m_chs {};
+            mutex m_mux {};
+
+            void notify() {
+                std::lock_guard lg(m_mux);
+                for (auto & ch : m_chs) {
+                    chan_maybe_write(ch);
+                }
+                m_chs.clear();
+            }
+
+            auto make_notfiy_receiver() -> unique_void_chan {
+                unique_void_chan ch {};
+                {
+                    std::lock_guard lg(m_mux);
+                    m_chs.push_back(ch);
+                }
+                return ch;
+            }
+        };
+    } // namespace detail
+
+    StateMaybeChangedNotifier::StateMaybeChangedNotifier(): m_state(std::make_shared<detail::StateMaybeChangedNotifierState>()) {}
+    
+
+    void StateMaybeChangedNotifier::notify() const {
+        m_state->notify();
+    }
+
+    auto StateMaybeChangedNotifier::make_notfiy_receiver() const -> unique_void_chan {
+        return m_state->make_notfiy_receiver();
+    }
+
     
 } // namespace cfgo

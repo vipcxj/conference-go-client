@@ -188,7 +188,7 @@ TEST(Signal, SendMessage) {
                 auto content = msg->consume();
                 EXPECT_EQ("world from 2", content);
                 co_await acker->ack(closer, "ack");
-                chan_maybe_write(signal1_cb_done);
+                chan_must_write(signal1_cb_done);
                 co_return false;
             }));
             unique_void_chan signal2_cb_done {};
@@ -201,7 +201,7 @@ TEST(Signal, SendMessage) {
                 auto content = msg->consume();
                 EXPECT_EQ("world from 1", content);
                 co_await acker->ack(closer, "ack");
-                chan_maybe_write(signal2_cb_done);
+                chan_must_write(signal2_cb_done);
                 co_return false;
             }));
             DEFER({

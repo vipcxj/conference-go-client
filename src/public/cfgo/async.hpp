@@ -23,6 +23,12 @@ namespace cfgo
     using close_chan = CloseSignal;
     using close_chan_ptr = std::shared_ptr<close_chan>;
     extern close_chan INVALID_CLOSE_CHAN;
+
+    struct CloserGuard;
+    using close_guard = CloserGuard;
+
+    class StateMaybeChangedNotifier;
+    using state_notifier = StateMaybeChangedNotifier;
     template<typename T>
     using unique_chan = asiochan::channel<T, 1>;
     using unique_void_chan = unique_chan<void>;
@@ -104,6 +110,30 @@ namespace cfgo
 
         friend class detail::CloseSignalState;
         friend class WeakCloseSignal;
+    };
+
+    struct CloserGuard {
+        close_chan m_closer;
+        std::source_location m_src_loc;
+
+        CloserGuard(close_chan closer, std::source_location src_loc = std::source_location::current()): m_closer(std::move(closer)), m_src_loc(src_loc) {}
+        ~CloserGuard() {
+            m_closer.close_no_except("closed by closer guard", m_src_loc);
+        }
+    };
+
+    namespace detail
+    {
+        class StateMaybeChangedNotifierState;
+    } // namespace detail
+
+    class StateMaybeChangedNotifier {
+    private:
+        std::shared_ptr<detail::StateMaybeChangedNotifierState> m_state;
+    public:
+        StateMaybeChangedNotifier();
+        void notify() const;
+        auto make_notfiy_receiver() const -> unique_void_chan;
     };
 
     class WeakCloseSignal {
@@ -822,7 +852,7 @@ namespace cfgo
                     );
                     if (res.received_from(*waiter_opt))
                     {
-                        throw CancelError(close_ch.is_timeout());
+                        throw CancelError(close_ch);
                     }
                     else
                     {
@@ -832,7 +862,7 @@ namespace cfgo
                         }
                         if (close_ch.is_closed() && !close_ch.is_timeout())
                         {
-                            throw CancelError(true);
+                            throw CancelError(close_ch);
                         }
                         co_return select_result<typename First_Op::result_type, typename Ops::result_type...>(std::move(res).to_variant());
                     }
@@ -846,7 +876,7 @@ namespace cfgo
                     );
                     if (res.received_from(*waiter_opt))
                     {
-                        throw CancelError(close_ch.is_timeout());
+                        throw CancelError(close_ch);
                     }
                     else
                     {
@@ -856,7 +886,7 @@ namespace cfgo
                         }
                         if (close_ch.is_closed() && !close_ch.is_timeout())
                         {
-                            throw CancelError(true);
+                            throw CancelError(close_ch);
                         }
                         co_return select_result<typename First_Op::result_type, typename Ops::result_type...>(magic::shift_variant(std::move(res).to_variant()));
                     }
@@ -864,7 +894,7 @@ namespace cfgo
             }
             else
             {
-                throw CancelError(close_ch.is_timeout());
+                throw CancelError(close_ch);
             }
         }
         else

@@ -57,9 +57,9 @@ namespace cfgo
             OnStatCb m_on_stat = nullptr;
             OnCloseCb m_on_close = nullptr;
             mutex m_close_cb_lock;
-            unique_void_chan m_msg_notify;
-            unique_void_chan m_open_notify;
-            unique_void_chan m_closed_notify;
+            state_notifier m_state_notifier;
+            bool m_opened = false;
+            bool m_closed = false;
             #ifdef CFGO_SUPPORT_GSTREAMER
             GstSDPMessage *m_sdp = nullptr;
             const GstSDPMedia * gst_media() const;
@@ -86,7 +86,6 @@ namespace cfgo
             void on_track_open();
             void on_track_closed();
             void on_track_error(std::string error);
-            auto await_open_or_closed(close_chan closer) -> asio::awaitable<bool>;
             cfgo::Track::MsgPtr receive_msg(cfgo::Track::MsgType msg_type);
             auto await_msg(cfgo::Track::MsgType msg_type, close_chan closer) -> asio::awaitable<cfgo::Track::MsgPtr>;
             void * get_gst_caps(int pt) const;

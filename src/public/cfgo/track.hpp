@@ -188,10 +188,6 @@ namespace cfgo
         void set_on_close(OnCloseCb && cb) const;
         void unset_on_close() const noexcept;
         /**
-         * wait until track open or closed. return false if close_ch is closed.
-        */
-        auto await_open_or_closed(close_chan close_ch = nullptr) const -> asio::awaitable<bool>;
-        /**
          * wait until a msg is available. return nullptr when close_ch is closed or track is closed.
         */
         auto await_msg(MsgType msg_type, close_chan close_ch = nullptr) const -> asio::awaitable<MsgPtr>;

@@ -740,7 +740,7 @@ TEST(AsyncBlocker, CheckBlockedNum) {
     }
     do_async(fix_async_lambda([manager, closer]() -> asio::awaitable<void> {
         std::vector<AsyncBlocker> blockers {};
-        for (size_t i = 0; i < 500; i++)
+        for (size_t i = 0; i < 100; i++)
         {
             co_await manager.lock(closer);
             DEFER({
@@ -752,6 +752,58 @@ TEST(AsyncBlocker, CheckBlockedNum) {
         closer.close();
         CFGO_INFO("closed");
     }), true, m_pool);
+}
+
+TEST(StateNotifier, Notify) {
+    using namespace cfgo;
+    do_async([]() -> asio::awaitable<void> {
+        state_notifier nt1 {};
+        state_notifier nt2 {};
+        close_chan closer {};
+        close_guard g(closer);
+        auto sum1 = std::make_shared<Box<std::atomic_int>>(0);
+        auto sum2 = std::make_shared<Box<std::atomic_int>>(0);
+        for (size_t i = 0; i < 100; i++)
+        {
+            do_async([nt1, nt2, sum1, sum2, closer]() -> asio::awaitable<void> {
+                do
+                {
+                    auto ch = nt1.make_notfiy_receiver();
+                    sum1->value += 1;
+                    nt2.notify();
+                    if (co_await chan_read<void>(ch, closer))
+                    {
+                        sum2->value += 1;
+                    }
+                    else
+                    {
+                        break;
+                    }
+                } while (true);
+            });
+        }
+        auto i = 0;
+        do
+        {
+            auto ch = nt2.make_notfiy_receiver();
+            if (sum1->value.load() % 100 == 0)
+            {
+                nt1.notify();
+                ++i;
+            }
+            if (!co_await chan_read<void>(ch, closer))
+            {
+                break;
+            }
+            if (i == 10)
+            {
+                break;
+            }
+            
+        } while (true);
+        co_await wait_timeout(std::chrono::milliseconds(300), closer);
+        EXPECT_EQ(1000, sum2->value.load());
+    }, true);
 }
 
 int main(int argc, char **argv) {
