@@ -231,14 +231,14 @@ namespace cfgo
             CFGO_THIS_ERROR("{}", error);
         }
 
-        auto Track::await_open_or_closed(close_chan close_ch) -> asio::awaitable<bool>
+        auto Track::await_open_or_closed(close_chan closer) -> asio::awaitable<bool>
         {
             if (track->isOpen() || track->isClosed())
             {
                 co_return true;
             }
             auto res = co_await cfgo::select(
-                close_ch,
+                closer,
                 asiochan::ops::read(m_open_notify, m_closed_notify)
             );
             if (!res)
@@ -314,12 +314,12 @@ namespace cfgo
             }
 
             std::lock_guard g(m_lock);
-            cfgo::Track::MsgPtr msg_ptr;
+            cfgo::Track::MsgPtr msg_ptr = nullptr;
             if (msg_type == cfgo::Track::MsgType::ALL)
             {
                 if (m_rtp_cache.empty() && m_rtcp_cache.empty())
                 {
-                    return cfgo::Track::MsgPtr();
+                    return msg_ptr;
                 }
                 else if (m_rtp_cache.empty())
                 {

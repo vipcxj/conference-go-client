@@ -70,7 +70,7 @@ namespace cfgo
             /**
              * throw CancelError when closer is closed. return null shared_ptr when eos and no sample available.
             */
-            auto pull_sample(close_chan closer = INVALID_CLOSE_CHAN) const -> asio::awaitable<GstSampleSPtr>;
+            auto pull_sample(close_chan closer = nullptr) const -> asio::awaitable<GstSampleSPtr>;
             void set_on_sample(const OnSampleCb & cb) const;
             void set_on_sample(OnSampleCb && cb) const;
             void unset_on_sample() const noexcept;

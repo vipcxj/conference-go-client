@@ -221,11 +221,11 @@ namespace cfgo
                 gst_element_set_state (GST_ELEMENT (m_pipeline), GST_STATE_NULL);
             }
 
-            auto Pipeline::await(close_chan & close_ch) -> asio::awaitable<bool>
+            auto Pipeline::await(close_chan closer) -> asio::awaitable<bool>
             {
                 do
                 {
-                    auto c_msg = co_await chan_read<GstMessage *>(m_msg_ch, close_ch);
+                    auto c_msg = co_await chan_read<GstMessage *>(m_msg_ch, closer);
                     if (!c_msg)
                     {
                         co_return false;
@@ -483,7 +483,7 @@ namespace cfgo
                 return true;
             }
 
-            auto Pipeline::await_pad(const std::string & node_name, const std::string & pad_name, const std::set<GstPad *> & excludes, close_chan closer) -> asio::awaitable<GstPadSPtr>
+            auto Pipeline::await_pad(std::string node_name, std::string pad_name, std::set<GstPad *> excludes, close_chan closer) -> asio::awaitable<GstPadSPtr>
             {
                 Waiter waiter{};
                 GstPad * pad = nullptr;

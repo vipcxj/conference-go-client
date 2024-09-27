@@ -22,9 +22,9 @@ namespace cfgo
             impl()->stop();
         }
 
-        auto Pipeline::await(close_chan & close_ch) -> asio::awaitable<bool>
+        auto Pipeline::await(close_chan closer) -> asio::awaitable<bool>
         {
-            return impl()->await(close_ch);
+            return impl()->await(std::move(closer));
         }
 
         void Pipeline::add_node(const std::string & name, const std::string & type)
@@ -42,9 +42,9 @@ namespace cfgo
             return make_shared_gst_element(impl()->require_node(name));
         }
 
-        auto Pipeline::await_pad(const std::string & node, const std::string & pad, const std::set<GstPad *> & excludes, close_chan closer) -> asio::awaitable<GstPadSPtr>
+        auto Pipeline::await_pad(std::string node, std::string pad, std::set<GstPad *> excludes, close_chan closer) -> asio::awaitable<GstPadSPtr>
         {
-            return impl()->await_pad(node, pad, excludes, closer);
+            return impl()->await_pad(std::move(node), std::move(pad), std::move(excludes), std::move(closer));
         }
 
         bool Pipeline::link(const std::string & src, const std::string & target)

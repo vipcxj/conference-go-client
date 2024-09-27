@@ -571,7 +571,8 @@ auto main_task(cfgo::StandardStrand strand, GMainLoop *loop) -> asio::awaitable<
         cfgo::SignalConfigure {
             "ws://localhost:8080/ws", token
         },
-        rtc::Configuration {}
+        rtc::Configuration {},
+        cfgo::TrackConfigure {}
     };
     cfgo::Client client(conf, strand);
     // client.set_sio_logs_verbose();

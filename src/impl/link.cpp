@@ -105,9 +105,9 @@ namespace cfgo
                 return m_linked_ch.try_write(linked);
             }
 
-            auto Link::wait_linked(cfgo::close_chan & close_ch) -> asio::awaitable<bool>
+            auto Link::wait_linked(cfgo::close_chan closer) -> asio::awaitable<bool>
             {
-                if (co_await m_a_mutex.accquire(close_ch))
+                if (co_await m_a_mutex.accquire(closer))
                 {
                     auto executor = co_await asio::this_coro::executor;
                     DEFER({
@@ -117,7 +117,7 @@ namespace cfgo
                     {
                         co_return true;
                     }
-                    auto res = co_await cfgo::chan_read<bool>(m_linked_ch, close_ch);
+                    auto res = co_await cfgo::chan_read<bool>(m_linked_ch, closer);
                     if (res)
                     {
                         co_return res.value();

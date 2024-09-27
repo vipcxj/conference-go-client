@@ -539,7 +539,7 @@ namespace cfgo
 
     close_chan make_timeout(const duration_t& dur);
 
-    auto wait_timeout(duration_t dur, close_chan closer = nullptr, std::string && reasion = "timeout") -> asio::awaitable<void>;
+    auto wait_timeout(duration_t dur, close_chan closer = nullptr, std::string reasion = "timeout") -> asio::awaitable<void>;
 
     template<asiochan::select_op Op, asiochan::select_op... OtherOps>
     struct calc_sum_alternatives {
@@ -878,7 +878,7 @@ namespace cfgo
     }
 
     template<typename T>
-    auto chan_read(asiochan::readable_channel_type<T> auto ch, close_chan close_ch = INVALID_CLOSE_CHAN) -> asio::awaitable<cancelable<T>> {
+    auto chan_read(asiochan::readable_channel_type<T> auto ch, close_chan close_ch = nullptr) -> asio::awaitable<cancelable<T>> {
         if (is_valid_close_chan(close_ch))
         {
             auto && res = co_await select(
@@ -916,7 +916,7 @@ namespace cfgo
     }
 
     template<typename T>
-    auto chan_read_or_throw(asiochan::readable_channel_type<T> auto ch, close_chan close_ch = INVALID_CLOSE_CHAN) -> asio::awaitable<T> {
+    auto chan_read_or_throw(asiochan::readable_channel_type<T> auto ch, close_chan close_ch = nullptr) -> asio::awaitable<T> {
         if (is_valid_close_chan(close_ch))
         {
             auto && res = co_await select_or_throw(
@@ -947,7 +947,7 @@ namespace cfgo
     }
 
     template<typename T>
-    auto chan_write(asiochan::writable_channel_type<T> auto ch, T && data, close_chan close_ch = INVALID_CLOSE_CHAN) -> asio::awaitable<cancelable<void>> {
+    auto chan_write(asiochan::writable_channel_type<T> auto ch, T && data, close_chan close_ch = nullptr) -> asio::awaitable<cancelable<void>> {
         if (is_valid_close_chan(close_ch))
         {
             auto && res = co_await select(
@@ -994,7 +994,7 @@ namespace cfgo
     }
 
     template<typename T>
-    auto chan_write_or_throw(asiochan::writable_channel_type<T> auto ch, T && data, close_chan close_ch = INVALID_CLOSE_CHAN) -> asio::awaitable<void> {
+    auto chan_write_or_throw(asiochan::writable_channel_type<T> auto ch, T && data, close_chan close_ch = nullptr) -> asio::awaitable<void> {
         if (is_valid_close_chan(close_ch))
         {
             co_await select_or_throw(
@@ -1097,7 +1097,7 @@ namespace cfgo
     auto async_retry(
         std::chrono::nanoseconds timeout,
         const TryOption & option, 
-        std::function<asio::awaitable<T>(int, close_chan)> && func, 
+        std::function<asio::awaitable<T>(int, close_chan)> func, 
         std::function<bool(const T &)> retry_checker, 
         close_chan close_ch,
         std::string timeout_reason = ""
@@ -1924,7 +1924,7 @@ namespace cfgo
             }
         }
 
-        auto operator()(close_chan closer, Args &&... args) -> asio::awaitable<T> {
+        auto operator()(close_chan closer, Args... args) -> asio::awaitable<T> {
             do
             {
                 bool run = false;
@@ -1962,7 +1962,7 @@ namespace cfgo
                 {
                     try
                     {
-                        m_res = co_await m_task(closer, std::forward<Args>(args)...);
+                        m_res = co_await m_task(closer, std::move(args)...);
                     }
                     catch(...)
                     {
@@ -2141,7 +2141,7 @@ namespace cfgo
             }
         }
 
-        auto operator()(close_chan closer, Args &&... args) const -> asio::awaitable<std::exception_ptr> {
+        auto operator()(close_chan closer, Args... args) const -> asio::awaitable<std::exception_ptr> {
             do
             {
                 bool run = false;
@@ -2180,7 +2180,7 @@ namespace cfgo
                 {
                     try
                     {
-                        m_res = std::make_tuple(co_await m_task(closer, std::forward<Args>(args)...), nullptr);
+                        m_res = std::make_tuple(co_await m_task(closer, std::move(args)...), nullptr);
                     }
                     catch(...)
                     {

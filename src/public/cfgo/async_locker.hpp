@@ -338,12 +338,12 @@ namespace cfgo
         };
 
         AsyncBlockerManager(const Configure & configure);
-        auto lock(const close_chan & closer = nullptr) const -> asio::awaitable<void>;
+        auto lock(close_chan closer = nullptr) const -> asio::awaitable<void>;
         void unlock() const;
         void collect_locked_blocker(std::vector<AsyncBlocker> & blockers) const;
-        auto add_blocker(int priority, const close_chan & closer = nullptr) const -> asio::awaitable<AsyncBlocker>;
+        auto add_blocker(int priority, close_chan closer = nullptr) const -> asio::awaitable<AsyncBlocker>;
         void remove_blocker(std::uint32_t id) const;
-        auto wait_blocker(std::uint32_t id, const close_chan & closer = nullptr) const -> asio::awaitable<void>;
+        auto wait_blocker(std::uint32_t id, close_chan closer = nullptr) const -> asio::awaitable<void>;
     };
     
 } // namespace cfgo

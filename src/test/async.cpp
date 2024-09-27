@@ -732,7 +732,7 @@ TEST(AsyncBlocker, CheckBlockedNum) {
                 do
                 {
                     co_await wait_timeout(std::chrono::milliseconds {200 + amp}, closer);
-                    co_await manager.wait_blocker(blocker.id());
+                    co_await manager.wait_blocker(blocker.id(), closer);
                 } while (true);
             }
             catch(const CancelError& e) {}

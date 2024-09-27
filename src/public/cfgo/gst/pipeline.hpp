@@ -27,9 +27,9 @@ namespace cfgo
             Pipeline(const std::string & name);
             void run();
             void stop();
-            [[nodiscard]] auto await(close_chan & close_ch = INVALID_CLOSE_CHAN) -> asio::awaitable<bool>;
+            [[nodiscard]] auto await(close_chan close_ch = nullptr) -> asio::awaitable<bool>;
             void add_node(const std::string & name, const std::string & type);
-            [[nodiscard]] auto await_pad(const std::string & node, const std::string & pad, const std::set<GstPad *> & excludes, close_chan closer = INVALID_CLOSE_CHAN) -> asio::awaitable<GstPadSPtr>;
+            [[nodiscard]] auto await_pad(std::string node, std::string pad, std::set<GstPad *> excludes, close_chan closer = nullptr) -> asio::awaitable<GstPadSPtr>;
             bool link(const std::string & src, const std::string & target);
             bool link(const std::string & src, const std::string & src_pad, const std::string & tgt, const std::string & tgt_pad);
             [[nodiscard]] auto link_async(const std::string & src, const std::string & target) -> AsyncLinkPtr;

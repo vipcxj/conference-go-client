@@ -42,7 +42,7 @@ namespace cfgo
 
                 bool notify_linked(bool linked);
 
-                auto wait_linked(cfgo::close_chan & close_ch = cfgo::INVALID_CLOSE_CHAN) -> asio::awaitable<bool>;
+                auto wait_linked(cfgo::close_chan close_ch = nullptr) -> asio::awaitable<bool>;
 
                 inline GstElement * src() const noexcept
                 {

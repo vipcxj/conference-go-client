@@ -38,7 +38,7 @@ namespace cfgo
         {
         public:
             AsyncLink(impl_ptr<impl::AsyncLink> impl);
-            auto await(const close_chan & closer = INVALID_CLOSE_CHAN) -> asio::awaitable<LinkPtr>;
+            auto await(close_chan closer = nullptr) -> asio::awaitable<LinkPtr>;
             GstElement * src() const noexcept;
             const std::string src_name() const noexcept;
             GstElement * tgt() const noexcept;

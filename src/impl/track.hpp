@@ -86,9 +86,9 @@ namespace cfgo
             void on_track_open();
             void on_track_closed();
             void on_track_error(std::string error);
-            auto await_open_or_closed(close_chan close_ch) -> asio::awaitable<bool>;
+            auto await_open_or_closed(close_chan closer) -> asio::awaitable<bool>;
             cfgo::Track::MsgPtr receive_msg(cfgo::Track::MsgType msg_type);
-            auto await_msg(cfgo::Track::MsgType msg_type, close_chan close_ch) -> asio::awaitable<cfgo::Track::MsgPtr>;
+            auto await_msg(cfgo::Track::MsgType msg_type, close_chan closer) -> asio::awaitable<cfgo::Track::MsgPtr>;
             void * get_gst_caps(int pt) const;
             void set_on_data(const OnDataCb & cb);
             void set_on_data(OnDataCb && cb);

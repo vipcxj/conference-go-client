@@ -190,11 +190,11 @@ namespace cfgo
         /**
          * wait until track open or closed. return false if close_ch is closed.
         */
-        auto await_open_or_closed(const close_chan &  close_ch = INVALID_CLOSE_CHAN) const -> asio::awaitable<bool>;
+        auto await_open_or_closed(close_chan close_ch = nullptr) const -> asio::awaitable<bool>;
         /**
          * wait until a msg is available. return nullptr when close_ch is closed or track is closed.
         */
-        auto await_msg(MsgType msg_type, const close_chan &  close_ch = INVALID_CLOSE_CHAN) const -> asio::awaitable<MsgPtr>;
+        auto await_msg(MsgType msg_type, close_chan close_ch = nullptr) const -> asio::awaitable<MsgPtr>;
         /**
          * immediately return a msg or nullptr if no msg available.
         */

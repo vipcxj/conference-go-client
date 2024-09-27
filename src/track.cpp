@@ -62,13 +62,13 @@ namespace cfgo
     const std::shared_ptr<rtc::Track> & Track::track() const noexcept {
         return impl()->track;
     }
-    auto Track::await_open_or_closed(const close_chan & close_ch) const -> asio::awaitable<bool>
+    auto Track::await_open_or_closed(close_chan closer) const -> asio::awaitable<bool>
     {
-        return impl()->await_open_or_closed(close_ch);
+        return impl()->await_open_or_closed(std::move(closer));
     }
-    auto Track::await_msg(MsgType msg_type, const close_chan &  close_ch) const -> asio::awaitable<MsgPtr>
+    auto Track::await_msg(MsgType msg_type, close_chan closer) const -> asio::awaitable<MsgPtr>
     {
-        return impl()->await_msg(msg_type, close_ch);
+        return impl()->await_msg(msg_type, std::move(closer));
     }
     Track::MsgPtr Track::receive_msg(MsgType msg_type) const {
         return impl()->receive_msg(msg_type);

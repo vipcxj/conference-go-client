@@ -108,7 +108,7 @@ namespace cfgo
         return timeout;
     }
 
-    auto wait_timeout(duration_t dur, close_chan closer, std::string && reasion) -> asio::awaitable<void> {
+    auto wait_timeout(duration_t dur, close_chan closer, std::string reasion) -> asio::awaitable<void> {
         if (closer)
         {
             auto timeout_closer = closer.create_child();

@@ -49,9 +49,9 @@ namespace cfgo
 
         AsyncLink::AsyncLink(impl_ptr<impl::AsyncLink> impl): ImplBy(impl) {}
 
-        auto AsyncLink::await(const close_chan & closer) -> asio::awaitable<LinkPtr>
+        auto AsyncLink::await(close_chan closer) -> asio::awaitable<LinkPtr>
         {
-            auto ptr = co_await impl()->await(closer);
+            auto ptr = co_await impl()->await(std::move(closer));
             if (ptr)
             {
                 co_return std::make_shared<Link>(ptr);

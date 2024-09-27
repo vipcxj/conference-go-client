@@ -53,16 +53,16 @@ namespace cfgo
             return m_signal;
         }
 
-        auto Client::connect(const std::string & socket_id, const close_chan & closer) -> asio::awaitable<void> {
-            return m_signal->connect(closer, socket_id);
+        auto Client::connect(std::string socket_id, close_chan closer) -> asio::awaitable<void> {
+            return m_signal->connect(std::move(closer), std::move(socket_id));
         }
 
-        auto Client::subscribe(Pattern pattern, std::vector<std::string> req_types, const close_chan & close_chan) -> asio::awaitable<SubPtr> {
-            return m_webrtc->subscribe(close_chan, std::move(pattern), std::move(req_types));
+        auto Client::subscribe(Pattern pattern, std::vector<std::string> req_types, close_chan closer) -> asio::awaitable<SubPtr> {
+            return m_webrtc->subscribe(std::move(closer), std::move(pattern), std::move(req_types));
         }
 
-        auto Client::unsubscribe(const std::string& sub_id, const close_chan & close_chan) -> asio::awaitable<void> {
-            return m_webrtc->unsubscribe(close_chan, std::move(sub_id));
+        auto Client::unsubscribe(std::string sub_id, close_chan closer) -> asio::awaitable<void> {
+            return m_webrtc->unsubscribe(std::move(closer), std::move(sub_id));
         }
     }
 }
