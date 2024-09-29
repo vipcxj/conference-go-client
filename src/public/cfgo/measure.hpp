@@ -8,6 +8,8 @@
 #include <concepts>
 #include <algorithm>
 
+#include "cfgo/str_helper.hpp"
+
 namespace cfgo
 {
 
@@ -22,7 +24,7 @@ namespace cfgo
         { a / n } -> std::convertible_to<T>;
     };
 
-    template<typename T>
+    template<typename T, typename Derve>
     class BaseMeasure
     {
     public:
@@ -41,7 +43,7 @@ namespace cfgo
         {
             assert(m_capacity > 0);
         };
-        ~BaseMeasure() = default;
+        virtual ~BaseMeasure() = default;
         void update(const T & value)
         {
             m_sum = m_sum + value;
@@ -61,7 +63,7 @@ namespace cfgo
             m_latests.push_back(value);
             if (m_latests.size() == m_capacity)
             {
-                m_latests.push_front();
+                m_latests.pop_front();
             }
         }
 
@@ -118,18 +120,69 @@ namespace cfgo
                 return m_sum / m_num;
             }
         }
+        template<typename F>
+        requires requires(F f, const Derve & me) {
+            f(me);
+        }
+        void run_per_n(int n, F fun) const noexcept(noexcept((dynamic_cast<const Derve &>(*this))))
+        {
+            if (m_num % n == 0)
+            {
+                fun(dynamic_cast<const Derve &>(*this));
+            }
+        }
     };
 
     using HighDuration = std::chrono::high_resolution_clock::duration;
     using HighTimePoint = std::chrono::high_resolution_clock::time_point;
     
-    class DurationMeasure : public BaseMeasure<HighDuration>
+    class DurationMeasure : public BaseMeasure<HighDuration, DurationMeasure>
     {
     private:
-        /* data */
+        HighTimePoint m_start;
     public:
-        DurationMeasure(DurationMeasure::Size capacity): BaseMeasure<HighDuration>(capacity) {}
+        DurationMeasure(DurationMeasure::Size capacity): BaseMeasure<HighDuration, DurationMeasure>(capacity) {}
         ~DurationMeasure() = default;
+        void mark_start() noexcept
+        {
+            m_start = std::chrono::high_resolution_clock::now();
+        }
+        void mark_end()
+        {
+            update(std::chrono::high_resolution_clock::now() - m_start);
+        }
+        std::string max_vec_string() const
+        {
+            return str_join(max_vec(), ", ", [](const HighDuration & dur, int i) -> std::string {
+                return std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(dur).count()) + " ms";
+            });
+        }
+        std::string min_vec_string() const
+        {
+            return str_join(min_vec(), ", ", [](const HighDuration & dur, int i) -> std::string {
+                return std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(dur).count()) + " ms";
+            });
+        }
+        std::string latest_list_string() const
+        {
+            return str_join(latest_list(), ", ", [](const HighDuration & dur, int i) -> std::string {
+                return std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(dur).count()) + " ms";
+            });
+        }
+    };
+
+    class ScopeDurationMeasurer
+    {
+    private:
+        DurationMeasure & m_measure;
+    public:
+        ScopeDurationMeasurer(DurationMeasure & measure): m_measure(measure) {
+            m_measure.mark_start();
+        }
+        ~ScopeDurationMeasurer()
+        {
+            m_measure.mark_end();
+        }
     };
     
 } // namespace cfgo

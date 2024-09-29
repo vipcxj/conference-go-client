@@ -7,6 +7,7 @@
 #include "cfgo/cfgo.hpp"
 #include "cfgo/defer.hpp"
 #include "cfgo/fmt_helper.hpp"
+#include "cfgo/measure.hpp"
 #include "spdlog/spdlog.h"
 #include "cpptrace/cpptrace.hpp"
 
@@ -922,7 +923,21 @@ namespace cfgo
                         {
                             CFGO_SELF_DEBUG("Read {} data timeout after {} ms. Tring the {} time.", msg_type, std::chrono::duration_cast<std::chrono::milliseconds>(timeout_closer.get_timeout()), Nth{try_times});
                         }
-                        Track::MsgPtr msg_ptr = std::move(co_await track->await_msg(msg_type, timeout_closer));
+                        Track::MsgPtr msg_ptr;
+                        DurationMeasure measure(3);
+                        {
+                            ScopeDurationMeasurer measurer(measure);
+                            msg_ptr = co_await track->await_msg(msg_type, timeout_closer);
+                        }
+                        measure.run_per_n(300, [self, msg_type](const DurationMeasure & m) {
+                            CFGO_SELF_DEBUG(
+                                "Read {} data stats: max times: {}, min times: {}, latest times: {}",
+                                msg_type,
+                                m.max_vec_string(),
+                                m.min_vec_string(),
+                                m.latest_list_string()
+                            );
+                        });
                         co_return msg_ptr;
                     };
                     auto msg_ptr = co_await async_retry<Track::MsgPtr>(
