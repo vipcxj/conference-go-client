@@ -58,8 +58,8 @@ namespace cfgo
             OnCloseCb m_on_close = nullptr;
             mutex m_close_cb_lock;
             state_notifier m_state_notifier;
-            bool m_opened = false;
-            bool m_closed = false;
+            std::atomic_bool m_opened = false;
+            std::atomic_bool m_closed = false;
             #ifdef CFGO_SUPPORT_GSTREAMER
             GstSDPMessage *m_sdp = nullptr;
             const GstSDPMedia * gst_media() const;
@@ -87,6 +87,13 @@ namespace cfgo
             void on_track_closed();
             void on_track_error(std::string error);
             cfgo::Track::MsgPtr receive_msg(cfgo::Track::MsgType msg_type);
+            bool is_opened() const noexcept {
+                return m_opened.load();
+            }
+            bool is_closed() const noexcept {
+                return m_closed.load();
+            }
+            auto await_open_or_close(close_chan closer) -> asio::awaitable<bool>;
             auto await_msg(cfgo::Track::MsgType msg_type, close_chan closer) -> asio::awaitable<cfgo::Track::MsgPtr>;
             void * get_gst_caps(int pt) const;
             void set_on_data(const OnDataCb & cb);

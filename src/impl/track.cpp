@@ -233,6 +233,31 @@ namespace cfgo
             CFGO_THIS_ERROR("{}", error);
         }
 
+        auto Track::await_open_or_close(close_chan closer) -> asio::awaitable<bool>
+        {
+            if (!m_inited)
+            {
+                throw cpptrace::logic_error("Before call await_open_or_close, call prepare_track at first.");
+            }
+            if (m_opened.load() || m_closed.load())
+            {
+                co_return true;
+            }
+            do
+            {
+                auto ch = m_state_notifier.make_notfiy_receiver();
+                if (m_opened.load() || m_closed.load())
+                {
+                    co_return true;
+                }
+                if (!co_await chan_read<void>(ch, closer))
+                {
+                    co_return false;
+                }
+            } while (true);
+            
+        }
+
         auto Track::await_msg(cfgo::Track::MsgType msg_type, close_chan close_ch) -> asio::awaitable<cfgo::Track::MsgPtr>
         {
             if (!m_inited)
@@ -242,7 +267,7 @@ namespace cfgo
             do
             {
                 auto ch = m_state_notifier.make_notfiy_receiver();
-                if (m_closed)
+                if (m_closed.load())
                 {
                     co_return nullptr;
                 }

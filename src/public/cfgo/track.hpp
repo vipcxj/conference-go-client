@@ -187,6 +187,14 @@ namespace cfgo
         void set_on_close(const OnCloseCb & cb) const;
         void set_on_close(OnCloseCb && cb) const;
         void unset_on_close() const noexcept;
+        bool is_opened() const noexcept;
+        bool is_closed() const noexcept;
+        /**
+         * wait until the track is open or close. return false when close_ch is closed. 
+         * The track will not reopen. So open or close state is final state. 
+         * Using is_opened and is_closed to check the track is opened or closed then.
+         */
+        auto await_open_or_close(close_chan closer) const -> asio::awaitable<bool>;
         /**
          * wait until a msg is available. return nullptr when close_ch is closed or track is closed.
         */

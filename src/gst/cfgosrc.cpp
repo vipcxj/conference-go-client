@@ -1076,6 +1076,15 @@ namespace cfgo
                     {
                         co_return;
                     }
+                    co_await track->await_open_or_close(self->m_close_ch);
+                    if (track->is_opened())
+                    {
+                        CFGO_SELF_DEBUG("The track of session {} is opened.", session->m_id);
+                    }
+                    else
+                    {
+                        CFGO_SELF_DEBUG("The track of session {} is closed.", session->m_id);
+                    }
                     tasks.add_task(fix_async_lambda([self = shared_from_this(), session = session.value()](close_chan closer) mutable -> asio::awaitable<void> {
                         co_await self->_post_buffer(*session, Track::MsgType::RTP);
                     }));
