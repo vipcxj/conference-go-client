@@ -161,6 +161,15 @@ namespace cfgo
 
         void Track::on_track_msg(rtc::binary data) {
             bool is_rtcp = rtc::IsRtcp(data);
+            if (is_rtcp)
+            {
+                m_first_rtcp_packet_received = true;
+            }
+            else
+            {
+                m_first_rtp_packet_received = true;
+            }
+            
             MsgBuffer & cache = is_rtcp ? m_rtcp_cache : m_rtp_cache;
             {
                 std::lock_guard g(m_lock);
@@ -239,14 +248,14 @@ namespace cfgo
             {
                 throw cpptrace::logic_error("Before call await_open_or_close, call prepare_track at first.");
             }
-            if (m_opened.load() || m_closed.load())
+            if (m_opened || m_closed)
             {
                 co_return true;
             }
             do
             {
                 auto ch = m_state_notifier.make_notfiy_receiver();
-                if (m_opened.load() || m_closed.load())
+                if (m_opened || m_closed)
                 {
                     co_return true;
                 }
@@ -255,7 +264,45 @@ namespace cfgo
                     co_return false;
                 }
             } while (true);
-            
+        }
+
+        bool Track::_is_first_msg_received(cfgo::Track::MsgType msg_type) const noexcept
+        {
+            if (msg_type == cfgo::Track::MsgType::ALL) {
+                return m_first_rtp_packet_received && m_first_rtcp_packet_received;
+            }
+            else if (msg_type == cfgo::Track::MsgType::RTP)
+            {
+                return m_first_rtp_packet_received;
+            }
+            else
+            {
+                return m_first_rtcp_packet_received;
+            }
+        }
+
+        auto Track::await_first_msg_received(cfgo::Track::MsgType msg_type, close_chan closer) -> asio::awaitable<bool>
+        {
+            if (!m_inited)
+            {
+                throw cpptrace::logic_error("Before call await_open_or_close, call prepare_track at first.");
+            }
+            if (_is_first_msg_received(msg_type))
+            {
+                co_return true;
+            }
+            do
+            {
+                auto ch = m_state_notifier.make_notfiy_receiver();
+                if (_is_first_msg_received(msg_type))
+                {
+                    co_return true;
+                }
+                if (!co_await chan_read<void>(ch, closer))
+                {
+                    co_return false;
+                }
+            } while (true);
         }
 
         auto Track::await_msg(cfgo::Track::MsgType msg_type, close_chan close_ch) -> asio::awaitable<cfgo::Track::MsgPtr>
@@ -267,7 +314,7 @@ namespace cfgo
             do
             {
                 auto ch = m_state_notifier.make_notfiy_receiver();
-                if (m_closed.load())
+                if (m_closed)
                 {
                     co_return nullptr;
                 }

@@ -190,11 +190,16 @@ namespace cfgo
         bool is_opened() const noexcept;
         bool is_closed() const noexcept;
         /**
-         * wait until the track is open or close. return false when close_ch is closed. 
+         * wait until the track is open or close, return false when close_ch is closed. 
          * The track will not reopen. So open or close state is final state. 
          * Using is_opened and is_closed to check the track is opened or closed then.
          */
         auto await_open_or_close(close_chan closer) const -> asio::awaitable<bool>;
+        /**
+         * wait until first msg received, return false when close_ch is closed.
+         * MsgType::ALL means both first rtp and rtcp msg received.
+         */
+        auto await_first_msg_received(cfgo::Track::MsgType msg_type, close_chan closer) -> asio::awaitable<bool>;
         /**
          * wait until a msg is available. return nullptr when close_ch is closed or track is closed.
         */

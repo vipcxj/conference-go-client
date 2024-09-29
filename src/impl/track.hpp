@@ -60,6 +60,8 @@ namespace cfgo
             state_notifier m_state_notifier;
             std::atomic_bool m_opened = false;
             std::atomic_bool m_closed = false;
+            std::atomic_bool m_first_rtp_packet_received = false;
+            std::atomic_bool m_first_rtcp_packet_received = false;
             #ifdef CFGO_SUPPORT_GSTREAMER
             GstSDPMessage *m_sdp = nullptr;
             const GstSDPMedia * gst_media() const;
@@ -94,6 +96,8 @@ namespace cfgo
                 return m_closed.load();
             }
             auto await_open_or_close(close_chan closer) -> asio::awaitable<bool>;
+            bool _is_first_msg_received(cfgo::Track::MsgType msg_type) const noexcept;
+            auto await_first_msg_received(cfgo::Track::MsgType msg_type, close_chan closer) -> asio::awaitable<bool>;
             auto await_msg(cfgo::Track::MsgType msg_type, close_chan closer) -> asio::awaitable<cfgo::Track::MsgPtr>;
             void * get_gst_caps(int pt) const;
             void set_on_data(const OnDataCb & cb);

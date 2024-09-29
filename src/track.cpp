@@ -73,6 +73,10 @@ namespace cfgo
     {
         return impl()->await_open_or_close(std::move(closer));
     }
+    auto Track::await_first_msg_received(cfgo::Track::MsgType msg_type, close_chan closer) -> asio::awaitable<bool>
+    {
+        return impl()->await_first_msg_received(msg_type, std::move(closer));
+    }
     auto Track::await_msg(MsgType msg_type, close_chan closer) const -> asio::awaitable<MsgPtr>
     {
         return impl()->await_msg(msg_type, std::move(closer));

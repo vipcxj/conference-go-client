@@ -848,6 +848,11 @@ namespace cfgo
         {
             auto self = shared_from_this();
             CFGO_SELF_DEBUG("Start the {} data task of session {}.", msg_type, session.m_id);
+            if (!co_await session.m_track->await_first_msg_received(msg_type, self->m_close_ch))
+            {
+                throw CancelError(self->m_close_ch);
+            }
+            CFGO_SELF_DEBUG("The first {} data arrived in session {}.", msg_type, session.m_id);
             do
             {
                 do
