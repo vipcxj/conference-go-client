@@ -20,7 +20,7 @@ namespace cfgo
         return file_name && strlen(file_name) > 0 && fun_name && strlen(fun_name) > 0;
     }
 
-    std::string create_cancel_error_msg(std::string&& message, CancelError::Reason reason, bool trace, const std::source_location & source_loc) {
+    std::string create_cancel_error_msg(const std::string& message, CancelError::Reason reason, bool trace, const std::source_location & source_loc) {
         if (message.empty())
         {
             if (trace || !is_valid_loc(source_loc))
@@ -74,9 +74,10 @@ namespace cfgo
     }
 
     CancelError::CancelError(std::string message, Reason reason, bool trace, std::source_location source_loc) noexcept:
-        cpptrace::exception_with_message(create_cancel_error_msg(std::move(message), reason, trace, source_loc), trace ? cpptrace::detail::get_raw_trace_and_absorb() : cpptrace::raw_trace{}),
+        cpptrace::exception_with_message(create_cancel_error_msg(message, reason, trace, source_loc), trace ? cpptrace::detail::get_raw_trace_and_absorb() : cpptrace::raw_trace{}),
         m_reason(reason),
         m_trace(trace),
+        m_close_reason(std::move(message)),
         m_loc(std::move(source_loc))
     {}
 

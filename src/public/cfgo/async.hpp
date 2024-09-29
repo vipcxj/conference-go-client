@@ -182,6 +182,7 @@ namespace cfgo
     protected:
         Reason m_reason;
         bool m_trace;
+        std::string m_close_reason;
         std::source_location m_loc;
     public:
         explicit CancelError(std::string message, Reason reason = CANCEL, bool trace = false, std::source_location source_loc = std::source_location::current()) noexcept;
@@ -192,6 +193,14 @@ namespace cfgo
         inline bool is_timeout() const noexcept
         {
             return m_reason == TIMEOUT;
+        }
+        const std::string & reason() const noexcept
+        {
+            return m_close_reason;
+        }
+        const std::source_location & source_location() const noexcept
+        {
+            return m_loc;
         }
     };
 

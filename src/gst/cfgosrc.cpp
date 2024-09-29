@@ -250,11 +250,12 @@ namespace cfgo
             }
         }
 
-        CfgoSrc::CfgoSrc(int client_handle, const char * pattern_json, const char * req_types_str, guint64 sub_timeout, guint64 read_timeout):
+        CfgoSrc::CfgoSrc(int client_handle, const char * pattern_json, const char * req_types_str, guint64 sub_timeout, guint64 rtp_read_timeout, guint64 rtcp_read_timeout):
             m_logger(Log::instance().create_logger(Log::Category::CFGOSRC)),
             m_client(get_client(client_handle)), 
             m_sub_timeout(sub_timeout), 
-            m_read_timeout(read_timeout)
+            m_rtp_read_timeout(rtp_read_timeout),
+            m_rtcp_read_timeout(rtcp_read_timeout)
         {
             CFGO_THIS_TRACE("cfgosrc created");
             cfgo_pattern_parse(pattern_json, m_pattern);
@@ -273,9 +274,9 @@ namespace cfgo
             _detach();
         }
 
-        auto CfgoSrc::create(int client_handle, const char * pattern_json, const char * req_types_str, guint64 sub_timeout, guint64 read_timeout) -> Ptr
+        auto CfgoSrc::create(int client_handle, const char * pattern_json, const char * req_types_str, guint64 sub_timeout, guint64 rtp_read_timeout, guint64 rtcp_read_timeout) -> Ptr
         {
-            return Ptr{new CfgoSrc(client_handle, pattern_json, req_types_str, sub_timeout, read_timeout)};
+            return Ptr{new CfgoSrc(client_handle, pattern_json, req_types_str, sub_timeout, rtp_read_timeout, rtcp_read_timeout)};
         }
 
         void CfgoSrc::set_sub_timeout(guint64 timeout)
@@ -293,19 +294,34 @@ namespace cfgo
             m_sub_try_option.m_delay_level = delay_level;
         }
 
-        void CfgoSrc::set_read_timeout(guint64 timeout)
+        void CfgoSrc::set_rtp_read_timeout(guint64 timeout)
         {
             std::lock_guard lock(m_mutex);
-            m_read_timeout = timeout;
+            m_rtp_read_timeout = timeout;
         }
 
-        void CfgoSrc::set_read_try(gint32 tries, guint64 delay_init, guint32 delay_step, guint32 delay_level)
+        void CfgoSrc::set_rtp_read_try(gint32 tries, guint64 delay_init, guint32 delay_step, guint32 delay_level)
         {
             std::lock_guard lock(m_mutex);
-            m_read_try_option.m_tries = tries;
-            m_read_try_option.m_delay_init = delay_init;
-            m_read_try_option.m_delay_step = delay_step;
-            m_read_try_option.m_delay_level = delay_level;
+            m_rtp_read_try_option.m_tries = tries;
+            m_rtp_read_try_option.m_delay_init = delay_init;
+            m_rtp_read_try_option.m_delay_step = delay_step;
+            m_rtp_read_try_option.m_delay_level = delay_level;
+        }
+
+        void CfgoSrc::set_rtcp_read_timeout(guint64 timeout)
+        {
+            std::lock_guard lock(m_mutex);
+            m_rtcp_read_timeout = timeout;
+        }
+
+        void CfgoSrc::set_rtcp_read_try(gint32 tries, guint64 delay_init, guint32 delay_step, guint32 delay_level)
+        {
+            std::lock_guard lock(m_mutex);
+            m_rtcp_read_try_option.m_tries = tries;
+            m_rtcp_read_try_option.m_delay_init = delay_init;
+            m_rtcp_read_try_option.m_delay_step = delay_step;
+            m_rtcp_read_try_option.m_delay_level = delay_level;
         }
 
         void CfgoSrc::attach(GstCfgoSrc * owner)
@@ -861,8 +877,16 @@ namespace cfgo
                     guint64 read_timeout;
                     {
                         std::lock_guard lock(m_mutex);
-                        try_option = m_read_try_option;
-                        read_timeout = m_read_timeout;
+                        if (msg_type == Track::MsgType::RTP)
+                        {
+                            try_option = m_rtp_read_try_option;
+                            read_timeout = m_rtp_read_timeout;
+                        }
+                        else
+                        {
+                            try_option = m_rtcp_read_try_option;
+                            read_timeout = m_rtcp_read_timeout;
+                        }
                     }
                     auto track = session.m_track;
                     auto read_task = [self, track, msg_type](auto try_times, auto timeout_closer) -> asio::awaitable<Track::MsgPtr>

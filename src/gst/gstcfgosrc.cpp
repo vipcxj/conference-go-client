@@ -114,11 +114,16 @@ enum
     PROP_SUB_TRY_DELAY_INIT,
     PROP_SUB_TRY_DELAY_STEP,
     PROP_SUB_TRY_DELAY_LEVEL,
-    PROP_READ_TIMEOUT,
-    PROP_READ_TRIES,
-    PROP_READ_TRY_DELAY_INIT,
-    PROP_READ_TRY_DELAY_STEP,
-    PROP_READ_TRY_DELAY_LEVEL,
+    PROP_RTP_READ_TIMEOUT,
+    PROP_RTP_READ_TRIES,
+    PROP_RTP_READ_TRY_DELAY_INIT,
+    PROP_RTP_READ_TRY_DELAY_STEP,
+    PROP_RTP_READ_TRY_DELAY_LEVEL,
+    PROP_RTCP_READ_TIMEOUT,
+    PROP_RTCP_READ_TRIES,
+    PROP_RTCP_READ_TRY_DELAY_INIT,
+    PROP_RTCP_READ_TRY_DELAY_STEP,
+    PROP_RTCP_READ_TRY_DELAY_LEVEL,
     PROP_MODE,
     PROP_DECODE_CAPS
 };
@@ -386,33 +391,63 @@ gst_cfgosrc_class_init(GstCfgoSrcClass *klass)
             0, 16, 0,
             (GParamFlags)(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
     g_object_class_install_property(
-        gobject_class, PROP_READ_TIMEOUT,
+        gobject_class, PROP_RTP_READ_TIMEOUT,
         g_param_spec_uint64(
-            "read-timeout", "read-timeout", "timeout miliseconds of reading data",
+            "rtp-read-timeout", "rtp-read-timeout", "timeout miliseconds of reading rtp data",
             0, G_MAXUINT64, 0,
             (GParamFlags)(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
     g_object_class_install_property(
-        gobject_class, PROP_READ_TRIES,
+        gobject_class, PROP_RTP_READ_TRIES,
         g_param_spec_int(
-            "read-tries", "read-tries", "max tries of reading data, -1 means forever",
+            "rtp-read-tries", "rtp-read-tries", "max tries of reading rtp data, -1 means forever",
             -1, G_MAXINT32, -1,
             (GParamFlags)(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
     g_object_class_install_property(
-        gobject_class, PROP_READ_TRY_DELAY_INIT,
+        gobject_class, PROP_RTP_READ_TRY_DELAY_INIT,
         g_param_spec_uint64(
-            "read-try-delay-init", "read-try-delay-init", "the init delay time in milisecond before next reading data try",
+            "rtp-read-try-delay-init", "rtp-read-try-delay-init", "the init delay time in milisecond before next reading rtp data try",
             0, G_MAXUINT64, 0,
             (GParamFlags)(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
     g_object_class_install_property(
-        gobject_class, PROP_READ_TRY_DELAY_STEP,
+        gobject_class, PROP_RTP_READ_TRY_DELAY_STEP,
         g_param_spec_uint(
-            "read-try-delay-step", "read-try-delay-step", "the increase step of delay time in milisecond before next reading data try.",
+            "rtp-read-try-delay-step", "rtp-read-try-delay-step", "the increase step of delay time in milisecond before next reading rtp data try.",
             0, G_MAXINT32, 0,
             (GParamFlags)(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
     g_object_class_install_property(
-        gobject_class, PROP_READ_TRY_DELAY_LEVEL,
+        gobject_class, PROP_RTP_READ_TRY_DELAY_LEVEL,
         g_param_spec_uint(
-            "read-try-delay-level", "read-try-delay-level", "the max increase level of delay time before next reading data try.",
+            "rtp-read-try-delay-level", "rtp-read-try-delay-level", "the max increase level of delay time before next reading rtp data try.",
+            0, 16, 0,
+            (GParamFlags)(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+    g_object_class_install_property(
+        gobject_class, PROP_RTCP_READ_TIMEOUT,
+        g_param_spec_uint64(
+            "rtcp-read-timeout", "rtcp-read-timeout", "timeout miliseconds of reading rtcp data",
+            0, G_MAXUINT64, 0,
+            (GParamFlags)(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+    g_object_class_install_property(
+        gobject_class, PROP_RTCP_READ_TRIES,
+        g_param_spec_int(
+            "rtcp-read-tries", "rtcp-read-tries", "max tries of reading rtcp data, -1 means forever",
+            -1, G_MAXINT32, -1,
+            (GParamFlags)(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+    g_object_class_install_property(
+        gobject_class, PROP_RTCP_READ_TRY_DELAY_INIT,
+        g_param_spec_uint64(
+            "rtcp-read-try-delay-init", "rtcp-read-try-delay-init", "the init delay time in milisecond before next reading rtcp data try",
+            0, G_MAXUINT64, 0,
+            (GParamFlags)(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+    g_object_class_install_property(
+        gobject_class, PROP_RTCP_READ_TRY_DELAY_STEP,
+        g_param_spec_uint(
+            "rtcp-read-try-delay-step", "rtcp-read-try-delay-step", "the increase step of delay time in milisecond before next reading rtcp data try.",
+            0, G_MAXINT32, 0,
+            (GParamFlags)(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+    g_object_class_install_property(
+        gobject_class, PROP_RTCP_READ_TRY_DELAY_LEVEL,
+        g_param_spec_uint(
+            "rtcp-read-try-delay-level", "rtcp-read-try-delay-level", "the max increase level of delay time before next reading rtcp data try.",
             0, 16, 0,
             (GParamFlags)(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
     g_object_class_install_property(
@@ -480,11 +515,12 @@ void _gst_cfgosrc_prepare(GstCfgoSrc *cfgosrc, bool reset_task)
             if (!GST_CFGOSRC_PVS(cfgosrc)->task || reset_task)
             {
                 GST_DEBUG_OBJECT(cfgosrc, "%s", "Creating the task.");
-                CFGO_DEBUG("cfgosrc created with sub timeout {} and read timeout {}.", cfgosrc->sub_timeout, cfgosrc->read_timeout);
+                CFGO_DEBUG("cfgosrc created with sub timeout {} and rtp read timeout {} and rtcp read timeout.", cfgosrc->sub_timeout, cfgosrc->rtp_read_timeout, cfgosrc->rtcp_read_timeout);
                 GST_CFGOSRC_PVS(cfgosrc)->task = cfgo::gst::CfgoSrc::create(
                     cfgosrc->client_handle, 
                     cfgosrc->pattern, cfgosrc->req_types, 
-                    cfgosrc->sub_timeout, cfgosrc->read_timeout
+                    cfgosrc->sub_timeout,
+                    cfgosrc->rtp_read_timeout, cfgosrc->rtcp_read_timeout
                 );
                 GST_DEBUG_OBJECT(cfgosrc, "%s", "Attaching the task.");
                 GST_CFGOSRC_PVS(cfgosrc)->task->attach(cfgosrc);
@@ -497,7 +533,8 @@ void _gst_cfgosrc_prepare(GstCfgoSrc *cfgosrc, bool reset_task)
             {
                 GST_DEBUG_OBJECT(cfgosrc, "%s", "The task has created and started, updating timeout properties.");
                 GST_CFGOSRC_PVS(cfgosrc)->task->set_sub_timeout(cfgosrc->sub_timeout);
-                GST_CFGOSRC_PVS(cfgosrc)->task->set_sub_timeout(cfgosrc->read_timeout);
+                GST_CFGOSRC_PVS(cfgosrc)->task->set_rtp_read_timeout(cfgosrc->rtp_read_timeout);
+                GST_CFGOSRC_PVS(cfgosrc)->task->set_rtcp_read_timeout(cfgosrc->rtcp_read_timeout);
             }
             GST_DEBUG_OBJECT(cfgosrc, "%s", "Updating the try options of the task.");
             GST_CFGOSRC_PVS(cfgosrc)->task->set_sub_try(
@@ -506,11 +543,17 @@ void _gst_cfgosrc_prepare(GstCfgoSrc *cfgosrc, bool reset_task)
                 cfgosrc->sub_try_delay_step,
                 cfgosrc->sub_try_delay_level
             );
-            GST_CFGOSRC_PVS(cfgosrc)->task->set_read_try(
-                cfgosrc->read_tries,
-                cfgosrc->read_try_delay_init,
-                cfgosrc->read_try_delay_step,
-                cfgosrc->read_try_delay_level
+            GST_CFGOSRC_PVS(cfgosrc)->task->set_rtp_read_try(
+                cfgosrc->rtp_read_tries,
+                cfgosrc->rtp_read_try_delay_init,
+                cfgosrc->rtp_read_try_delay_step,
+                cfgosrc->rtp_read_try_delay_level
+            );
+            GST_CFGOSRC_PVS(cfgosrc)->task->set_rtcp_read_try(
+                cfgosrc->rtcp_read_tries,
+                cfgosrc->rtcp_read_try_delay_init,
+                cfgosrc->rtcp_read_try_delay_step,
+                cfgosrc->rtcp_read_try_delay_level
             );
         }
     }
@@ -727,48 +770,93 @@ void gst_cfgosrc_set_property(GObject *object, guint property_id,
         }
         break;
     }
-    case PROP_READ_TIMEOUT:
+    case PROP_RTP_READ_TIMEOUT:
     {
         GST_CFGOSRC_LOCK_GUARD(cfgosrc);
-        if (gst_cfgosrc_set_uint64_property(value, &cfgosrc->read_timeout))
+        if (gst_cfgosrc_set_uint64_property(value, &cfgosrc->rtp_read_timeout))
         {
-            GST_DEBUG_OBJECT(cfgosrc, "The read-timeout argument was changed to %" GST_TIME_FORMAT "\n", GST_TIME_ARGS(cfgosrc->read_timeout));
+            GST_DEBUG_OBJECT(cfgosrc, "The rtp-read-timeout argument was changed to %" GST_TIME_FORMAT "\n", GST_TIME_ARGS(cfgosrc->rtp_read_timeout));
         }
         break;
     }
-    case PROP_READ_TRIES:
+    case PROP_RTP_READ_TRIES:
     {
         GST_CFGOSRC_LOCK_GUARD(cfgosrc);
-        if (gst_cfgosrc_set_int32_property(value, &cfgosrc->read_tries))
+        if (gst_cfgosrc_set_int32_property(value, &cfgosrc->rtp_read_tries))
         {
-            GST_DEBUG_OBJECT(cfgosrc, "The read-tries argument was changed to %" GST_TIME_FORMAT "\n", GST_TIME_ARGS(cfgosrc->read_tries));
+            GST_DEBUG_OBJECT(cfgosrc, "The rtp-read-tries argument was changed to %" GST_TIME_FORMAT "\n", GST_TIME_ARGS(cfgosrc->rtp_read_tries));
         }
         break;
     }
-    case PROP_READ_TRY_DELAY_INIT:
+    case PROP_RTP_READ_TRY_DELAY_INIT:
     {
         GST_CFGOSRC_LOCK_GUARD(cfgosrc);
-        if (gst_cfgosrc_set_uint64_property(value, &cfgosrc->read_try_delay_init))
+        if (gst_cfgosrc_set_uint64_property(value, &cfgosrc->rtp_read_try_delay_init))
         {
-            GST_DEBUG_OBJECT(cfgosrc, "The read-try-delay-init argument was changed to %" GST_TIME_FORMAT "\n", GST_TIME_ARGS(cfgosrc->read_try_delay_init));
+            GST_DEBUG_OBJECT(cfgosrc, "The rtp-read-try-delay-init argument was changed to %" GST_TIME_FORMAT "\n", GST_TIME_ARGS(cfgosrc->rtp_read_try_delay_init));
         }
         break;
     }
-    case PROP_READ_TRY_DELAY_STEP:
+    case PROP_RTP_READ_TRY_DELAY_STEP:
     {
         GST_CFGOSRC_LOCK_GUARD(cfgosrc);
-        if (gst_cfgosrc_set_uint32_property(value, &cfgosrc->read_try_delay_step))
+        if (gst_cfgosrc_set_uint32_property(value, &cfgosrc->rtp_read_try_delay_step))
         {
-            GST_DEBUG_OBJECT(cfgosrc, "The read-try-delay-step argument was changed to %" GST_TIME_FORMAT "\n", GST_TIME_ARGS(cfgosrc->read_try_delay_step));
+            GST_DEBUG_OBJECT(cfgosrc, "The rtp-read-try-delay-step argument was changed to %" GST_TIME_FORMAT "\n", GST_TIME_ARGS(cfgosrc->rtp_read_try_delay_step));
         }
         break;
     }
-    case PROP_READ_TRY_DELAY_LEVEL:
+    case PROP_RTP_READ_TRY_DELAY_LEVEL:
     {
         GST_CFGOSRC_LOCK_GUARD(cfgosrc);
-        if (gst_cfgosrc_set_uint32_property(value, &cfgosrc->read_try_delay_level))
+        if (gst_cfgosrc_set_uint32_property(value, &cfgosrc->rtp_read_try_delay_level))
         {
-            GST_DEBUG_OBJECT(cfgosrc, "The read-try-delay-level argument was changed to %" GST_TIME_FORMAT "\n", GST_TIME_ARGS(cfgosrc->read_try_delay_level));
+            GST_DEBUG_OBJECT(cfgosrc, "The rtp-read-try-delay-level argument was changed to %" GST_TIME_FORMAT "\n", GST_TIME_ARGS(cfgosrc->rtp_read_try_delay_level));
+        }
+        break;
+    }
+    case PROP_RTCP_READ_TIMEOUT:
+    {
+        GST_CFGOSRC_LOCK_GUARD(cfgosrc);
+        if (gst_cfgosrc_set_uint64_property(value, &cfgosrc->rtcp_read_timeout))
+        {
+            GST_DEBUG_OBJECT(cfgosrc, "The rtcp-read-timeout argument was changed to %" GST_TIME_FORMAT "\n", GST_TIME_ARGS(cfgosrc->rtcp_read_timeout));
+        }
+        break;
+    }
+    case PROP_RTCP_READ_TRIES:
+    {
+        GST_CFGOSRC_LOCK_GUARD(cfgosrc);
+        if (gst_cfgosrc_set_int32_property(value, &cfgosrc->rtcp_read_tries))
+        {
+            GST_DEBUG_OBJECT(cfgosrc, "The rtcp-read-tries argument was changed to %" GST_TIME_FORMAT "\n", GST_TIME_ARGS(cfgosrc->rtcp_read_tries));
+        }
+        break;
+    }
+    case PROP_RTCP_READ_TRY_DELAY_INIT:
+    {
+        GST_CFGOSRC_LOCK_GUARD(cfgosrc);
+        if (gst_cfgosrc_set_uint64_property(value, &cfgosrc->rtcp_read_try_delay_init))
+        {
+            GST_DEBUG_OBJECT(cfgosrc, "The rtcp-read-try-delay-init argument was changed to %" GST_TIME_FORMAT "\n", GST_TIME_ARGS(cfgosrc->rtcp_read_try_delay_init));
+        }
+        break;
+    }
+    case PROP_RTCP_READ_TRY_DELAY_STEP:
+    {
+        GST_CFGOSRC_LOCK_GUARD(cfgosrc);
+        if (gst_cfgosrc_set_uint32_property(value, &cfgosrc->rtcp_read_try_delay_step))
+        {
+            GST_DEBUG_OBJECT(cfgosrc, "The rtcp-read-try-delay-step argument was changed to %" GST_TIME_FORMAT "\n", GST_TIME_ARGS(cfgosrc->rtcp_read_try_delay_step));
+        }
+        break;
+    }
+    case PROP_RTCP_READ_TRY_DELAY_LEVEL:
+    {
+        GST_CFGOSRC_LOCK_GUARD(cfgosrc);
+        if (gst_cfgosrc_set_uint32_property(value, &cfgosrc->rtcp_read_try_delay_level))
+        {
+            GST_DEBUG_OBJECT(cfgosrc, "The rtcp-read-try-delay-level argument was changed to %" GST_TIME_FORMAT "\n", GST_TIME_ARGS(cfgosrc->rtcp_read_try_delay_level));
         }
         break;
     }
@@ -883,34 +971,64 @@ void gst_cfgosrc_get_property(GObject *object, guint property_id,
         g_value_set_uint(value, cfgosrc->sub_try_delay_level);
         break;
     }
-    case PROP_READ_TIMEOUT:
+    case PROP_RTP_READ_TIMEOUT:
     {
         GST_CFGOSRC_LOCK_GUARD(cfgosrc);
-        g_value_set_uint64(value, cfgosrc->read_timeout);
+        g_value_set_uint64(value, cfgosrc->rtp_read_timeout);
         break;
     }
-    case PROP_READ_TRIES:
+    case PROP_RTP_READ_TRIES:
     {
         GST_CFGOSRC_LOCK_GUARD(cfgosrc);
-        g_value_set_int(value, cfgosrc->read_tries);
+        g_value_set_int(value, cfgosrc->rtp_read_tries);
         break;
     }
-    case PROP_READ_TRY_DELAY_INIT:
+    case PROP_RTP_READ_TRY_DELAY_INIT:
     {
         GST_CFGOSRC_LOCK_GUARD(cfgosrc);
-        g_value_set_uint64(value, cfgosrc->read_try_delay_init);
+        g_value_set_uint64(value, cfgosrc->rtp_read_try_delay_init);
         break;
     }
-    case PROP_READ_TRY_DELAY_STEP:
+    case PROP_RTP_READ_TRY_DELAY_STEP:
     {
         GST_CFGOSRC_LOCK_GUARD(cfgosrc);
-        g_value_set_uint(value, cfgosrc->read_try_delay_step);
+        g_value_set_uint(value, cfgosrc->rtp_read_try_delay_step);
         break;
     }
-    case PROP_READ_TRY_DELAY_LEVEL:
+    case PROP_RTP_READ_TRY_DELAY_LEVEL:
     {
         GST_CFGOSRC_LOCK_GUARD(cfgosrc);
-        g_value_set_uint(value, cfgosrc->read_try_delay_level);
+        g_value_set_uint(value, cfgosrc->rtp_read_try_delay_level);
+        break;
+    }
+    case PROP_RTCP_READ_TIMEOUT:
+    {
+        GST_CFGOSRC_LOCK_GUARD(cfgosrc);
+        g_value_set_uint64(value, cfgosrc->rtcp_read_timeout);
+        break;
+    }
+    case PROP_RTCP_READ_TRIES:
+    {
+        GST_CFGOSRC_LOCK_GUARD(cfgosrc);
+        g_value_set_int(value, cfgosrc->rtcp_read_tries);
+        break;
+    }
+    case PROP_RTCP_READ_TRY_DELAY_INIT:
+    {
+        GST_CFGOSRC_LOCK_GUARD(cfgosrc);
+        g_value_set_uint64(value, cfgosrc->rtcp_read_try_delay_init);
+        break;
+    }
+    case PROP_RTCP_READ_TRY_DELAY_STEP:
+    {
+        GST_CFGOSRC_LOCK_GUARD(cfgosrc);
+        g_value_set_uint(value, cfgosrc->rtcp_read_try_delay_step);
+        break;
+    }
+    case PROP_RTCP_READ_TRY_DELAY_LEVEL:
+    {
+        GST_CFGOSRC_LOCK_GUARD(cfgosrc);
+        g_value_set_uint(value, cfgosrc->rtcp_read_try_delay_level);
         break;
     }
     case PROP_MODE:

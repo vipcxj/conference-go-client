@@ -38,11 +38,16 @@ struct _GstCfgoSrc
     guint64 sub_try_delay_init;
     guint32 sub_try_delay_step;
     guint32 sub_try_delay_level;
-    guint64 read_timeout;
-    gint32 read_tries;
-    guint64 read_try_delay_init;
-    guint32 read_try_delay_step;
-    guint32 read_try_delay_level;
+    guint64 rtp_read_timeout;
+    gint32 rtp_read_tries;
+    guint64 rtp_read_try_delay_init;
+    guint32 rtp_read_try_delay_step;
+    guint32 rtp_read_try_delay_level;
+    guint64 rtcp_read_timeout;
+    gint32 rtcp_read_tries;
+    guint64 rtcp_read_try_delay_init;
+    guint32 rtcp_read_try_delay_step;
+    guint32 rtcp_read_try_delay_level;
     GstCfgoSrcMode mode;
     GstCaps * decode_caps;
 

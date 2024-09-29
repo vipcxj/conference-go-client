@@ -79,8 +79,10 @@ namespace cfgo
             close_chan m_close_ch;
             guint64 m_sub_timeout;
             TryOption m_sub_try_option;
-            guint64 m_read_timeout;
-            TryOption m_read_try_option;
+            guint64 m_rtp_read_timeout;
+            TryOption m_rtp_read_try_option;
+            guint64 m_rtcp_read_timeout;
+            TryOption m_rtcp_read_try_option;
             recursive_mutex m_mutex;
             GstCfgoSrc * m_owner = nullptr;
             bool m_detached = true;
@@ -143,7 +145,7 @@ namespace cfgo
 
 
         protected:
-            CfgoSrc(int client_handle, const char * pattern_json, const char * req_types_str, guint64 sub_timeout, guint64 read_timeout);
+            CfgoSrc(int client_handle, const char * pattern_json, const char * req_types_str, guint64 sub_timeout, guint64 rtp_read_timeout, guint64 rtcp_read_timeout);
             CfgoSrc(const CfgoSrc &) = delete;
             CfgoSrc(CfgoSrc &&) = delete;
             CfgoSrc & operator= (const CfgoSrc &) = delete;
@@ -158,12 +160,15 @@ namespace cfgo
                 const char * pattern_json, 
                 const char * req_types_str, 
                 guint64 sub_timeout = 0, 
-                guint64 read_timeout = 0
+                guint64 rtp_read_timeout = 0,
+                guint64 rtcp_read_timeout = 0
             ) -> Ptr;
             void set_sub_timeout(guint64 timeout);
             void set_sub_try(gint32 tries, guint64 delay_init = 0, guint32 delay_step = 0, guint32 delay_level = 0);
-            void set_read_timeout(guint64 timeout);
-            void set_read_try(gint32 tries, guint64 delay_init = 0, guint32 delay_step = 0, guint32 delay_level = 0);
+            void set_rtp_read_timeout(guint64 timeout);
+            void set_rtp_read_try(gint32 tries, guint64 delay_init = 0, guint32 delay_step = 0, guint32 delay_level = 0);
+            void set_rtcp_read_timeout(guint64 timeout);
+            void set_rtcp_read_try(gint32 tries, guint64 delay_init = 0, guint32 delay_step = 0, guint32 delay_level = 0);
             void attach(GstCfgoSrc * owner);
             void detach();
             void start();
