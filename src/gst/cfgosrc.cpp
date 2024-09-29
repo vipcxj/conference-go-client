@@ -1010,15 +1010,39 @@ namespace cfgo
                             memcpy(info.data, msg->data(), msg->size());
                             gst_buffer_unmap(buffer, &info);
                         }
-                        if (!_safe_use_owner<void>([self, msg_type, buffer](auto owner) {
+                        if (!_safe_use_owner<void>([self, msg_type, buffer, &session](auto owner) {
                             CFGO_SELF_TRACE("Push {} bytes {} buffer.", gst_buffer_get_size(buffer), msg_type);
                             if (msg_type == Track::MsgType::RTP)
                             {
+                                auto start = std::chrono::high_resolution_clock::now();
                                 push_rtp_buffer(owner, buffer);
+                                auto cost = std::chrono::high_resolution_clock::now() - start;
+                                session.m_rtp_push_cost_time += cost;
+                                ++ session.m_rtp_pushed_num;
+                                if (cost > std::chrono::duration_cast<decltype(cost)>(std::chrono::milliseconds(100)))
+                                {
+                                    CFGO_SELF_WARN(
+                                        "This push rtp cost {} ms, mean cost: {}", 
+                                        std::chrono::duration_cast<std::chrono::milliseconds>(cost).count(),
+                                        std::chrono::duration_cast<std::chrono::milliseconds>(session.m_rtp_push_cost_time).count() / session.m_rtp_pushed_num
+                                    );
+                                }
                             }
                             else if (msg_type == Track::MsgType::RTCP)
                             {
+                                auto start = std::chrono::high_resolution_clock::now();
                                 push_rtcp_buffer(owner, buffer);
+                                auto cost = std::chrono::high_resolution_clock::now() - start;
+                                session.m_rtcp_push_cost_time += cost;
+                                ++ session.m_rtcp_pushed_num;
+                                if (cost > std::chrono::duration_cast<decltype(cost)>(std::chrono::milliseconds(100)))
+                                {
+                                    CFGO_SELF_WARN(
+                                        "This push rtcp cost {} ms, mean cost: {}", 
+                                        std::chrono::duration_cast<std::chrono::milliseconds>(cost).count(),
+                                        std::chrono::duration_cast<std::chrono::milliseconds>(session.m_rtcp_push_cost_time).count() / session.m_rtcp_pushed_num
+                                    );
+                                }
                             }
                             else
                             {
