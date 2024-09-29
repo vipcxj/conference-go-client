@@ -745,7 +745,8 @@ namespace cfgo
             std::lock_guard lock(self->m_mutex);
             for (auto && session : self->m_sessions)
             {
-                std::ignore = session->m_rtp_need_data_ch.try_write();
+                session->m_rtp_need_data = true;
+                session->m_rtp_data_notifier.notify();
             }
         }
 
@@ -757,7 +758,8 @@ namespace cfgo
                 std::lock_guard lock(self->m_mutex);
                 for (auto && session : self->m_sessions)
                 {
-                    std::ignore = session->m_rtp_enough_data_ch.try_write();
+                    session->m_rtp_need_data = false;
+                    session->m_rtp_data_notifier.notify();
                 }
             }
         }
@@ -770,7 +772,8 @@ namespace cfgo
                 std::lock_guard lock(self->m_mutex);
                 for (auto && session : self->m_sessions)
                 {
-                    std::ignore = session->m_rtcp_need_data_ch.try_write();
+                    session->m_rtcp_need_data = true;
+                    session->m_rtcp_data_notifier.notify();
                 }
             }
         }
@@ -783,7 +786,8 @@ namespace cfgo
                 std::lock_guard lock(self->m_mutex);
                 for (auto && session : self->m_sessions)
                 {
-                    std::ignore = session->m_rtcp_enough_data_ch.try_write();
+                    session->m_rtcp_need_data = false;
+                    session->m_rtcp_data_notifier.notify();
                 }
             }
         }
@@ -862,6 +866,7 @@ namespace cfgo
 
         auto CfgoSrc::_post_buffer(Session & session, Track::MsgType msg_type) -> asio::awaitable<void>
         {
+            assert (msg_type != Track::MsgType::ALL);
             auto self = shared_from_this();
             CFGO_SELF_DEBUG("Start the {} data task of session {}.", msg_type, session.m_id);
             if (!co_await session.m_track->await_first_msg_received(msg_type, self->m_close_ch))
@@ -871,8 +876,30 @@ namespace cfgo
             CFGO_SELF_DEBUG("The first {} data arrived in session {}.", msg_type, session.m_id);
             do
             {
+                unique_void_chan ch;
+                if (msg_type == Track::MsgType::RTP)
+                {
+                    ch = session.m_rtp_data_notifier.make_notfiy_receiver();
+                }
+                else
+                {
+                    ch = session.m_rtcp_data_notifier.make_notfiy_receiver();
+                }
                 do
-                {   
+                {
+                    bool need_data;
+                    if (msg_type == Track::MsgType::RTP)
+                    {
+                        need_data = session.m_rtp_need_data;
+                    }
+                    else
+                    {
+                        need_data = session.m_rtcp_need_data;
+                    }
+                    if (!need_data)
+                    {
+                        break;
+                    }
                     TryOption try_option;
                     guint64 read_timeout;
                     {
@@ -929,7 +956,6 @@ namespace cfgo
                     }
 
                     bool stop = false;
-                    bool skip = false;
                     GstBuffer * buffer = nullptr;
                     do {
                         CFGO_SELF_TRACE("Received {} bytes {} data.", msg->size(), msg_type);
@@ -977,7 +1003,7 @@ namespace cfgo
                             }
                             if (msg->size() > info.maxsize)
                             {
-                                skip = true;
+                                // not stop, just skip
                                 CFGO_THIS_WARN("The buffer is too small for the msg. The msg size is {}. The buffer max size is {}", msg->size(), info.maxsize);
                                 break;
                             }
@@ -1013,31 +1039,9 @@ namespace cfgo
                         }
                         co_return;
                     }
-                    
-                    if (msg_type == Track::MsgType::RTP)
-                    {
-                        if (session.m_rtp_enough_data_ch.try_read())
-                        {
-                            break;
-                        }
-                    }
-                    else
-                    {
-                        if (session.m_rtcp_enough_data_ch.try_read())
-                        {
-                            break;
-                        }
-                    }
                 } while (true);
-                assert (msg_type != Track::MsgType::ALL);
-                if (msg_type == Track::MsgType::RTP)
-                {
-                    co_await chan_read_or_throw<void>(session.m_rtp_need_data_ch, m_close_ch);
-                }
-                else
-                {
-                    co_await chan_read_or_throw<void>(session.m_rtcp_need_data_ch, m_close_ch);
-                }
+
+                co_await chan_read_or_throw<void>(ch, m_close_ch);
             } while (true);
         }
 

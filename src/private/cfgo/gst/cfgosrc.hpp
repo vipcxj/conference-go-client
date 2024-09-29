@@ -46,10 +46,10 @@ namespace cfgo
                 TrackPtr m_track;
                 GstPad * m_rtp_pad = nullptr;
                 GstPad * m_rtcp_pad = nullptr;
-                asiochan::channel<void, 1> m_rtp_need_data_ch;
-                asiochan::channel<void, 1> m_rtp_enough_data_ch;
-                asiochan::channel<void, 1> m_rtcp_need_data_ch;
-                asiochan::channel<void, 1> m_rtcp_enough_data_ch;
+                state_notifier m_rtp_data_notifier;
+                std::atomic_bool m_rtp_need_data = true;
+                state_notifier m_rtcp_data_notifier;
+                std::atomic_bool m_rtcp_need_data = true;
                 std::vector<ChannelPtr> m_channels;
                 ~Session();
                 ChannelPtr create_channel(CfgoSrc * parent, GstCfgoSrc * owner, guint ssrc, guint pt, GstPad * pad);
