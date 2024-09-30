@@ -13,7 +13,6 @@
 #include "cfgo/async.hpp"
 #include "cfgo/log.hpp"
 #include "cfgo/ring_buffer.hpp"
-#include "boost/circular_buffer.hpp"
 #ifdef CFGO_SUPPORT_GSTREAMER
 #include "gst/sdp/sdp.h"
 #endif

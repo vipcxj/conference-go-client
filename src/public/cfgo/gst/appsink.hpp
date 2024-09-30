@@ -65,7 +65,12 @@ namespace cfgo
 
             using OnSampleCb = std::function<void(GstSample *)>;
             using OnStatCb = std::function<void(const Statistics &)>;
-            AppSink(GstAppSink * sink, int cache_capicity);
+            AppSink(
+                GstAppSink * sink,
+                std::int32_t cache_min_segments,
+                std::int32_t cache_max_segments,
+                std::int32_t cache_segment_capicity
+            );
             void init() const;
             /**
              * throw CancelError when closer is closed. return null shared_ptr when eos and no sample available.

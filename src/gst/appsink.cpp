@@ -1,5 +1,5 @@
 #include "cfgo/gst/appsink.hpp"
-#include "boost/circular_buffer.hpp"
+#include "cfgo/ring_buffer.hpp"
 
 #include <cstdint>
 #include <limits>
@@ -13,11 +13,17 @@ namespace cfgo
             class AppSink : public std::enable_shared_from_this<AppSink>
             {
             public:
-                using SampleBuffer = boost::circular_buffer<std::pair<std::uint32_t, GstSampleSPtr>>;
+                using SampleBufferElement = std::pair<std::uint32_t, GstSampleSPtr>;
+                using SampleBuffer = AdaptiveRingBuffer<SampleBufferElement>;
                 using Statistics = gst::AppSink::Statistics;
                 using OnSampleCb = gst::AppSink::OnSampleCb;
                 using OnStatCb = gst::AppSink::OnStatCb;
-                AppSink(GstAppSink * sink, int cache_capicity);
+                AppSink(
+                    GstAppSink * sink,
+                    std::int32_t cache_min_segments,
+                    std::int32_t cache_max_segments,
+                    std::int32_t cache_segment_capicity
+                );
                 ~AppSink();
 
                 void init();
@@ -50,9 +56,14 @@ namespace cfgo
                 std::uint32_t _makesure_min_seq() const noexcept;
             };
             
-            AppSink::AppSink(GstAppSink * sink, int cache_capicity): 
+            AppSink::AppSink(
+                GstAppSink * sink,
+                std::int32_t cache_min_segments,
+                std::int32_t cache_max_segments,
+                std::int32_t cache_segment_capicity
+            ): 
                 m_sink(sink),
-                m_cache(cache_capicity)
+                m_cache(cache_segment_capicity, cache_max_segments, cache_min_segments)
             {
                 gst_object_ref(m_sink);
             }
@@ -120,7 +131,8 @@ namespace cfgo
                         ++ self->m_stat.m_received_samples;
                         if (self->m_cache.full())
                         {
-                            auto sample_size = gst_buffer_get_size(gst_sample_get_buffer(self->m_cache.front().second.get()));
+                            
+                            auto sample_size = gst_buffer_get_size(gst_sample_get_buffer(self->m_cache.queue_head()->second.get()));
                             self->m_stat.m_droped_bytes += sample_size;
                             ++ self->m_stat.m_droped_samples;
                         }
@@ -132,7 +144,7 @@ namespace cfgo
                         {
                             self->m_on_stat(self->m_stat);
                         }
-                        self->m_cache.push_back(std::make_pair(self->m_seq++, steal_shared_gst_sample(sample)));
+                        self->m_cache.enqueue(std::make_pair(self->m_seq++, steal_shared_gst_sample(sample)), true);
                         self->m_sample_or_eos_notifier.notify();
                     }
                 }
@@ -155,7 +167,7 @@ namespace cfgo
                 }
                 else
                 {
-                    return m_cache.front().first;
+                    return m_cache.queue_head()->first;
                 }
             }
 
@@ -174,8 +186,8 @@ namespace cfgo
                         {
                             if (!m_cache.empty())
                             {
-                                sample_ptr = m_cache.front().second;
-                                m_cache.pop_front();
+                                sample_ptr = m_cache.queue_head()->second;
+                                m_cache.dequeue();
                             }
                             break;
                         }
@@ -223,7 +235,12 @@ namespace cfgo
 
         } // namespace detail
 
-        AppSink::AppSink(GstAppSink *sink, int cache_capicity) : ImplBy(sink, cache_capicity) {}
+        AppSink::AppSink(
+            GstAppSink *sink,
+            std::int32_t cache_min_segments,
+            std::int32_t cache_max_segments,
+            std::int32_t cache_segment_capicity
+        ) : ImplBy(sink, cache_min_segments, cache_max_segments, cache_segment_capicity) {}
 
         void AppSink::init() const
         {

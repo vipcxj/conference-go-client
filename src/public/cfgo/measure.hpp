@@ -50,18 +50,18 @@ namespace cfgo
             ++ m_num;
             m_maxes.push_back(value);
             std::sort(m_maxes.rbegin(), m_maxes.rend());
-            if (m_maxes.size() == m_capacity)
+            if (m_maxes.size() == m_capacity + 1)
             {
                 m_maxes.pop_back();
             }
             m_mines.push_back(value);
             std::sort(m_mines.begin(), m_mines.end());
-            if (m_mines.size() == m_capacity)
+            if (m_mines.size() == m_capacity + 1)
             {
                 m_mines.pop_back();
             }
             m_latests.push_back(value);
-            if (m_latests.size() == m_capacity)
+            if (m_latests.size() == m_capacity + 1)
             {
                 m_latests.pop_front();
             }
@@ -124,9 +124,20 @@ namespace cfgo
         requires requires(F f, const Derve & me) {
             f(me);
         }
-        void run_per_n(int n, F fun) const noexcept(noexcept((dynamic_cast<const Derve &>(*this))))
+        void run_per_n(int n, F fun) const noexcept(noexcept(fun(dynamic_cast<const Derve &>(*this))))
         {
             if (m_num % n == 0)
+            {
+                fun(dynamic_cast<const Derve &>(*this));
+            }
+        }
+        template<typename F>
+        requires requires(F f, const Derve & me) {
+            f(me);
+        }
+        void run_greater_than(T v, F fun) const noexcept(noexcept(fun(dynamic_cast<const Derve &>(*this))))
+        {
+            if (!m_latests.empty() && m_latests.back() > v)
             {
                 fun(dynamic_cast<const Derve &>(*this));
             }

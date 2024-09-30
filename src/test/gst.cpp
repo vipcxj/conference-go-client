@@ -188,7 +188,8 @@ auto main_task(cfgo::Client::Strand strand, cfgo::close_chan closer) -> asio::aw
         cfgo::SignalConfigure {
             "ws://localhost:8080/ws", token
         },
-        rtc::Configuration {}
+        rtc::Configuration {},
+        cfgo::TrackConfigure {}
     };
     auto client_ptr = std::make_shared<Client>(conf, strand, closer);
     gst::Pipeline pipeline("test pipeline");
@@ -319,7 +320,7 @@ auto main_task(cfgo::Client::Strand strand, cfgo::close_chan closer) -> asio::aw
         spdlog::debug("linked.");
 
         auto raw_appsink = pipeline.require_node("appsink");
-        cfgo::gst::AppSink appsink(GST_APP_SINK(raw_appsink.get()), 32);
+        cfgo::gst::AppSink appsink(GST_APP_SINK(raw_appsink.get()), 2, 8, 16);
         appsink.init();
         unsigned char * d_ready_areas = nullptr;
         half * d_ai_input = nullptr;
