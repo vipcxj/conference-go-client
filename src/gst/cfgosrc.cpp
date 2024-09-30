@@ -917,19 +917,18 @@ namespace cfgo
                         }
                     }
                     auto track = session.m_track;
-                    auto read_task = [self, track, msg_type](auto try_times, auto timeout_closer) -> asio::awaitable<Track::MsgPtr>
+                    auto read_task = [self, track, msg_type, measure = std::make_shared<DurationMeasure>(3)](auto try_times, auto timeout_closer) -> asio::awaitable<Track::MsgPtr>
                     {
                         if (try_times > 1)
                         {
                             CFGO_SELF_DEBUG("Read {} data timeout after {} ms. Tring the {} time.", msg_type, std::chrono::duration_cast<std::chrono::milliseconds>(timeout_closer.get_timeout()), Nth{try_times});
                         }
                         Track::MsgPtr msg_ptr;
-                        DurationMeasure measure(3);
                         {
-                            ScopeDurationMeasurer measurer(measure);
+                            ScopeDurationMeasurer measurer(*measure);
                             msg_ptr = co_await track->await_msg(msg_type, timeout_closer);
                         }
-                        measure.run_per_n(300, [self, msg_type](const DurationMeasure & m) {
+                        measure->run_per_n(300, [self, msg_type](const DurationMeasure & m) {
                             CFGO_SELF_DEBUG(
                                 "Read {} data stats: max times: {}, min times: {}, latest times: {}",
                                 msg_type,
