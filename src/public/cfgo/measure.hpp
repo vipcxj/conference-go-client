@@ -120,6 +120,16 @@ namespace cfgo
                 return m_sum / m_num;
             }
         }
+        std::optional<T> latest() const noexcept {
+            if (m_maxes.empty())
+            {
+                return std::nullopt;
+            }
+            else
+            {
+                return m_latests.back();
+            }
+        }
         template<typename F>
         requires requires(F f, const Derve & me) {
             f(me);

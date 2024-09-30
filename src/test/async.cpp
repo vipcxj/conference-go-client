@@ -2,6 +2,7 @@
 #include "cfgo/async_locker.hpp"
 #include "cfgo/defer.hpp"
 #include "cfgo/log.hpp"
+#include "cfgo/measure.hpp"
 #include "gtest/gtest.h"
 #include <chrono>
 #include <thread>
@@ -705,6 +706,63 @@ TEST(InitableBox, Invoke) {
         std::string str = "test";
         co_await test(std::move(closer), std::move(str));
     }), true);
+}
+
+TEST(AsyncBlocker, CheckBlockTIme) {
+    using namespace cfgo;
+    AsyncBlockerManager::Configure conf {
+        .block_timeout = std::chrono::milliseconds {30},
+        .target_batch = 3,
+        .min_batch = 1,
+    };
+    AsyncBlockerManager manager {conf};
+    close_chan closer {};
+    auto m_pool = std::make_shared<asio::thread_pool>();
+    std::mt19937 gen(1);
+    std::uniform_int_distribution<int> distrib(0, 1500);
+    for (size_t i = 0; i < 30; i++)
+    {
+        asio::co_spawn(m_pool->get_executor(), fix_async_lambda([i, manager, closer, amp = distrib(gen)]() -> asio::awaitable<void> {
+            auto blocker = co_await manager.add_blocker(0, closer);
+            DEFER({
+                manager.remove_blocker(blocker.id());
+            });
+            blocker.set_user_data((std::int64_t) i);
+            DurationMeasure measure(3);
+            try
+            {
+                do
+                {
+                    co_await wait_timeout(std::chrono::milliseconds {100 + amp}, closer);
+                    {
+                        ScopeDurationMeasurer measurer(measure);
+                        co_await manager.wait_blocker(blocker.id(), closer);
+                    }
+                    measure.run_greater_than(std::chrono::milliseconds(70), [i](const DurationMeasure & m) {
+                        CFGO_INFO("blocker {} block {} ms", i, std::chrono::duration_cast<std::chrono::milliseconds>(*m.latest()).count());
+                    });
+                } while (true);
+            }
+            catch(const CancelError& e) {}
+        }), asio::detached);
+    }
+    do_async(fix_async_lambda([manager, closer]() -> asio::awaitable<void> {
+        close_guard cg(closer);
+        DurationMeasure measure(3);
+        for (size_t i = 0; i < 1000; i++)
+        {
+            {
+                ScopeDurationMeasurer measurer(measure);
+                co_await manager.lock(closer);
+            }
+            DEFER({
+                manager.unlock();
+            });
+            measure.run_greater_than(std::chrono::milliseconds(70), [i](const DurationMeasure & m) {
+                CFGO_INFO("blocker manager locked {} ms", std::chrono::duration_cast<std::chrono::milliseconds>(*m.latest()).count());
+            });
+        }
+    }), true, m_pool);
 }
 
 TEST(AsyncBlocker, CheckBlockedNum) {

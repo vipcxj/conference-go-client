@@ -811,7 +811,7 @@ namespace cfgo
             void notify() {
                 std::lock_guard lg(m_mux);
                 for (auto & ch : m_chs) {
-                    chan_maybe_write(ch);
+                    chan_must_write(ch);
                 }
                 m_chs.clear();
             }
