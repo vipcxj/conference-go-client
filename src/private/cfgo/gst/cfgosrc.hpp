@@ -5,6 +5,7 @@
 #include "cfgo/track.hpp"
 #include "cfgo/async.hpp"
 #include "cfgo/log.hpp"
+#include "cfgo/measure.hpp"
 #include "cfgo/spd_helper.hpp"
 #include "cfgo/gst/gstcfgosrc.h"
 #include "cfgo/gst/utils.hpp"
@@ -51,10 +52,10 @@ namespace cfgo
                 state_notifier m_rtcp_data_notifier;
                 std::atomic_bool m_rtcp_need_data = true;
                 std::vector<ChannelPtr> m_channels;
-                std::chrono::high_resolution_clock::duration m_rtp_push_cost_time {0};
-                std::uint64_t m_rtp_pushed_num = 0;
-                std::chrono::high_resolution_clock::duration m_rtcp_push_cost_time {0};
-                std::uint64_t m_rtcp_pushed_num = 0;
+                DurationMeasure m_rtp_read_measure {3};
+                DurationMeasure m_rtcp_read_measure {3};
+                DurationMeasure m_rtp_push_measure {3};
+                DurationMeasure m_rtcp_push_measure {3};
                 ~Session();
                 ChannelPtr create_channel(CfgoSrc * parent, GstCfgoSrc * owner, guint ssrc, guint pt, GstPad * pad);
                 void destroy_channel(CfgoSrc * parent, GstCfgoSrc * owner, Channel & channel, bool remove = true);

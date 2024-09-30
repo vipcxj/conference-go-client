@@ -917,18 +917,19 @@ namespace cfgo
                         }
                     }
                     auto track = session.m_track;
-                    auto read_task = [self, track, msg_type, measure = std::make_shared<DurationMeasure>(3)](auto try_times, auto timeout_closer) -> asio::awaitable<Track::MsgPtr>
+                    auto read_task = [self, track, msg_type, &session](auto try_times, auto timeout_closer) -> asio::awaitable<Track::MsgPtr>
                     {
                         if (try_times > 1)
                         {
                             CFGO_SELF_DEBUG("Read {} data timeout after {} ms. Tring the {} time.", msg_type, std::chrono::duration_cast<std::chrono::milliseconds>(timeout_closer.get_timeout()), Nth{try_times});
                         }
                         Track::MsgPtr msg_ptr;
+                        auto & measure = msg_type == Track::MsgType::RTP ? session.m_rtp_read_measure : session.m_rtcp_read_measure;
                         {
-                            ScopeDurationMeasurer measurer(*measure);
+                            ScopeDurationMeasurer measurer(measure);
                             msg_ptr = co_await track->await_msg(msg_type, timeout_closer);
                         }
-                        measure->run_per_n(300, [self, msg_type](const DurationMeasure & m) {
+                        measure.run_per_n(300, [self, msg_type](const DurationMeasure & m) {
                             CFGO_SELF_DEBUG(
                                 "Read {} data stats: max times: {}, min times: {}, latest times: {}",
                                 msg_type,
@@ -1028,35 +1029,29 @@ namespace cfgo
                             CFGO_SELF_TRACE("Push {} bytes {} buffer.", gst_buffer_get_size(buffer), msg_type);
                             if (msg_type == Track::MsgType::RTP)
                             {
-                                auto start = std::chrono::high_resolution_clock::now();
+                                ScopeDurationMeasurer measurer(session.m_rtp_push_measure);
                                 push_rtp_buffer(owner, buffer);
-                                auto cost = std::chrono::high_resolution_clock::now() - start;
-                                session.m_rtp_push_cost_time += cost;
-                                ++ session.m_rtp_pushed_num;
-                                if (cost > std::chrono::duration_cast<decltype(cost)>(std::chrono::milliseconds(100)))
-                                {
-                                    CFGO_SELF_WARN(
-                                        "This push rtp cost {} ms, mean cost: {}", 
-                                        std::chrono::duration_cast<std::chrono::milliseconds>(cost).count(),
-                                        std::chrono::duration_cast<std::chrono::milliseconds>(session.m_rtp_push_cost_time).count() / session.m_rtp_pushed_num
+                                session.m_rtp_push_measure.run_per_n(300, [self](const DurationMeasure & m) {
+                                    CFGO_SELF_DEBUG(
+                                        "Push rtp data stats: max times: {}, min times: {}, latest times: {}",
+                                        m.max_vec_string(),
+                                        m.min_vec_string(),
+                                        m.latest_list_string()
                                     );
-                                }
+                                });
                             }
                             else if (msg_type == Track::MsgType::RTCP)
                             {
-                                auto start = std::chrono::high_resolution_clock::now();
+                                ScopeDurationMeasurer measurer(session.m_rtcp_push_measure);
                                 push_rtcp_buffer(owner, buffer);
-                                auto cost = std::chrono::high_resolution_clock::now() - start;
-                                session.m_rtcp_push_cost_time += cost;
-                                ++ session.m_rtcp_pushed_num;
-                                if (cost > std::chrono::duration_cast<decltype(cost)>(std::chrono::milliseconds(100)))
-                                {
-                                    CFGO_SELF_WARN(
-                                        "This push rtcp cost {} ms, mean cost: {}", 
-                                        std::chrono::duration_cast<std::chrono::milliseconds>(cost).count(),
-                                        std::chrono::duration_cast<std::chrono::milliseconds>(session.m_rtcp_push_cost_time).count() / session.m_rtcp_pushed_num
+                                session.m_rtcp_push_measure.run_per_n(300, [self](const DurationMeasure & m) {
+                                    CFGO_SELF_DEBUG(
+                                        "Push rtcp data stats: max times: {}, min times: {}, latest times: {}",
+                                        m.max_vec_string(),
+                                        m.min_vec_string(),
+                                        m.latest_list_string()
                                     );
-                                }
+                                });
                             }
                             else
                             {
