@@ -639,8 +639,8 @@ namespace cfgo
             return ([&]<std::size_t... indices>(std::index_sequence<indices...>){
                 auto wait_alternative = std::optional<std::size_t>{};
                 std::size_t s = 0;
-                ([&]<typename TheOp, typename TheState>(TheOp& op, TheState && state){
-                    if (auto res = op.submit_with_wait(select_ctx, base_token + s, std::forward<TheState>(state)))
+                ([&]<typename TheOp, typename TheState>(TheOp& op, TheState & state){
+                    if (auto res = op.submit_with_wait(select_ctx, base_token + s, state))
                     {
                         wait_alternative = s + *res;
                         return true;
@@ -662,24 +662,24 @@ namespace cfgo
         {
             ([&]<std::size_t... indices>(std::index_sequence<indices...>){
                 std::size_t s = 0;
-                ([&]<typename TheOp, typename TheState>(TheOp & op, TheState && state){
+                ([&]<typename TheOp, typename TheState>(TheOp & op, TheState & state){
                     if (successful_alternative)
                     {
                         auto index = *successful_alternative;
                         if (index >= s && index < s + TheOp::num_alternatives)
                         {
     
-                            op.clear_wait(index - s, std::forward<TheState>(state));
+                            op.clear_wait(index - s, state);
                         }
                         else
                         {
-                            op.clear_wait(std::nullopt, std::forward<TheState>(state));
+                            op.clear_wait(std::nullopt, state);
                         }
                         s += TheOp::num_alternatives;
                     }
                     else
                     {
-                        op.clear_wait(std::nullopt, std::forward<TheState>(state));
+                        op.clear_wait(std::nullopt, state);
                     }
                 }(std::get<indices>(m_ops), std::get<indices>(wait_state)), ...);
             }(std::index_sequence_for<Op, OtherOps...>{}));
@@ -1211,12 +1211,10 @@ namespace cfgo
         using DataTypeVoid = std::tuple<int, std::exception_ptr>;
         using DataType = std::conditional_t<std::is_void_v<T>, DataTypeVoid, DataTypeT>;
         close_chan m_close_ch;
-        asiochan::channel<DataType> m_data_ch;
-        close_chan m_done_signal;
+        asiochan::unbounded_channel<DataType> m_data_ch;
         std::vector<TaskType> m_tasks;
         mutex m_mutex;
         bool m_start;
-        std::exception_ptr m_internal_err;
 
         void _should_not_started()
         {
@@ -1229,7 +1227,7 @@ namespace cfgo
         virtual auto _sync() -> asio::awaitable<void> = 0;
         virtual AT _collect_result() = 0;
     public:
-        AsyncTasksBase(const close_chan & close_ch): m_close_ch(close_ch.create_child()), m_start(false)
+        AsyncTasksBase(const close_chan & close_ch): m_close_ch(close_ch), m_start(false)
         {}
 
         virtual ~AsyncTasksBase() = default;
@@ -1238,7 +1236,7 @@ namespace cfgo
         {
             std::lock_guard lock(m_mutex);
             _should_not_started();
-            m_tasks.push_back(task);
+            m_tasks.push_back(std::move(task));
         }
 
         auto await() -> asio::awaitable<AT>
@@ -1260,7 +1258,7 @@ namespace cfgo
                 {
                     asio::co_spawn(
                         executor,
-                        fix_async_lambda([i, close_ch = m_close_ch, data_ch = m_data_ch, task]() mutable -> asio::awaitable<T>
+                        fix_async_lambda([i, close_ch = m_close_ch, data_ch = m_data_ch, task]() mutable -> asio::awaitable<void>
                         {
                             std::exception_ptr except = nullptr;
                             try
@@ -1268,59 +1266,40 @@ namespace cfgo
                                 if constexpr (std::is_void_v<T>)
                                 {
                                     co_await task(close_ch);
-                                    CFGO_TRACE("task done.");
-                                    co_await chan_write_or_throw<DataType>(data_ch, DataType(i, nullptr), close_ch);
+                                    CFGO_TRACE("task {} done.", i);
+                                    data_ch.write(std::make_tuple(i, nullptr));
                                     co_return;
                                 }
                                 else
                                 {
                                     auto res = co_await task(close_ch);
-                                    CFGO_TRACE("task done.");
-                                    co_await chan_write_or_throw<DataType>(data_ch, DataType(i, res, nullptr), close_ch);
-                                    co_return res;
+                                    CFGO_TRACE("task {} done.", i);
+                                    data_ch.write(std::make_tuple(i, std::move(res), nullptr));
+                                    co_return;
                                 }
                             }
                             catch(...)
                             {
-                                except = std::current_exception();                                 
-                            }
-                            bool closed = false;
-                            if (!close_ch.is_closed())
-                            {
+                                except = std::current_exception();
                                 if constexpr (std::is_void_v<T>)
                                 {
-                                    closed = !co_await chan_write<DataType>(data_ch, std::make_tuple(i, except), close_ch);
-                                    CFGO_TRACE("except writed with closer {}", closed ? "closed" : "not closed");
+                                    data_ch.write(std::make_tuple(i, except));
                                 }
                                 else
                                 {
-                                    closed = !co_await chan_write<DataType>(data_ch, std::make_tuple(i, std::nullopt, except), close_ch);
-                                    CFGO_TRACE("except writed with closer {}", closed ? "closed" : "not closed");
-                                }
+                                    data_ch.write(std::make_tuple(i, std::nullopt, except));
+                                }                         
                             }
-                            CFGO_TRACE("task exit.");
+                            CFGO_TRACE("task {} exit.", i);
                         }),
                         asio::detached
                     );
                     ++i;
                 }
-                try
-                {
-                    co_await _sync();
-                    m_done_signal.close_no_except();
-                }
-                catch(...)
-                {
-                    m_internal_err = std::current_exception();
-                    m_done_signal.close_no_except();
-                }
-                m_close_ch.close_no_except();
             }
-            co_await m_done_signal.await();
-            if (m_internal_err)
-            {
-                std::rethrow_exception(m_internal_err);
-            }
+            // auto start = std::chrono::high_resolution_clock::now();
+            co_await _sync();
+            // CFGO_TRACE("sync use time {} ms.", std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start).count());
             co_return _collect_result();
         }
     };

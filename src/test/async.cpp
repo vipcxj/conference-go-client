@@ -46,8 +46,14 @@ TEST(Chan, WaitTimeout) {
     using namespace cfgo;
     auto done = std::make_shared<Box<bool>>(false);
     auto task = cfgo::fix_async_lambda([done]() -> asio::awaitable<void> {
-        co_await wait_timeout(std::chrono::milliseconds{500});
+        DurationMeasure m(3);
+        {
+            ScopeDurationMeasurer sm(m);
+            co_await wait_timeout(std::chrono::milliseconds{500});
+        }
         done->value = true;
+        using namespace std::chrono;
+        CFGO_INFO("expect sleep {} ms, really sleep {} ms", 500, duration_cast<milliseconds>(*m.latest()).count());
         co_return;
     });
     do_async(std::move(task), false);
@@ -708,7 +714,7 @@ TEST(InitableBox, Invoke) {
     }), true);
 }
 
-TEST(AsyncBlocker, CheckBlockTIme) {
+TEST(AsyncBlocker, CheckBlockTime) {
     using namespace cfgo;
     AsyncBlockerManager::Configure conf {
         .block_timeout = std::chrono::milliseconds {30},

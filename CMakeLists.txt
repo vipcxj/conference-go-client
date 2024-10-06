@@ -307,8 +307,16 @@ if(ENABLE_TEST)
     target_link_libraries(test-async PRIVATE GTest::gtest GTest::gtest_main GTest::gmock GTest::gmock_main)
     target_compile_options(test-async PRIVATE $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:GNU>>:-fsanitize=address>)
     target_link_options(test-async PRIVATE $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:GNU>>:-fsanitize=address>)
-
     add_test(NAME test-async COMMAND test-async)
+
+    add_executable(test-experiment "${MY_TEST_PATH}/experiment.cpp")
+    include_asiochan(test-experiment)
+    fix_win_version_warn(test-experiment)
+    target_link_libraries(test-experiment PRIVATE cfgoclient)
+    target_link_libraries(test-experiment PRIVATE GTest::gtest GTest::gtest_main GTest::gmock GTest::gmock_main)
+    target_compile_options(test-experiment PRIVATE $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:GNU>>:-fsanitize=address>)
+    target_link_options(test-experiment PRIVATE $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:GNU>>:-fsanitize=address>)
+    add_test(NAME test-experiment COMMAND test-experiment)
 
     add_executable(test-ring-buffer "${MY_TEST_PATH}/ring_buffer.cpp")
     target_link_libraries(test-ring-buffer PRIVATE cfgoclient)

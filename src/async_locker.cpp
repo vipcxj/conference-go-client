@@ -1,9 +1,11 @@
 #include "cfgo/async_locker.hpp"
 #include "cfgo/async.hpp"
 #include "cfgo/log.hpp"
+// #include "cfgo/measure.hpp"
 #include <list>
 #include <memory>
 #include <algorithm>
+#include <atomic>
 #include <limits>
 
 namespace cfgo
@@ -36,8 +38,8 @@ namespace cfgo
             bool has_string_data() const noexcept;
         private:
             std::uint32_t m_id;
-            bool m_block = false;
-            bool m_blocked = false;
+            std::atomic_bool m_block = false;
+            std::atomic_bool m_blocked = false;
             mutex m_mutex;
             state_notifier m_state_notifier {};
             std::variant<std::nullptr_t, std::shared_ptr<void>, std::int64_t, double, std::string> m_user_data;
@@ -394,7 +396,9 @@ namespace cfgo
                 throw cpptrace::runtime_error("Already locked.");
             }
             auto self = shared_from_this();
+            // DurationMeasures measures(3);
             std::uint32_t batch;
+            
             do
             {
                 auto ch = m_ready_notifier.make_notfiy_receiver();
@@ -414,6 +418,7 @@ namespace cfgo
                 }
                 co_await chan_read_or_throw<void>(ch, closer);
             } while (true);
+            
             // After here, m_locked == true
             try
             {
@@ -467,14 +472,21 @@ namespace cfgo
                         }));
                     }
                 }
-                co_await tasks.await();
-                for (BlockerInfo & select : selects)
                 {
-                    if (!co_await select.m_blocker->sync(closer))
+                    // ScopeDurationMeasurer sdm(measures.measure("block-selects"));
+                    co_await tasks.await();
+                }
+                {
+                    // ScopeDurationMeasurer sdm(measures.measure("sync-selects-1"));
+                    for (BlockerInfo & select : selects)
                     {
-                        throw CancelError(closer);
+                        if (!co_await select.m_blocker->sync(closer))
+                        {
+                            throw CancelError(closer);
+                        }
                     }
                 }
+                
                 // unblock blockers exceed the plan.
                 int n_blocked = 0;
                 for (BlockerInfo & select : selects)
@@ -488,13 +500,23 @@ namespace cfgo
                         }
                     }
                 }
-                for (BlockerInfo & select : selects)
+                
                 {
-                    if (!co_await select.m_blocker->sync(closer))
+                    // ScopeDurationMeasurer sdm(measures.measure("sync-selects-2"));
+                    for (BlockerInfo & select : selects)
                     {
-                        throw CancelError(closer);
+                        if (!co_await select.m_blocker->sync(closer))
+                        {
+                            throw CancelError(closer);
+                        }
                     }
                 }
+                // CFGO_INFO(
+                //     "block-selects: {} ms ({:.02f}%), sync-selects-1: {} ms ({:.02f}%), sync-selects-2: {} ms ({:.02f}%)",
+                //     cast_ms(*measures.latest("block-selects")), measures.latest_percent_n("block-selects", 0) * 100,
+                //     cast_ms(*measures.latest("sync-selects-1")), measures.latest_percent_n("sync-selects-1", 0) * 100,
+                //     cast_ms(*measures.latest("sync-selects-2")), measures.latest_percent_n("sync-selects-2", 0) * 100
+                // );
             }
             catch(...)
             {
