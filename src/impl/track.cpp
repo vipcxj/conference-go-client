@@ -22,7 +22,7 @@ namespace cfgo
             std::int32_t rtcp_cache_max_segments,
             std::int32_t rtcp_cache_segment_capicity
         ): 
-            m_logger(Log::instance().create_logger(Log::Category::TRACK)),
+            m_logger(Log::instance().create_logger(Log::Category::TRACK, Log::make_logger_name(Log::Category::TRACK, msg.globalId.substr(0, 4)))),
             m_rtp_cache(rtp_cache_segment_capicity, rtp_cache_max_segments, rtp_cache_min_segments), 
             m_rtcp_cache(rtcp_cache_segment_capicity, rtcp_cache_max_segments, rtcp_cache_min_segments)
         {

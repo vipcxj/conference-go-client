@@ -155,6 +155,11 @@ namespace cfgo
         using namespace std::chrono;
         return duration_cast<milliseconds>(dur).count();
     }
+
+    inline int cast_ms(std::optional<HighDuration> dur) {
+        using namespace std::chrono;
+        return dur ? duration_cast<milliseconds>(*dur).count() : 0;
+    }
     
     class DurationMeasure : public BaseMeasure<HighDuration, DurationMeasure>
     {

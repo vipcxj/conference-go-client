@@ -345,6 +345,24 @@ namespace cfgo
         void remove_blocker(std::uint32_t id) const;
         auto wait_blocker(std::uint32_t id, close_chan closer = nullptr) const -> asio::awaitable<void>;
     };
+
+    struct AsyncBlockerRemover {
+        AsyncBlockerManager m_manager;
+        std::uint32_t m_blocker_id;
+
+        AsyncBlockerRemover(const AsyncBlockerManager & manager, const AsyncBlocker & blocker): m_manager(manager), m_blocker_id(blocker.id()) {}
+        ~AsyncBlockerRemover() {
+            m_manager.remove_blocker(m_blocker_id);
+        }
+    };
+
+    struct AsyncBlockerUnlocker {
+        AsyncBlockerManager m_manager;
+        AsyncBlockerUnlocker(const AsyncBlockerManager & manager): m_manager(manager) {}
+        ~AsyncBlockerUnlocker() {
+            m_manager.unlock();
+        }
+    };
     
 } // namespace cfgo
 

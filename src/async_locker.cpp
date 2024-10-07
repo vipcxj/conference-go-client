@@ -298,7 +298,7 @@ namespace cfgo
             std::list<BlockerRequest> m_blocker_requests;
             std::uint32_t m_next_id = 0;
             std::uint32_t m_next_epoch = 0;
-            bool m_locked = false;
+            std::atomic_bool m_locked = false;
             state_notifier m_ready_notifier;
             mutex m_mutex;
         };
@@ -521,7 +521,7 @@ namespace cfgo
             catch(...)
             {
                 unlock();
-                std::rethrow_exception(std::current_exception());
+                throw;
             }
         }
         void AsyncBlockerManager::unlock()
