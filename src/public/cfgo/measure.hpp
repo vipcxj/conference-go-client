@@ -355,11 +355,17 @@ namespace cfgo
             });
         }
 
+        // just for argument of noexcept operator, not really use this function.
+        const DurationMeasure & __return_const_measure_ref() const noexcept {
+            assert(false);
+            return m_measures.find("")->second;
+        }
+
         template<typename F>
         requires requires(F f, const DurationMeasures & me, const DurationMeasure & m) {
             f(me, m);
         }
-        void run_per_n(const std::string & name, int n, F fun) const noexcept(noexcept(fun(*this, measure(name))))
+        void run_per_n(const std::string & name, int n, F fun) const noexcept(noexcept(fun(*this, __return_const_measure_ref())))
         {
             auto iter = m_measures.find(name);
             if (iter == m_measures.end())
@@ -376,7 +382,7 @@ namespace cfgo
         requires requires(F f, const DurationMeasures & me, const DurationMeasure & m) {
             f(me, m);
         }
-        void run_greater_than(const std::string & name, HighDuration v, F fun) const noexcept(noexcept(fun(*this, measure(name))))
+        void run_greater_than(const std::string & name, HighDuration v, F fun) const noexcept(noexcept(fun(*this, __return_const_measure_ref())))
         {
             auto iter = m_measures.find(name);
             if (iter == m_measures.end())

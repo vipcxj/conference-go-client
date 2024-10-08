@@ -5,7 +5,7 @@
 #include "gtest/gtest.h"
 #include <random>
 
-std::shared_ptr<asio::thread_pool> TP = std::make_unique<asio::thread_pool>();
+std::shared_ptr<asio::thread_pool> TP = nullptr;
 
 void do_async(std::function<asio::awaitable<void>()> func, bool wait = false, std::shared_ptr<asio::thread_pool> tp_ptr = nullptr) {
     auto tp = tp_ptr ? tp_ptr : TP;
@@ -159,7 +159,10 @@ TEST(AsyncBlocker, CompareWithReal)
 }
 
 int main(int argc, char **argv) {
+    TP = std::make_unique<asio::thread_pool>();
     testing::InitGoogleTest(&argc, argv);
     // cfgo::Log::instance().set_level(cfgo::Log::Category::DEFAULT, cfgo::LogLevel::trace);
-    return RUN_ALL_TESTS();
+    auto ret = RUN_ALL_TESTS();
+    TP = nullptr;
+    return ret;
 }
