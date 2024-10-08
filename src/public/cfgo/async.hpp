@@ -79,6 +79,9 @@ namespace cfgo
         [[nodiscard]] std::size_t hash() const noexcept {
             return std::hash<detail::CloseSignalState *>()(m_state.get());
         }
+        [[nodiscard]] long ref_count() const noexcept {
+            return m_state.use_count();
+        }
         void close(std::string reason = CLOSER_DEFAULT_CLOSE_REASON, std::source_location src_loc = std::source_location::current()) const;
         bool close_no_except(std::string reason = CLOSER_DEFAULT_CLOSE_REASON, std::source_location src_loc = std::source_location::current()) const noexcept;
         /**

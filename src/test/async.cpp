@@ -42,6 +42,35 @@ TEST(Chan, CloseChan) {
     EXPECT_FALSE(is_valid_close_chan(INVALID_CLOSE_CHAN));
 }
 
+TEST(Chan, CloseChanTimeoutNoLeak) {
+    using namespace cfgo;
+    do_async([]() -> asio::awaitable<void> {
+        {
+            close_chan closer {};
+            EXPECT_EQ(1, closer.ref_count());
+            closer.set_timeout(std::chrono::milliseconds { 20 });
+            co_await closer.init_timer();
+            EXPECT_GT(closer.ref_count(), 1);
+            co_await closer.await();
+            EXPECT_EQ(1, closer.ref_count());
+            EXPECT_TRUE(closer.is_closed());
+        }
+        {
+            close_chan closer {};
+            unique_void_chan ch {};
+            EXPECT_EQ(1, closer.ref_count());
+            closer.set_timeout(std::chrono::milliseconds { 30 });
+            chan_must_write(ch);
+            co_await chan_read<void>(ch, closer);
+            EXPECT_GT(closer.ref_count(), 1);
+            EXPECT_TRUE(!closer.is_closed());
+            co_await wait_timeout(std::chrono::milliseconds { 100 });
+            EXPECT_EQ(1, closer.ref_count());
+            EXPECT_TRUE(closer.is_closed());
+        }
+    }, true);
+}
+
 TEST(Chan, WaitTimeout) {
     using namespace cfgo;
     auto done = std::make_shared<Box<bool>>(false);

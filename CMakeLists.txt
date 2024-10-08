@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 project(conference-go-client)
-#set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 add_compile_options($<$<CXX_COMPILER_ID:GNU>:-Wreorder>)
 add_compile_options($<$<CXX_COMPILER_ID:MSVC>:/w15038>)
