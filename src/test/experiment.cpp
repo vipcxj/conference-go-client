@@ -2,6 +2,9 @@
 #include "cfgo/async_locker.hpp"
 #include "cfgo/measure.hpp"
 #include "cfgo/log.hpp"
+#ifdef CFGO_CLOSER_ALLOCATOR_TRACER
+#include "cfgo/allocator_tracer.hpp"
+#endif
 #include "gtest/gtest.h"
 #include <random>
 
@@ -111,50 +114,62 @@ TEST(AsyncBlocker, CompareWithReal)
 {
     using namespace cfgo;
     do_async([]() -> asio::awaitable<void> {
-        close_chan closer;
-        close_guard cg(closer);
-        const auto block_timeout = 30;
-        AsyncBlockerManager::Configure conf {
-            .block_timeout = std::chrono::milliseconds {block_timeout},
-            .target_batch = 10,
-            .min_batch = 1,
-        };
-        AsyncBlockerManager manager {conf};
-        DurationMeasure m(3);
-        auto executor = co_await asio::this_coro::executor;
-        for (size_t i = 0; i < 20; i++)
+        #ifdef CFGO_CLOSER_ALLOCATOR_TRACER
+            EXPECT_EQ(0, cfgo::close_allocator_tracer::ref_count());
+        #endif
         {
-            asio::co_spawn(executor, [manager, closer, i]() -> asio::awaitable<void> {
-                auto blocker = co_await manager.add_blocker(0, closer);
-                AsyncBlockerRemover remover(manager, blocker);
-                blocker.set_user_data((std::int64_t) i);
-                std::mt19937 gen(i);
-                std::uniform_int_distribution<int> distrib(0, 800);
-                try
-                {
-                    do
-                    {
-                        auto amp = distrib(gen);
-                        co_await wait_timeout(std::chrono::milliseconds {200 + amp}, closer);
-                        co_await manager.wait_blocker(blocker.id(), closer);
-                    } while (true);
-                }
-                catch(const CancelError& e) {}
-            }, asio::detached);
-        }
-        std::mt19937 gen(0);
-        std::uniform_int_distribution<int> distrib(0, 20);
-        for (size_t i = 0; i < 30; i++)
-        {
+            close_chan closer;
+            close_guard cg(closer);
+            #ifdef CFGO_CLOSER_ALLOCATOR_TRACER
+                EXPECT_EQ(1, cfgo::close_allocator_tracer::ref_count());
+            #endif
+            const auto block_timeout = 30;
+            AsyncBlockerManager::Configure conf {
+                .block_timeout = std::chrono::milliseconds {block_timeout},
+                .target_batch = 10,
+                .min_batch = 1,
+            };
+            AsyncBlockerManager manager {conf};
+            DurationMeasure m(3);
+            auto executor = co_await asio::this_coro::executor;
+            for (size_t i = 0; i < 20; i++)
             {
-                ScopeDurationMeasurer sdm(m);
-                co_await manager.lock(closer);
+                asio::co_spawn(executor, [manager, closer, i]() -> asio::awaitable<void> {
+                    auto blocker = co_await manager.add_blocker(0, closer);
+                    AsyncBlockerRemover remover(manager, blocker);
+                    blocker.set_user_data((std::int64_t) i);
+                    std::mt19937 gen(i);
+                    std::uniform_int_distribution<int> distrib(0, 800);
+                    try
+                    {
+                        do
+                        {
+                            auto amp = distrib(gen);
+                            co_await wait_timeout(std::chrono::milliseconds {200 + amp}, closer);
+                            co_await manager.wait_blocker(blocker.id(), closer);
+                        } while (true);
+                    }
+                    catch(const CancelError& e) {}
+                }, asio::detached);
             }
-            AsyncBlockerUnlocker unlocker(manager);
-            co_await wait_timeout(std::chrono::milliseconds {distrib(gen)}, closer);
+            std::mt19937 gen(0);
+            std::uniform_int_distribution<int> distrib(0, 20);
+            for (size_t i = 0; i < 30; i++)
+            {
+                {
+                    ScopeDurationMeasurer sdm(m);
+                    co_await manager.lock(closer);
+                }
+                AsyncBlockerUnlocker unlocker(manager);
+                co_await wait_timeout(std::chrono::milliseconds {distrib(gen)}, closer);
 
-            CFGO_INFO("expect: {} ms, really: {} ms, diff: {}", block_timeout, cast_ms(m.latest()), std::abs(cast_ms(m.latest()) - block_timeout));
+                CFGO_INFO("expect: {} ms, really: {} ms, diff: {}", block_timeout, cast_ms(m.latest()), std::abs(cast_ms(m.latest()) - block_timeout));
+            }
         }
+        // co_await wait_timeout(std::chrono::milliseconds {1});
+        // #ifdef CFGO_CLOSER_ALLOCATOR_TRACER
+        //     EXPECT_EQ(0, cfgo::close_allocator_tracer::ref_count());
+        // #endif
     }, true);
 }
 

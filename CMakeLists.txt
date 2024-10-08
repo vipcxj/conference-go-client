@@ -14,6 +14,8 @@ set(WIN_TARGET_VER 0x0601)
 
 option(GSTREAMER_SUPPORT "gstreamer support")
 option(USE_GSTREAMER_FULL_STATIC "use gstreamer full static" ON)
+option(CLOSER_ALLOCATOR_TRACER "closer allocator tracer support" OFF)
+option(CLOSER_ALLOCATOR_TRACER_USE_ENTRIES "closer allocator tracer entries support" OFF)
 #option(STANDALONE_ASIO "using standalone asio instead of boost-asio" OFF)
 option(ENABLE_TEST "enable testing" ON)
 if(GSTREAMER_SUPPORT)
@@ -41,6 +43,7 @@ set(MY_PUBLIC_HEADERS
     "${H_PUBLIC_PATH}/track.hpp"
     "${H_PUBLIC_PATH}/alias.hpp"
     "${H_PUBLIC_PATH}/coroutine_concepts.hpp"
+    "${H_PUBLIC_PATH}/allocator_tracer.hpp"
     "${H_PUBLIC_PATH}/async.hpp"
     "${H_PUBLIC_PATH}/async_locker.hpp"
     "${H_PUBLIC_PATH}/basesink.hpp"
@@ -111,6 +114,7 @@ set(MY_SOURCES
     "${SRC_PATH}/client.cpp"
     "${SRC_PATH}/track.cpp"
     "${SRC_PATH}/subscribation.cpp"
+    "${SRC_PATH}/allocator_tracer.cpp"
     "${SRC_PATH}/async.cpp"
     "${SRC_PATH}/async_locker.cpp"
     "${SRC_PATH}/basesink.cpp"
@@ -238,6 +242,14 @@ endif()
 message(STATUS "add library cfgoclient")
 add_library(cfgoclient ${MY_SOURCES} ${MY_PUBLIC_HEADERS} ${MY_PRIVATE_HEADERS})
 target_compile_definitions(cfgoclient PRIVATE BUILDING_CFGO)
+if(CLOSER_ALLOCATOR_TRACER)
+    target_compile_definitions(cfgoclient PUBLIC CFGO_CLOSER_ALLOCATOR_TRACER)
+endif()
+if(CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+    target_compile_definitions(cfgoclient PUBLIC CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+endif()
+
+
 target_compile_options(cfgoclient 
     PRIVATE
     $<$<CXX_COMPILER_ID:MSVC>:/bigobj>

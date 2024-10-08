@@ -5,6 +5,9 @@
 #include "spdlog/spdlog.h"
 #include <list>
 #include <chrono>
+#ifdef CFGO_CLOSER_ALLOCATOR_TRACER
+#include "cfgo/allocator_tracer.hpp"
+#endif
 
 namespace cfgo
 {
@@ -296,15 +299,31 @@ namespace cfgo
             }
         };
 
-        CloseSignalState::CloseSignalState(): m_parent() {}
+        CloseSignalState::CloseSignalState(): m_parent() {
+            #ifdef CFGO_CLOSER_ALLOCATOR_TRACER
+            cfgo::close_allocator_tracer::ctor(reinterpret_cast<std::uintptr_t>(this), 0);
+            #endif
+        }
         CloseSignalState::CloseSignalState(const std::weak_ptr<CloseSignalState> & parent)
-        : m_parent(parent) {}
+        : m_parent(parent) {
+            #ifdef CFGO_CLOSER_ALLOCATOR_TRACER
+            cfgo::close_allocator_tracer::ctor(reinterpret_cast<std::uintptr_t>(this), reinterpret_cast<std::uintptr_t>(m_parent.lock().get()));
+            #endif
+        }
         CloseSignalState::CloseSignalState(std::weak_ptr<CloseSignalState> && parent)
-        : m_parent(std::move(parent)) {}
+        : m_parent(std::move(parent)) {
+            #ifdef CFGO_CLOSER_ALLOCATOR_TRACER
+            cfgo::close_allocator_tracer::ctor(reinterpret_cast<std::uintptr_t>(this), reinterpret_cast<std::uintptr_t>(m_parent.lock().get()));
+            #endif
+        }
 
         CloseSignalState::~CloseSignalState() noexcept
         {
             close_no_except(false, "Destructor called.", std::source_location {});
+            #ifdef CFGO_CLOSER_ALLOCATOR_TRACER
+            auto key = reinterpret_cast<std::uintptr_t>(this);
+            cfgo::close_allocator_tracer::dtor(key);
+            #endif
         }
 
         auto CloseSignalState::timer_task() -> asio::awaitable<void>
@@ -378,6 +397,11 @@ namespace cfgo
             m_stop = false;
             m_close_reason = std::move(reason);
             m_close_src_loc = std::move(src_loc);
+
+            #if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+            cfgo::close_allocator_tracer::update_close_loc(reinterpret_cast<std::uintptr_t>(this), m_close_src_loc);
+            #endif
+
             m_is_timeout = is_timeout;
             m_timeout = duration_t {0};
             if (m_timer)
