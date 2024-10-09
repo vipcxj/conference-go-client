@@ -120,10 +120,21 @@ namespace cfgo
         return timeout;
     }
 
-    auto wait_timeout(duration_t dur, close_chan closer, std::string reasion) -> asio::awaitable<void> {
+    auto wait_timeout(
+        duration_t dur,
+        close_chan closer,
+        std::string reasion
+#if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+        , std::source_location src_loc
+#endif
+    ) -> asio::awaitable<void> {
         if (closer)
         {
-            auto timeout_closer = closer.create_child();
+            auto timeout_closer = closer.create_child(
+#if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+                std::move(src_loc)
+#endif
+            );
             timeout_closer.set_timeout(dur, std::move(reasion));
             if (co_await timeout_closer.await())
             {
@@ -188,6 +199,7 @@ namespace cfgo
         {
             using Ptr = std::shared_ptr<CloseSignalState>;
             using Waiter = CloseSignal::Waiter;
+
             bool m_closed = false;
             std::string m_close_reason;
             bool m_is_timeout = false;
@@ -204,9 +216,23 @@ namespace cfgo
             std::weak_ptr<CloseSignalState> m_parent;
             std::list<Ptr> m_children;
 
-            CloseSignalState();
-            CloseSignalState(const std::weak_ptr<CloseSignalState> & parent);
-            CloseSignalState(std::weak_ptr<CloseSignalState> && parent);
+            CloseSignalState(
+            #if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+                std::source_location ctr_src_loc
+            #endif
+            );
+            CloseSignalState(
+                const std::weak_ptr<CloseSignalState> & parent
+            #if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+                , std::source_location ctr_src_loc
+            #endif
+            );
+            CloseSignalState(
+                std::weak_ptr<CloseSignalState> && parent
+            #if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+                , std::source_location ctr_src_loc
+            #endif
+            );
 
             ~CloseSignalState() noexcept;
 
@@ -232,7 +258,11 @@ namespace cfgo
 
             void set_timeout(duration_t dur, std::string reason, std::source_location src_loc);
 
-            Ptr create_child();
+            Ptr create_child(
+            #if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+                std::source_location src_loc
+            #endif
+            );
 
             void remove_me(CloseSignalState * child);
 
@@ -299,21 +329,53 @@ namespace cfgo
             }
         };
 
-        CloseSignalState::CloseSignalState(): m_parent() {
+        CloseSignalState::CloseSignalState(
+            #if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+            std::source_location ctr_src_loc
+            #endif
+        ) : m_parent()
+        {
             #ifdef CFGO_CLOSER_ALLOCATOR_TRACER
-            cfgo::close_allocator_tracer::ctor(reinterpret_cast<std::uintptr_t>(this), 0);
+            cfgo::close_allocator_tracer::ctor(
+                reinterpret_cast<std::uintptr_t>(this),
+                0
+                #ifdef CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES
+                , std::move(ctr_src_loc)
+                #endif
+            );
             #endif
         }
-        CloseSignalState::CloseSignalState(const std::weak_ptr<CloseSignalState> & parent)
-        : m_parent(parent) {
+        CloseSignalState::CloseSignalState(
+            const std::weak_ptr<CloseSignalState> & parent
+            #if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+            , std::source_location ctr_src_loc
+            #endif
+        ) : m_parent(parent)
+        {
             #ifdef CFGO_CLOSER_ALLOCATOR_TRACER
-            cfgo::close_allocator_tracer::ctor(reinterpret_cast<std::uintptr_t>(this), reinterpret_cast<std::uintptr_t>(m_parent.lock().get()));
+            cfgo::close_allocator_tracer::ctor(
+                reinterpret_cast<std::uintptr_t>(this),
+                reinterpret_cast<std::uintptr_t>(m_parent.lock().get())
+                #ifdef CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES
+                , std::move(ctr_src_loc)
+                #endif
+            );
             #endif
         }
-        CloseSignalState::CloseSignalState(std::weak_ptr<CloseSignalState> && parent)
-        : m_parent(std::move(parent)) {
+        CloseSignalState::CloseSignalState(
+            std::weak_ptr<CloseSignalState> && parent
+            #if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+            , std::source_location ctr_src_loc
+            #endif
+        ) : m_parent(std::move(parent)) {
             #ifdef CFGO_CLOSER_ALLOCATOR_TRACER
-            cfgo::close_allocator_tracer::ctor(reinterpret_cast<std::uintptr_t>(this), reinterpret_cast<std::uintptr_t>(m_parent.lock().get()));
+            cfgo::close_allocator_tracer::ctor(
+                reinterpret_cast<std::uintptr_t>(this),
+                reinterpret_cast<std::uintptr_t>(m_parent.lock().get())
+                #ifdef CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES
+                , std::move(ctr_src_loc)
+                #endif
+            );
             #endif
         }
 
@@ -592,18 +654,31 @@ namespace cfgo
             _set_timeout(std::move(dur), std::move(reason), std::move(src_loc));
         }
 
-        auto CloseSignalState::create_child() -> Ptr
+        auto CloseSignalState::create_child(
+#if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+            std::source_location src_loc
+#endif
+        ) -> Ptr
         {
             std::lock_guard lock(m_mutex);
             if (m_closed)
             {
-                auto child = std::make_shared<CloseSignalState>();
+                auto child = std::make_shared<CloseSignalState>(
+#if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+                    std::move(src_loc)
+#endif
+                );
                 child->_close_self(m_is_timeout, m_close_reason, m_close_src_loc);
                 return child;
             }
             else
             {
-                auto child = std::make_shared<CloseSignalState>(weak_from_this());
+                auto child = std::make_shared<CloseSignalState>(
+                    weak_from_this()
+#if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+                    , std::move(src_loc)
+#endif
+                );
                 m_children.push_back(child);
                 return child;
             }
@@ -635,8 +710,17 @@ namespace cfgo
     CloseSignal::CloseSignal(std::shared_ptr<detail::CloseSignalState> && state): m_state(std::move(state))
     {}
 
-    CloseSignal::CloseSignal(): m_state(std::make_shared<detail::CloseSignalState>())
-    {}
+    CloseSignal::CloseSignal(
+    #if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+        std::source_location source_loc
+    #endif
+    ): m_state(
+        std::make_shared<detail::CloseSignalState>(
+    #if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+            std::move(source_loc)
+    #endif
+        )
+    ) {}
 
     auto CloseSignal::init_timer() const -> asio::awaitable<void>
     {
@@ -747,16 +831,28 @@ namespace cfgo
         }
     }
 
-    CloseSignal CloseSignal::create_child() const
+    CloseSignal CloseSignal::create_child(
+#if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+        std::source_location src_loc
+#endif
+    ) const
     {
         if (m_state)
         {
-            return m_state->create_child();
+            return m_state->create_child(
+#if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+                std::move(src_loc)
+#endif
+            );
         }
         else
         {
             // just a new closer.
-            return CloseSignal {};
+            return CloseSignal {
+#if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+                std::move(src_loc)
+#endif
+            };
         }
     }
 

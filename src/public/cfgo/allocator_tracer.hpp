@@ -9,8 +9,52 @@
 
 #include "cfgo/alias.hpp"
 
+
 namespace cfgo
 {
+    class source_location_pool
+    {
+        struct KeyHasher
+        {
+            std::size_t operator()(const std::source_location & loc) const
+            {
+                using std::size_t;
+                using std::hash;
+                size_t res = 17;
+                res = res * 31 + hash<std::uintptr_t>()(reinterpret_cast<std::uintptr_t>(loc.file_name()));
+                res = res * 31 + hash<std::uintptr_t>()(reinterpret_cast<std::uintptr_t>(loc.function_name()));
+                res = res * 31 + hash<decltype(loc.line())>()(loc.line());
+                res = res * 31 + hash<decltype(loc.column())>()(loc.column());
+                return res;
+            }
+        };
+
+        struct KeyEqualer
+        {
+            bool operator()(const std::source_location & loc1, const std::source_location & loc2) const
+            {
+                return loc1.file_name() == loc2.file_name()
+                    && loc1.function_name() == loc2.function_name()
+                    && loc1.line() == loc2.line()
+                    && loc1.column() == loc2.column();
+            }
+        };
+
+        using pool_type = std::unordered_map<std::source_location, std::int64_t, KeyHasher, KeyEqualer>;
+
+        struct entries
+        {
+            std::atomic_int64_t& counter;
+            pool_type &pool;
+        };
+
+        static entries get() noexcept
+        {
+            static std::atomic_int64_t g_counter {0};
+            static pool_type g_pool {};
+            return { g_counter, g_pool };
+        } 
+    };
     class close_allocator_tracer
     {
     private:
@@ -18,6 +62,7 @@ namespace cfgo
         {
             std::uintptr_t parent = 0;
             bool close_loc_flag = false;
+            std::source_location ctr_loc;
             std::source_location close_loc;
         };
 
@@ -45,7 +90,13 @@ namespace cfgo
         }
     public:
 
-        static void ctor(std::uintptr_t key, std::uintptr_t parent) noexcept
+        static void ctor(
+            std::uintptr_t key,
+            std::uintptr_t parent
+            #ifdef CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES
+            , std::source_location src_loc
+            #endif
+        ) noexcept
         {
             auto tracer = global_closer_tracer();
             tracer.ref_count ++;

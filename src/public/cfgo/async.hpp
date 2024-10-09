@@ -64,7 +64,11 @@ namespace cfgo
     public:
         using Waiter = asiochan::channel<void, 1>;
         CloseSignal(std::nullptr_t);
-        CloseSignal();
+        CloseSignal(
+        #if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+            std::source_location source_loc = std::source_location::current()
+        #endif
+        );
         CloseSignal(const CloseSignal &) = default;
         CloseSignal(CloseSignal &&cc) = default;
         CloseSignal &operator=(const CloseSignal &) = default;
@@ -90,7 +94,11 @@ namespace cfgo
         [[nodiscard]] auto await() const -> asio::awaitable<bool>;
         void set_timeout(duration_t dur, std::string reason = CLOSER_DEFAULT_TIMEOUT_REASON, std::source_location src_loc = std::source_location::current()) const;
         duration_t get_timeout() const noexcept;
-        [[nodiscard]] CloseSignal create_child() const;
+        [[nodiscard]] CloseSignal create_child(
+#if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+            std::source_location src_loc = std::source_location::current()
+#endif
+        ) const;
         void stop(bool stop_timer = true) const;
         void resume() const;
         [[nodiscard]] friend inline auto operator==(
@@ -578,7 +586,14 @@ namespace cfgo
 
     close_chan make_timeout(const duration_t& dur);
 
-    auto wait_timeout(duration_t dur, close_chan closer = nullptr, std::string reasion = "timeout") -> asio::awaitable<void>;
+    auto wait_timeout(
+        duration_t dur, 
+        close_chan closer = nullptr, 
+        std::string reasion = "timeout"
+    #if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+        , std::source_location src_loc = std::source_location::current()
+    #endif
+    ) -> asio::awaitable<void>;
 
     template<asiochan::select_op Op, asiochan::select_op... OtherOps>
     struct calc_sum_alternatives {
