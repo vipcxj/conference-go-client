@@ -46,7 +46,6 @@ set(MY_PUBLIC_HEADERS
     "${H_PUBLIC_PATH}/allocator_tracer.hpp"
     "${H_PUBLIC_PATH}/async.hpp"
     "${H_PUBLIC_PATH}/async_locker.hpp"
-    "${H_PUBLIC_PATH}/basesink.hpp"
     "${H_PUBLIC_PATH}/defer.hpp"
     "${H_PUBLIC_PATH}/pattern.hpp"
     "${H_PUBLIC_PATH}/ring_buffer.hpp"

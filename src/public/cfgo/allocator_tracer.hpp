@@ -5,14 +5,16 @@
 #include <atomic>
 #include <mutex>
 #include <unordered_map>
+#include <unordered_set>
 #include <source_location>
 
 #include "cfgo/alias.hpp"
+#include "cfgo/utils.hpp"
 
 
 namespace cfgo
 {
-    class source_location_pool
+    struct source_location_pool
     {
         struct KeyHasher
         {
@@ -40,21 +42,51 @@ namespace cfgo
             }
         };
 
-        using pool_type = std::unordered_map<std::source_location, std::int64_t, KeyHasher, KeyEqualer>;
+        using id_type = std::size_t;
+        using pool_type = std::unordered_map<std::source_location, id_type, KeyHasher, KeyEqualer>;
+        using locs_type = std::vector<std::source_location>;
 
         struct entries
         {
-            std::atomic_int64_t& counter;
+            mutex &mux;
             pool_type &pool;
+            locs_type &locs;
+
+            id_type get_id(const std::source_location & loc)
+            {
+                std::lock_guard lk(mux);
+                id_type id;
+                auto iter = pool.find(loc);
+                if (iter == pool.end())
+                {
+                    id = locs.size();
+                    locs.push_back(loc);
+                    pool[loc] = id;
+                }
+                else
+                {
+                    id = iter->second;
+                }
+                return id;
+            }
+
+            const std::source_location & get_loc(id_type id) const
+            {
+                std::lock_guard lk(mux);
+                return locs[id];
+            }
         };
 
         static entries get() noexcept
         {
-            static std::atomic_int64_t g_counter {0};
+            static mutex g_mux {};
             static pool_type g_pool {};
-            return { g_counter, g_pool };
+            static locs_type g_locs {};
+            return { g_mux, g_pool, g_locs };
         } 
     };
+
+    using loc_id_type = source_location_pool::id_type;
     class close_allocator_tracer
     {
     private:
@@ -62,18 +94,22 @@ namespace cfgo
         {
             std::uintptr_t parent = 0;
             bool close_loc_flag = false;
-            std::source_location ctr_loc;
-            std::source_location close_loc;
+            loc_id_type ctr_loc_id;
+            loc_id_type close_loc_id;
         };
 
+    public:
         using closer_tracer_entries_type = std::unordered_map<std::uintptr_t, closer_tracer_entry>;
+        using closer_tracer_locs_type = std::unordered_map<std::size_t, std::size_t>;
 
+    private:
         struct closer_tracer_ref
         {
             std::atomic_int64_t& ref_count;
             #ifdef CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES
             mutex& mux;
             closer_tracer_entries_type& entries;
+            closer_tracer_locs_type& locs;
             #endif
         };
         
@@ -83,7 +119,8 @@ namespace cfgo
             #ifdef CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES
             static mutex g_mux;
             static closer_tracer_entries_type g_entries;
-            return { g_ref_count, g_mux, g_entries };
+            static closer_tracer_locs_type g_locs;
+            return { g_ref_count, g_mux, g_entries, g_locs };
             #else
             return { g_ref_count };
             #endif
@@ -103,7 +140,17 @@ namespace cfgo
             #ifdef CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES
             {
                 std::lock_guard lk(tracer.mux);
-                tracer.entries[key] = { .parent = parent };
+                auto ctr_loc_id = source_location_pool::get().get_id(src_loc);
+                tracer.entries[key] = { .parent = parent, .ctr_loc_id = ctr_loc_id };
+                auto iter = tracer.locs.find(ctr_loc_id);
+                if (iter == tracer.locs.end())
+                {
+                    tracer.locs[ctr_loc_id] = 1;
+                }
+                else
+                {
+                    ++ iter->second;
+                }
             }
             #endif
         }
@@ -115,7 +162,18 @@ namespace cfgo
             #ifdef CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES
             {
                 std::lock_guard lk(tracer.mux);
-                tracer.entries.erase(key);
+                auto iter = tracer.entries.find(key);
+                if (iter != tracer.entries.end())
+                {
+                    auto ctr_id = iter->second.ctr_loc_id;
+                    tracer.entries.erase(iter);
+                    auto & ctr_ref_count = tracer.locs[ctr_id];
+                    -- ctr_ref_count;
+                    if (ctr_ref_count == 0)
+                    {
+                        tracer.locs.erase(ctr_id);
+                    }
+                }
             }
             #endif
         }
@@ -126,29 +184,101 @@ namespace cfgo
         }
 
         #ifdef CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES
-        static void update_close_loc(std::uintptr_t key, const std::source_location & loc)
+
+        static std::optional<std::source_location> get_ctr_loc(std::uintptr_t key)
         {
             auto tracer = global_closer_tracer();
             std::lock_guard lk(tracer.mux);
-            auto & entry = tracer.entries[key];
-            entry.close_loc_flag = true;
-            entry.close_loc = loc;
+            auto iter = tracer.entries.find(key);
+            if (iter != tracer.entries.end())
+            {
+                return source_location_pool::get().get_loc(iter->second.ctr_loc_id);
+            }
+            else
+            {
+                return std::nullopt;
+            }
+        }
+
+        static void update_close_loc(std::uintptr_t key, const std::source_location & loc)
+        {
+            auto tracer = global_closer_tracer();
+            auto loc_pool = source_location_pool::get();
+            std::lock_guard lk(tracer.mux);
+            auto iter = tracer.entries.find(key);
+            if (iter != tracer.entries.end())
+            {
+                iter->second.close_loc_flag = true;
+                iter->second.close_loc_id = loc_pool.get_id(loc);
+            }
         }
 
         static std::optional<std::source_location> get_close_loc(std::uintptr_t key)
         {
             auto tracer = global_closer_tracer();
             std::lock_guard lk(tracer.mux);
-            auto & entry = tracer.entries[key];
-            if (entry.close_loc_flag)
+            auto iter = tracer.entries.find(key);
+            if (iter != tracer.entries.end() && iter->second.close_loc_flag)
             {
-                return entry.close_loc;
+                return source_location_pool::get().get_loc(iter->second.close_loc_id);
             }
             else
             {
                 return std::nullopt;
             }
-        } 
+        }
+
+        static void collect_ctr_src_locs_with_max_n_ref_count(std::size_t n, std::vector<std::pair<loc_id_type, std::size_t>> & locs_ref_result)
+        {
+            auto tracer = global_closer_tracer();
+            std::lock_guard lk(tracer.mux);
+            using iter_t = std::ranges::borrowed_iterator_t<decltype(tracer.locs)>;
+            locs_ref_result.clear();
+            for (auto & iter : max_n_elements(tracer.locs, n, [](iter_t iter1, iter_t iter2) -> bool {
+                return iter1->second > iter2->second;
+            }))
+            {
+                locs_ref_result.push_back(std::make_pair(iter->first, iter->second));
+            }
+        }
+
+        static void collect_parent_ctr_src_locs(loc_id_type ctr_src_loc_id, std::unordered_set<loc_id_type> & result)
+        {
+            auto tracer = global_closer_tracer();
+            std::lock_guard lk(tracer.mux);
+            for (auto [_, entry] : tracer.entries)
+            {
+                if (entry.ctr_loc_id == ctr_src_loc_id)
+                {
+                    auto parent_iter = tracer.entries.find(entry.parent);
+                    if (parent_iter != tracer.entries.end())
+                    {
+                        result.insert(parent_iter->second.ctr_loc_id);
+                    }
+                }
+            }
+        }
+
+        static void collect_child_ctr_src_locs(loc_id_type ctr_src_loc_id, std::unordered_set<loc_id_type> & result)
+        {
+            auto tracer = global_closer_tracer();
+            std::lock_guard lk(tracer.mux);
+            std::unordered_set<std::uintptr_t> parents {};
+            for (auto [address, entry] : tracer.entries)
+            {
+                if (entry.ctr_loc_id == ctr_src_loc_id)
+                {
+                    parents.insert(address);
+                }
+            }
+            for (auto [_, entry] : tracer.entries)
+            {
+                if (parents.contains(entry.parent))
+                {
+                    result.insert(entry.ctr_loc_id);
+                }
+            }
+        }
         #endif
     };
     

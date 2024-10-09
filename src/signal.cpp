@@ -227,7 +227,7 @@ namespace cfgo
             std::optional<Websocket> m_ws {std::nullopt};
             std::uint64_t m_next_msg_id {1};
             std::uint64_t m_next_msg_cb_id {0};
-            LzayRemoveMap<std::uint64_t, RawSigMsgCb> m_msg_cbs {};
+            LazyRemoveMap<std::uint64_t, RawSigMsgCb> m_msg_cbs {};
             asiochan::channel<WSAckOrMsg> m_outgoing_ch {};
             std::unordered_map<std::uint64_t, WSAckChan> m_incoming_ack_chs {};
 
@@ -652,7 +652,7 @@ namespace cfgo
             std::unordered_map<std::uint64_t, PongCb> m_pong_cbs {};
             std::unordered_map<std::uint64_t, CandCb> m_cand_cbs {};
             std::unordered_map<std::uint64_t, SdpCb> m_sdp_cbs {};
-            LzayRemoveMap<std::uint64_t, cfgo::SigMsgCb> m_custom_msg_cbs {};
+            LazyRemoveMap<std::uint64_t, cfgo::SigMsgCb> m_custom_msg_cbs {};
             std::unordered_map<CustomAckKey, unique_chan<CustomAckMessagePtr>> m_custom_ack_chans {};
             std::unordered_map<std::string, std::shared_ptr<LazyBox<SubscribedMsgPtr>>> m_subscribed_msgs {};
             std::unordered_set<std::string> m_rooms {};
