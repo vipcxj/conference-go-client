@@ -36,6 +36,9 @@
         },
         "boost-asio"
       ]
+    },
+    "ch-allocator-tracer": {
+      "description": "enable channel allocator tracer"
     }
   }
 }

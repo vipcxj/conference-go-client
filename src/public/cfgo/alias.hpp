@@ -7,7 +7,7 @@
 // #include "sio_message.h"
 // #include "cfgo/asio.hpp"
 #include "cfgo/macros.h"
-#if DEBUG
+#if CFGO_DEBUG_MODE
 #include "yamc/checked_mutex.hpp"
 #include "yamc/checked_shared_mutex.hpp"
 #endif
@@ -27,7 +27,7 @@ namespace cfgo
 
     using duration_t = std::chrono::steady_clock::duration;
     
-    #if DEBUG
+    #if CFGO_DEBUG_MODE
     using mutex = yamc::checked::mutex;
     using timed_mutex = yamc::checked::timed_mutex;
     using recursive_mutex = yamc::checked::recursive_mutex;

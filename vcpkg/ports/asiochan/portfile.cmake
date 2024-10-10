@@ -20,6 +20,10 @@ elseif("boost-asio" IN_LIST FEATURES)
 else()
     message(FATAL "Either standalone-asio or boost-asio should be inside the feature list.")
 endif()
+if("ch-allocator-tracer" IN_LIST FEATURES)
+    list(APPEND CMAKE_OPTIONS -DASIOCHAN_CH_ALLOCATE_TRACER=ON)
+endif()
+
 
 vcpkg_cmake_configure(
     SOURCE_PATH "${SOURCE_PATH}"

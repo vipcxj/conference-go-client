@@ -3,25 +3,10 @@
 
 #ifndef NDEBUG
 // Production builds should set NDEBUG=1
-#define NDEBUG false
+#define CFGO_DEBUG_MODE true
 #else
-#define NDEBUG true
+#define CFGO_DEBUG_MODE false
 #endif
-
-#ifndef DEBUG
-#define DEBUG !NDEBUG
-#endif
-
-#if DEBUG
-    #if defined(_WIN32)
-        #pragma message("Debug mode detected")
-    #endif
-#else
-    #if defined(_WIN32)
-        #pragma message("Not debug mode detected")
-    #endif
-#endif
-
 
 #define _CFGO_CAT(v1, v2) v1##v2
 #define CFGO_CAT(v1, v2) _CFGO_CAT(v1, v2)
