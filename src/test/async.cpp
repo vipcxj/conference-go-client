@@ -42,21 +42,25 @@ TEST(Chan, CloseChan) {
     EXPECT_FALSE(is_valid_close_chan(INVALID_CLOSE_CHAN));
 }
 
-TEST(Chan, CloseChanTimeoutNoLeak) {
+TEST(Chan, CloseChanNoLeak) {
     using namespace cfgo;
     do_async([]() -> asio::awaitable<void> {
+        weak_close_chan weak_closer;
         {
             close_chan closer {};
+            weak_closer = closer.weak();
             EXPECT_EQ(1, closer.ref_count());
             closer.set_timeout(std::chrono::milliseconds { 20 });
             co_await closer.init_timer();
             EXPECT_GT(closer.ref_count(), 1);
             co_await closer.await();
-            EXPECT_EQ(1, closer.ref_count());
             EXPECT_TRUE(closer.is_closed());
+            EXPECT_EQ(1, closer.ref_count());
         }
+        EXPECT_TRUE(weak_closer.expired());
         {
             close_chan closer {};
+            weak_closer = closer.weak();
             unique_void_chan ch {};
             EXPECT_EQ(1, closer.ref_count());
             closer.set_timeout(std::chrono::milliseconds { 30 });
@@ -64,10 +68,16 @@ TEST(Chan, CloseChanTimeoutNoLeak) {
             co_await chan_read<void>(ch, closer);
             EXPECT_GT(closer.ref_count(), 1);
             EXPECT_TRUE(!closer.is_closed());
-            co_await wait_timeout(std::chrono::milliseconds { 100 });
-            EXPECT_EQ(1, closer.ref_count());
-            EXPECT_TRUE(closer.is_closed());
         }
+        co_await wait_timeout(std::chrono::milliseconds { 100 });
+        EXPECT_TRUE(weak_closer.expired());
+        close_chan closer {};
+        {
+            auto child = closer.create_child();
+            weak_closer = child.weak();
+            EXPECT_EQ(1, child.ref_count());
+        }
+        EXPECT_TRUE(weak_closer.expired());
     }, true);
 }
 
@@ -647,19 +657,20 @@ TEST(Closer, ParentAndChildrenCloseTogether) {
     using namespace cfgo;
     std::random_device rd {};
     std::mt19937 gen(rd());
-    std::vector<close_chan> closers {};
+    std::vector<close_chan> parents {};
+    std::vector<close_chan> children {};
     for (size_t i = 0; i < 100; i++)
     {
         close_chan parent {};
-        closers.push_back(parent);
+        parents.push_back(parent);
         for (size_t i = 0; i < 10; i++)
         {
             auto child = parent.create_child();
-            closers.push_back(child);
+            children.push_back(child);
         }
     }
-    std::shuffle(closers.begin(), closers.end(), gen);
-    for (auto && closer : closers)
+    std::shuffle(parents.begin(), parents.end(), gen);
+    for (auto && closer : parents)
     {
         std::thread([closer]() {
             std::this_thread::sleep_for(std::chrono::milliseconds {100});
@@ -667,6 +678,14 @@ TEST(Closer, ParentAndChildrenCloseTogether) {
         }).detach();
     }
     std::this_thread::sleep_for(std::chrono::milliseconds {1000});
+    for (auto && closer : parents)
+    {
+        EXPECT_TRUE(closer.is_closed());
+    }
+    for (auto && closer : children)
+    {
+        EXPECT_TRUE(closer.is_closed());
+    }
 }
 
 TEST(Closer, DependOnSelf) {

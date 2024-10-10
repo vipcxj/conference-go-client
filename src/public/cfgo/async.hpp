@@ -20,8 +20,10 @@
 namespace cfgo
 {
     class CloseSignal;
+    class WeakCloseSignal;
     using close_chan = CloseSignal;
     using close_chan_ptr = std::shared_ptr<close_chan>;
+    using weak_close_chan = WeakCloseSignal;
     extern close_chan INVALID_CLOSE_CHAN;
 
     struct CloserGuard;
@@ -152,8 +154,25 @@ namespace cfgo
         std::weak_ptr<detail::CloseSignalState> m_state;
         WeakCloseSignal(std::weak_ptr<detail::CloseSignalState> state): m_state(state) {}
     public:
+        WeakCloseSignal() = default;
+        WeakCloseSignal(const WeakCloseSignal &) = default;
+        WeakCloseSignal(WeakCloseSignal &&) = default;
+        WeakCloseSignal & operator = (const WeakCloseSignal &) = default;
+        WeakCloseSignal & operator = (WeakCloseSignal &&) = default;
         CloseSignal lock() const noexcept {
             return CloseSignal{m_state.lock()};
+        }
+        bool expired() const noexcept {
+            return m_state.expired();
+        }
+        long use_count() const noexcept {
+            return m_state.use_count();
+        }
+        bool owner_before(const WeakCloseSignal & weak_ptr) const noexcept {
+            return m_state.owner_before(weak_ptr.m_state);
+        }
+        bool owner_before(const CloseSignal & ptr) const noexcept {
+            return m_state.owner_before(ptr.m_state);
         }
         friend class CloseSignal;
     };
@@ -1169,6 +1188,7 @@ namespace cfgo
         do
         {
             close_chan timeout_closer = close_ch.create_child();
+            close_guard cg(timeout_closer);
             timeout_closer.set_timeout(timeout, std::string(timeout_reason));
             bool timeout = false;
             try

@@ -522,6 +522,7 @@ namespace cfgo
             auto self = shared_from_this();
             CFGO_SELF_TRACE("sending {} msg with id {} and ack {}", msg->evt(), msg->msg_id(), msg->ack());
             closer = closer.create_child();
+            close_guard cg(closer);
             register_listen_closer(closer);
             DEFER({
                 unregister_peer_closer(closer);
@@ -1133,6 +1134,7 @@ namespace cfgo
                             auto start_pt = std::chrono::high_resolution_clock::now();
                             auto msg_id = self->m_next_ping_msg_id ++;
                             auto timeout_closer = closer.create_child();
+                            close_guard cg(timeout_closer);
                             timeout_closer.set_timeout(timeout);
                             auto cb_id = self->_on_pong([pong_ch, msg_id, room, socket_id](PongMsgPtr pong) -> bool {
                                 if (pong->msgId == msg_id && pong->router.socketFrom == socket_id && pong->router.room == room)
@@ -1223,6 +1225,7 @@ namespace cfgo
                         {
                             auto start_pt = std::chrono::high_resolution_clock::now();
                             auto timeout_closer = closer.create_child();
+                            close_guard cg(timeout_closer);
                             timeout_closer.set_timeout(timeout);
                             auto ping_res = co_await chan_read<PingMsgPtr>(ping_ch, timeout_closer);
                             if (ping_res)

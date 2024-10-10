@@ -198,6 +198,7 @@ namespace cfgo
         struct CloseSignalState : public std::enable_shared_from_this<CloseSignalState>
         {
             using Ptr = std::shared_ptr<CloseSignalState>;
+            using WeakPtr = std::weak_ptr<CloseSignalState>;
             using Waiter = CloseSignal::Waiter;
 
             bool m_closed = false;
@@ -213,8 +214,8 @@ namespace cfgo
             std::shared_ptr<asio::steady_timer> m_timer = nullptr;
             std::list<Waiter> m_waiters;
             std::list<Waiter> m_stop_waiters;
-            std::weak_ptr<CloseSignalState> m_parent;
-            std::list<Ptr> m_children;
+            WeakPtr m_parent;
+            std::list<WeakPtr> m_children;
 
             CloseSignalState(
             #if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
@@ -490,7 +491,7 @@ namespace cfgo
             {
                 return;
             }
-            std::list<Ptr> children;
+            std::list<WeakPtr> children;
             std::weak_ptr<CloseSignalState> weak_parent;
             {
                 std::lock_guard lock(m_mutex);
@@ -504,9 +505,12 @@ namespace cfgo
             {
                 parent->remove_me(this);
             }
-            for (auto & child : children)
+            for (auto & weak_child : children)
             {
-                child->close(is_timeout, reason, src_loc);
+                if (auto child = weak_child.lock())
+                {
+                    child->close(is_timeout, reason, src_loc);
+                }
             }
         }
 
@@ -527,7 +531,7 @@ namespace cfgo
             {
                 return;
             }
-            std::list<Ptr> children {};
+            std::list<WeakPtr> children {};
             {
                 std::lock_guard lock(m_mutex);
                 if (!m_closed && !m_stop)
@@ -553,9 +557,12 @@ namespace cfgo
                     children = m_children;
                 }
             }
-            for (auto && child : children)
+            for (auto && weak_child : children)
             {
-                child->stop(stop_timer);
+                if (auto child = weak_child.lock())
+                {
+                    child->stop(stop_timer);
+                }
             }
         }
 
@@ -565,7 +572,7 @@ namespace cfgo
             {
                 return;
             }
-            std::list<Ptr> children {};
+            std::list<WeakPtr> children {};
             {
                 std::lock_guard lock(m_mutex);
                 if (m_stop)
@@ -588,9 +595,12 @@ namespace cfgo
                     children = m_children;
                 }
             }
-            for (auto && child : children)
+            for (auto && weak_child : children)
             {
-                child->resume();
+                if (auto child = weak_child.lock())
+                {
+                    child->resume();
+                }
             }
         }
 
@@ -696,7 +706,16 @@ namespace cfgo
                 return;
             }
             m_children.erase(
-                std::remove_if(m_children.begin(), m_children.end(), [child](auto && v) { return v.get() == child; }),
+                std::remove_if(m_children.begin(), m_children.end(), [child](auto && v) {
+                    if (auto ptr = v.lock())
+                    {
+                        return ptr.get() == child;
+                    }
+                    else
+                    {
+                        return true;
+                    }
+                }),
                 m_children.end()
             );
         }

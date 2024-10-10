@@ -463,6 +463,7 @@ namespace cfgo
                         }
                         tasks.add_task(fix_async_lambda([blocker = blocker.m_blocker, timeout = m_conf.block_timeout](close_chan closer) -> asio::awaitable<void> {
                             auto child_closer = closer.create_child();
+                            close_guard cg(child_closer);
                             child_closer.set_timeout(timeout);
                             blocker->request_block();
                             if (!co_await blocker->sync(child_closer))

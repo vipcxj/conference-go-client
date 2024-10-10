@@ -272,6 +272,7 @@ TEST(Signal, SendParallelismMessage) {
             }), asio::detached);
         }
         auto timeouter = closer.create_child();
+        close_guard cg(timeouter);
         auto successes = 0;
         timeouter.set_timeout(std::chrono::seconds {10});
         for (size_t i = 0; i < count; i++)
