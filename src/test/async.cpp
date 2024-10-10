@@ -659,6 +659,7 @@ TEST(Closer, ParentAndChildrenCloseTogether) {
     std::mt19937 gen(rd());
     std::vector<close_chan> parents {};
     std::vector<close_chan> children {};
+    std::vector<std::thread> threads {};
     for (size_t i = 0; i < 100; i++)
     {
         close_chan parent {};
@@ -672,12 +673,15 @@ TEST(Closer, ParentAndChildrenCloseTogether) {
     std::shuffle(parents.begin(), parents.end(), gen);
     for (auto && closer : parents)
     {
-        std::thread([closer]() {
+        threads.push_back(std::thread([closer]() {
             std::this_thread::sleep_for(std::chrono::milliseconds {100});
             closer.close();
-        }).detach();
+        }));
     }
-    std::this_thread::sleep_for(std::chrono::milliseconds {1000});
+    for (auto && thread : threads)
+    {
+        thread.join();
+    }
     for (auto && closer : parents)
     {
         EXPECT_TRUE(closer.is_closed());

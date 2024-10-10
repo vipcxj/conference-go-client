@@ -65,49 +65,104 @@ namespace cfgo
         CloseSignal(const std::shared_ptr<detail::CloseSignalState> & state);
         CloseSignal(std::shared_ptr<detail::CloseSignalState> && state);
     public:
+
+        class WaiterList;
         class Waiter {
         public:
-            using iter_t = std::list<unique_void_chan>::const_iterator;
+            using Ptr = std::shared_ptr<Waiter>;
+            using WPtr = std::weak_ptr<Waiter>;
+            Waiter() {}
+            Waiter(const Waiter &) = delete;
+            Waiter(Waiter &&) = delete;
+            Waiter & operator = (const Waiter &) = delete;
+            Waiter & operator = (Waiter &&) = delete;
+            const unique_void_chan & ch() const
+            {
+                return m_ch;
+            }
+            auto read() const
+            {
+                return m_ch.read();
+            }
         private:
-            std::optional<iter_t> m_iter;
+            unique_void_chan m_ch {};
+            Ptr m_next {};
+            WPtr m_prev {};
+            friend class WaiterList;
+        };
+
+        class WaiterList
+        {
+            Waiter::Ptr m_head {};
+            Waiter::Ptr m_tail {};
         public:
-            Waiter(): m_iter(std::nullopt) {}
-            Waiter(const iter_t & iter): m_iter(std::make_optional(iter)) {}
-            Waiter(const Waiter &) = default;
-            Waiter(Waiter &&) = default;
-            Waiter & operator = (const Waiter &) = default;
-            Waiter & operator = (Waiter &&) = default;
-            operator bool() const noexcept
+            bool empty() const noexcept
             {
-                return m_iter.has_value();
+                return !m_head;
             }
-            const unique_void_chan & operator *() const
+            Waiter::Ptr head() const noexcept
             {
-                return *(m_iter.value());
+                return m_head;
             }
-            auto operator -> () const
+            Waiter::Ptr add()
             {
-                return m_iter.value();
+                auto waiter = std::make_shared<Waiter>();
+                if (empty())
+                {
+                    m_head = waiter;
+                }
+                else
+                {
+                    m_tail->m_next = waiter;
+                    waiter->m_prev = m_tail;
+                }
+                m_tail = waiter;
+                return waiter;
             }
-            friend detail::CloseSignalState;
+            void remove(Waiter::WPtr weak_ptr)
+            {
+                if (auto ptr = weak_ptr.lock())
+                {
+                    if (ptr == m_head)
+                    {
+                        m_head = ptr->m_next;
+                    }
+                    if (ptr == m_tail)
+                    {
+                        m_tail = ptr->m_prev.lock();
+                    }
+                    if (auto prev = ptr->m_prev.lock())
+                    {
+                        prev->m_next = ptr->m_next;
+                    }
+                    if (auto next = ptr->m_next)
+                    {
+                        next->m_prev = ptr->m_prev;
+                    }
+                    ptr->m_next = nullptr;
+                    ptr->m_prev = Waiter::WPtr {};
+                }
+            }
+
+            friend class detail::CloseSignalState;
         };
         struct WaiterGuard
         {
             std::variant<const CloseSignal *, const WeakCloseSignal *> m_closer;
-            const Waiter & m_waiter;
+            Waiter::Ptr m_waiter;
 
-            WaiterGuard(const CloseSignal & closer, const Waiter & waiter);
-            WaiterGuard(const WeakCloseSignal & closer, const Waiter & waiter);
+            WaiterGuard(const CloseSignal & closer, Waiter::Ptr waiter);
+            WaiterGuard(const WeakCloseSignal & closer, Waiter::Ptr waiter);
             ~WaiterGuard();
         };
 
         struct StopWaiterGuard
         {
             std::variant<const CloseSignal *, const WeakCloseSignal *> m_closer;
-            const Waiter & m_waiter;
+            const Waiter::Ptr & m_waiter;
 
-            StopWaiterGuard(const CloseSignal & closer, const Waiter & waiter);
-            StopWaiterGuard(const WeakCloseSignal & closer, const Waiter & waiter);
+            StopWaiterGuard(const CloseSignal & closer, Waiter::Ptr waiter);
+            StopWaiterGuard(const WeakCloseSignal & closer, Waiter::Ptr waiter);
             ~StopWaiterGuard();
         };
 
@@ -160,10 +215,10 @@ namespace cfgo
             CloseSignal const& rhs) noexcept -> bool = default;
 
         auto init_timer() const -> asio::awaitable<void>;
-        [[nodiscard]] auto get_waiter() const -> Waiter;
-        void remove_waiter(const Waiter &) const;
-        [[nodiscard]] auto get_stop_waiter() const -> Waiter;
-        void remove_stop_waiter(const Waiter &) const;
+        [[nodiscard]] auto get_waiter() const -> Waiter::Ptr;
+        void remove_waiter(const Waiter::Ptr &) const;
+        [[nodiscard]] auto get_stop_waiter() const -> Waiter::Ptr;
+        void remove_stop_waiter(const Waiter::Ptr &) const;
         [[nodiscard]] const char * get_close_reason() const noexcept;
         [[nodiscard]] std::source_location get_close_source_location() const noexcept;
         [[nodiscard]] auto depend_on(close_chan closer, std::string reason = "", std::source_location src_loc = std::source_location::current()) const -> asio::awaitable<void>;
@@ -861,12 +916,12 @@ namespace cfgo
                 {   
                     auto && res = co_await select_(
                         combine_read_op(
-                            asiochan::ops::read(*waiter),
+                            asiochan::ops::read(waiter->ch()),
                             std::forward<First_Op>(first_op)
                         ),
                         std::forward<Ops>(other_ops)...
                     );
-                    if (res.received_from(*waiter))
+                    if (res.received_from(waiter->ch()))
                     {
                         if (!close_ch.is_closed())
                         {
@@ -891,11 +946,11 @@ namespace cfgo
                 else
                 {
                     auto res = co_await select_(
-                        asiochan::ops::read(*waiter),
+                        asiochan::ops::read(waiter->ch()),
                         std::forward<First_Op>(first_op),
                         std::forward<Ops>(other_ops)...
                     );
-                    if (res.received_from(*waiter))
+                    if (res.received_from(waiter->ch()))
                     {
                         co_return make_canceled_select_result<First_Op, Ops...>();
                     }
@@ -947,12 +1002,12 @@ namespace cfgo
                 {   
                     auto && res = co_await select_(
                         combine_read_op(
-                            asiochan::ops::read(*waiter),
+                            asiochan::ops::read(waiter->ch()),
                             std::forward<First_Op>(first_op)
                         ),
                         std::forward<Ops>(other_ops)...
                     );
-                    if (res.received_from(*waiter))
+                    if (res.received_from(waiter->ch()))
                     {
                         throw CancelError(close_ch);
                     }
@@ -973,11 +1028,11 @@ namespace cfgo
                 else
                 {
                     auto res = co_await select_(
-                        asiochan::ops::read(*waiter),
+                        asiochan::ops::read(waiter->ch()),
                         std::forward<First_Op>(first_op),
                         std::forward<Ops>(other_ops)...
                     );
-                    if (res.received_from(*waiter))
+                    if (res.received_from(waiter->ch()))
                     {
                         throw CancelError(close_ch);
                     }
