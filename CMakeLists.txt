@@ -116,7 +116,6 @@ set(MY_SOURCES
     "${SRC_PATH}/allocator_tracer.cpp"
     "${SRC_PATH}/async.cpp"
     "${SRC_PATH}/async_locker.cpp"
-    "${SRC_PATH}/basesink.cpp"
     "${SRC_PATH}/error.cpp"
     "${SRC_PATH}/log.cpp"
     "${SRC_PATH}/measure.cpp"
