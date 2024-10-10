@@ -4,6 +4,7 @@
 #include <chrono>
 #include <mutex>
 #include <vector>
+#include <list>
 #include <unordered_set>
 #include <unordered_map>
 #include <atomic>
@@ -64,7 +65,52 @@ namespace cfgo
         CloseSignal(const std::shared_ptr<detail::CloseSignalState> & state);
         CloseSignal(std::shared_ptr<detail::CloseSignalState> && state);
     public:
-        using Waiter = asiochan::channel<void, 1>;
+        class Waiter {
+        public:
+            using iter_t = std::list<unique_void_chan>::const_iterator;
+        private:
+            std::optional<iter_t> m_iter;
+        public:
+            Waiter(): m_iter(std::nullopt) {}
+            Waiter(const iter_t & iter): m_iter(std::make_optional(iter)) {}
+            Waiter(const Waiter &) = default;
+            Waiter(Waiter &&) = default;
+            Waiter & operator = (const Waiter &) = default;
+            Waiter & operator = (Waiter &&) = default;
+            operator bool() const noexcept
+            {
+                return m_iter.has_value();
+            }
+            const unique_void_chan & operator *() const
+            {
+                return *(m_iter.value());
+            }
+            auto operator -> () const
+            {
+                return m_iter.value();
+            }
+            friend detail::CloseSignalState;
+        };
+        struct WaiterGuard
+        {
+            std::variant<const CloseSignal *, const WeakCloseSignal *> m_closer;
+            const Waiter & m_waiter;
+
+            WaiterGuard(const CloseSignal & closer, const Waiter & waiter);
+            WaiterGuard(const WeakCloseSignal & closer, const Waiter & waiter);
+            ~WaiterGuard();
+        };
+
+        struct StopWaiterGuard
+        {
+            std::variant<const CloseSignal *, const WeakCloseSignal *> m_closer;
+            const Waiter & m_waiter;
+
+            StopWaiterGuard(const CloseSignal & closer, const Waiter & waiter);
+            StopWaiterGuard(const WeakCloseSignal & closer, const Waiter & waiter);
+            ~StopWaiterGuard();
+        };
+
         CloseSignal(std::nullptr_t);
         CloseSignal(
         #if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
@@ -114,8 +160,10 @@ namespace cfgo
             CloseSignal const& rhs) noexcept -> bool = default;
 
         auto init_timer() const -> asio::awaitable<void>;
-        [[nodiscard]] auto get_waiter() const -> std::optional<Waiter>;
-        [[nodiscard]] auto get_stop_waiter() const -> std::optional<Waiter>;
+        [[nodiscard]] auto get_waiter() const -> Waiter;
+        void remove_waiter(const Waiter &) const;
+        [[nodiscard]] auto get_stop_waiter() const -> Waiter;
+        void remove_stop_waiter(const Waiter &) const;
         [[nodiscard]] const char * get_close_reason() const noexcept;
         [[nodiscard]] std::source_location get_close_source_location() const noexcept;
         [[nodiscard]] auto depend_on(close_chan closer, std::string reason = "", std::source_location src_loc = std::source_location::current()) const -> asio::awaitable<void>;
@@ -124,6 +172,9 @@ namespace cfgo
         friend class detail::CloseSignalState;
         friend class WeakCloseSignal;
     };
+
+    using close_waiter_guard = CloseSignal::WaiterGuard;
+    using stop_waiter_guard = CloseSignal::StopWaiterGuard;
 
     struct CloserGuard {
         close_chan m_closer;
@@ -175,6 +226,7 @@ namespace cfgo
             return m_state.owner_before(ptr.m_state);
         }
         friend class CloseSignal;
+        friend class detail::CloseSignalState;
     };
 
     inline bool is_valid_close_chan(const close_chan & ch) noexcept {
@@ -802,18 +854,19 @@ namespace cfgo
         if (close_ch)
         {
             co_await close_ch.init_timer();
-            if (auto waiter_opt = close_ch.get_waiter())
+            if (auto waiter = close_ch.get_waiter())
             {
+                close_waiter_guard cwg(close_ch, waiter);
                 if constexpr (is_void_read_op<First_Op>)
                 {   
                     auto && res = co_await select_(
                         combine_read_op(
-                            asiochan::ops::read(*waiter_opt),
+                            asiochan::ops::read(*waiter),
                             std::forward<First_Op>(first_op)
                         ),
                         std::forward<Ops>(other_ops)...
                     );
-                    if (res.received_from(*waiter_opt))
+                    if (res.received_from(*waiter))
                     {
                         if (!close_ch.is_closed())
                         {
@@ -825,6 +878,7 @@ namespace cfgo
                     {
                         if (auto stop_waiter = close_ch.get_stop_waiter())
                         {
+                            stop_waiter_guard swg(close_ch, stop_waiter);
                             co_await stop_waiter->read();
                         }
                         if (close_ch.is_closed() && !close_ch.is_timeout())
@@ -837,11 +891,11 @@ namespace cfgo
                 else
                 {
                     auto res = co_await select_(
-                        asiochan::ops::read(*waiter_opt),
+                        asiochan::ops::read(*waiter),
                         std::forward<First_Op>(first_op),
                         std::forward<Ops>(other_ops)...
                     );
-                    if (res.received_from(*waiter_opt))
+                    if (res.received_from(*waiter))
                     {
                         co_return make_canceled_select_result<First_Op, Ops...>();
                     }
@@ -849,6 +903,7 @@ namespace cfgo
                     {
                         if (auto stop_waiter = close_ch.get_stop_waiter())
                         {
+                            stop_waiter_guard swg(close_ch, stop_waiter);
                             co_await stop_waiter->read();
                         }
                         if (close_ch.is_closed() && !close_ch.is_timeout())
@@ -882,21 +937,22 @@ namespace cfgo
         {
             static_assert(none_is_void_read_op<Ops...>(), "None of other_ops could be asiochan::ops::read<void>, use first_op instead.");
         }
-        if (is_valid_close_chan(close_ch))
+        if (close_ch)
         {
             co_await close_ch.init_timer();
-            if (auto waiter_opt = close_ch.get_waiter())
+            if (auto waiter = close_ch.get_waiter())
             {
+                close_waiter_guard cwg(close_ch, waiter);
                 if constexpr (is_void_read_op<First_Op>)
                 {   
                     auto && res = co_await select_(
                         combine_read_op(
-                            asiochan::ops::read(*waiter_opt),
+                            asiochan::ops::read(*waiter),
                             std::forward<First_Op>(first_op)
                         ),
                         std::forward<Ops>(other_ops)...
                     );
-                    if (res.received_from(*waiter_opt))
+                    if (res.received_from(*waiter))
                     {
                         throw CancelError(close_ch);
                     }
@@ -904,6 +960,7 @@ namespace cfgo
                     {
                         if (auto stop_waiter = close_ch.get_stop_waiter())
                         {
+                            stop_waiter_guard swg(close_ch, stop_waiter);
                             co_await stop_waiter->read();
                         }
                         if (close_ch.is_closed() && !close_ch.is_timeout())
@@ -916,11 +973,11 @@ namespace cfgo
                 else
                 {
                     auto res = co_await select_(
-                        asiochan::ops::read(*waiter_opt),
+                        asiochan::ops::read(*waiter),
                         std::forward<First_Op>(first_op),
                         std::forward<Ops>(other_ops)...
                     );
-                    if (res.received_from(*waiter_opt))
+                    if (res.received_from(*waiter))
                     {
                         throw CancelError(close_ch);
                     }
@@ -928,6 +985,7 @@ namespace cfgo
                     {
                         if (auto stop_waiter = close_ch.get_stop_waiter())
                         {
+                            stop_waiter_guard swg(close_ch, stop_waiter);
                             co_await stop_waiter->read();
                         }
                         if (close_ch.is_closed() && !close_ch.is_timeout())

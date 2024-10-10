@@ -100,7 +100,7 @@ namespace cfgo
 
     public:
         using closer_tracer_entries_type = std::unordered_map<std::uintptr_t, closer_tracer_entry>;
-        using closer_tracer_locs_type = std::unordered_map<std::size_t, std::size_t>;
+        using closer_tracer_locs_type = std::unordered_map<loc_id_type, std::size_t>;
 
     private:
         struct closer_tracer_ref
@@ -128,11 +128,11 @@ namespace cfgo
     public:
 
         static void ctor(
+        #ifdef CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES
             std::uintptr_t key,
-            std::uintptr_t parent
-            #ifdef CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES
-            , std::source_location src_loc
-            #endif
+            std::uintptr_t parent,
+            std::source_location src_loc
+        #endif
         ) noexcept
         {
             auto tracer = global_closer_tracer();
@@ -155,24 +155,26 @@ namespace cfgo
             #endif
         }
 
-        static void dtor(std::uintptr_t key) noexcept
+        static void dtor(
+        #ifdef CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES
+            std::uintptr_t key
+        #endif
+        ) noexcept
         {
             auto tracer = global_closer_tracer();
             tracer.ref_count --;
             #ifdef CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES
+            std::lock_guard lk(tracer.mux);
+            auto iter = tracer.entries.find(key);
+            if (iter != tracer.entries.end())
             {
-                std::lock_guard lk(tracer.mux);
-                auto iter = tracer.entries.find(key);
-                if (iter != tracer.entries.end())
+                auto ctr_id = iter->second.ctr_loc_id;
+                tracer.entries.erase(iter);
+                auto & ctr_ref_count = tracer.locs[ctr_id];
+                -- ctr_ref_count;
+                if (ctr_ref_count == 0)
                 {
-                    auto ctr_id = iter->second.ctr_loc_id;
-                    tracer.entries.erase(iter);
-                    auto & ctr_ref_count = tracer.locs[ctr_id];
-                    -- ctr_ref_count;
-                    if (ctr_ref_count == 0)
-                    {
-                        tracer.locs.erase(ctr_id);
-                    }
+                    tracer.locs.erase(ctr_id);
                 }
             }
             #endif

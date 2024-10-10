@@ -1,6 +1,6 @@
 {
   "name": "asiochan",
-  "version": "0.4.8",
+  "version": "0.4.9",
   "description": "Go-like channels for ASIO C++20 coroutines",
   "homepage": "https://github.com/vipcxj/asiochan",
   "dependencies": [
@@ -39,6 +39,9 @@
     },
     "ch-allocator-tracer": {
       "description": "enable channel allocator tracer"
+    },
+    "ch-allocator-tracer-full": {
+      "description": "enable full features channel allocator tracer"
     }
   }
 }
