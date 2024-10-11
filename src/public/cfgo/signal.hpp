@@ -1,5 +1,5 @@
-#ifndef _CFGO_IMPL_SIGNAL_HPP_
-#define _CFGO_IMPL_SIGNAL_HPP_
+#ifndef _CFGO_SIGNAL_HPP_
+#define _CFGO_SIGNAL_HPP_
 
 #include "cfgo/async.hpp"
 #include "cfgo/utils.hpp"

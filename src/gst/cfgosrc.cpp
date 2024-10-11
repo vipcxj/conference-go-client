@@ -877,14 +877,14 @@ namespace cfgo
             CFGO_SELF_DEBUG("The first {} data arrived in session {}.", msg_type, session.m_id);
             do
             {
-                unique_void_chan ch;
+                cfgo::state_notifier::unique_receiver_t receiver;
                 if (msg_type == Track::MsgType::RTP)
                 {
-                    ch = session.m_rtp_data_notifier.make_notfiy_receiver();
+                    receiver = session.m_rtp_data_notifier.make_notfiy_receiver();
                 }
                 else
                 {
-                    ch = session.m_rtcp_data_notifier.make_notfiy_receiver();
+                    receiver = session.m_rtcp_data_notifier.make_notfiy_receiver();
                 }
                 do
                 {
@@ -1074,7 +1074,7 @@ namespace cfgo
                     }
                 } while (true);
 
-                co_await chan_read_or_throw<void>(ch, m_close_ch);
+                co_await chan_read_or_throw<void>(*receiver, m_close_ch);
             } while (true);
         }
 

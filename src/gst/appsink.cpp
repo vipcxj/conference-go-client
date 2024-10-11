@@ -179,7 +179,7 @@ namespace cfgo
                 GstSampleSPtr sample_ptr = nullptr;
                 do
                 {
-                    auto ch = m_sample_or_eos_notifier.make_notfiy_receiver();
+                    auto receiver = m_sample_or_eos_notifier.make_notfiy_receiver();
                     {
                         std::lock_guard lk(m_mutex);
                         if (!m_cache.empty() || m_eos)
@@ -192,7 +192,7 @@ namespace cfgo
                             break;
                         }
                     }
-                    co_await chan_read_or_throw<void>(ch, closer);
+                    co_await chan_read_or_throw<void>(*receiver, closer);
                 } while (true);
                 co_return sample_ptr;
             }

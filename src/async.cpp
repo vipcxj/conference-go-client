@@ -200,7 +200,9 @@ namespace cfgo
             using Ptr = std::shared_ptr<CloseSignalState>;
             using WeakPtr = std::weak_ptr<CloseSignalState>;
             using Waiter = CloseSignal::Waiter;
+            using WaiterPtr = CloseSignal::WaiterPtr;
             using WaiterList = CloseSignal::WaiterList;
+            using UniqueWaiter = CloseSignal::UniqueWaiter;
 
             bool m_closed = false;
             std::string m_close_reason;
@@ -242,9 +244,7 @@ namespace cfgo
 
             void init_timer(asio::execution::executor auto executor);
 
-            auto get_waiter() -> Waiter::Ptr;
-
-            void remove_waiter(const Waiter::Ptr & waiter);
+            auto get_waiter() -> UniqueWaiter;
 
             void _close_self(bool is_timeout, std::string reason, std::source_location src_loc);
 
@@ -256,9 +256,7 @@ namespace cfgo
 
             void resume();
 
-            auto get_stop_waiter() -> Waiter::Ptr;
-
-            void remove_stop_waiter(const Waiter::Ptr & waiter);
+            auto get_stop_waiter() -> UniqueWaiter;
 
             void _set_timeout(duration_t dur, std::string reason, std::source_location src_loc);
 
@@ -277,17 +275,16 @@ namespace cfgo
                 auto self = shared_from_this();
                 auto executor = co_await asio::this_coro::executor;
                 asio::co_spawn(executor, fix_async_lambda([weak_self = self->weak_from_this(), weak_closer = closer.weak(), reason = std::move(reason), src_loc = std::move(src_loc)]() -> asio::awaitable<void> {
-                    Waiter::Ptr waiter;
+                    UniqueWaiter waiter;
                     if (auto self = weak_self.lock())
                     {
                         waiter = self->get_waiter();
                     }
                     if (waiter)
                     {
-                        close_waiter_guard cwg(weak_self, waiter);
                         if (auto closer = weak_closer.lock())
                         {
-                            co_await chan_read<void>(waiter->ch(), closer);
+                            co_await chan_read<void>(*waiter, closer);
                             if (auto self = weak_self.lock())
                             {
                                 if (closer.is_closed() && !self->m_closed)
@@ -329,7 +326,6 @@ namespace cfgo
                     auto waiter = self->get_waiter();
                     if (waiter)
                     {
-                        close_waiter_guard cwg(self, waiter);
                         co_await waiter->read();
                         co_await cb();
                     }
@@ -444,23 +440,14 @@ namespace cfgo
             }
         }
 
-        auto CloseSignalState::get_waiter() -> Waiter::Ptr
+        auto CloseSignalState::get_waiter() -> UniqueWaiter
         {
             std::lock_guard lock(m_mutex);
             if (m_closed)
             {
                 return {};
             }
-            return m_waiters.add();
-        }
-
-        void CloseSignalState::remove_waiter(const Waiter::Ptr & waiter)
-        {
-            if (waiter)
-            {
-                std::lock_guard lock(m_mutex);
-                m_waiters.remove(waiter);
-            }
+            return { m_waiters, m_waiters.add(unique_void_chan {}) };
         }
 
         void CloseSignalState::_close_self(bool is_timeout, std::string reason, std::source_location src_loc)
@@ -484,18 +471,12 @@ namespace cfgo
             {
                 m_timer->cancel();
             }
-            while (!m_waiters.empty())
-            {
-                auto waiter = m_waiters.head();
-                chan_must_write(waiter->ch());
-                m_waiters.remove(waiter);
-            }
-            while (!m_stop_waiters.empty())
-            {
-                auto waiter = m_stop_waiters.head();
-                chan_must_write(waiter->ch());
-                m_stop_waiters.remove(waiter);
-            }
+            m_waiters.consume_all([](const unique_void_chan & ch) {
+                chan_must_write(ch);
+            });
+            m_stop_waiters.consume_all([](const unique_void_chan & ch) {
+                chan_must_write(ch);
+            });
         }
 
         void CloseSignalState::close(bool is_timeout, std::string reason, std::source_location src_loc)
@@ -591,12 +572,9 @@ namespace cfgo
                 if (m_stop)
                 {
                     m_stop = false;
-                    while (!m_stop_waiters.empty())
-                    {
-                        auto waiter = m_stop_waiters.head();
-                        chan_must_write(waiter->ch());
-                        m_stop_waiters.remove(waiter);
-                    }
+                    m_stop_waiters.consume_all([](const unique_void_chan & ch) {
+                        chan_must_write(ch);
+                    });
                     if (m_stop_timeout > duration_t {0})
                     {
                         _set_timeout(m_stop_timeout, std::move(m_timeout_reason), std::move(m_timeout_src_loc));
@@ -614,23 +592,14 @@ namespace cfgo
             }
         }
 
-        auto CloseSignalState::get_stop_waiter() -> Waiter::Ptr
+        auto CloseSignalState::get_stop_waiter() -> UniqueWaiter
         {
             std::lock_guard lock(m_mutex);
             if (!m_stop)
             {
                 return {};
             }
-            return m_stop_waiters.add();
-        }
-
-        void CloseSignalState::remove_stop_waiter(const Waiter::Ptr & waiter)
-        {
-            if (waiter)
-            {
-                std::lock_guard lock(m_mutex);
-                m_stop_waiters.remove(waiter);
-            }
+            return { m_stop_waiters, m_stop_waiters.add(unique_void_chan {}) };
         }
 
         void CloseSignalState::_set_timeout(duration_t dur, std::string reason, std::source_location src_loc)
@@ -767,7 +736,7 @@ namespace cfgo
             return WeakCloseSignal{m_state};
     }
 
-    auto CloseSignal::get_waiter() const -> Waiter::Ptr
+    auto CloseSignal::get_waiter() const -> UniqueWaiter
     {
         if (m_state)
         {
@@ -780,15 +749,7 @@ namespace cfgo
         }
     }
 
-    void CloseSignal::remove_waiter(const Waiter::Ptr & waiter) const
-    {
-        if (m_state)
-        {
-            m_state->remove_waiter(waiter);
-        }
-    }
-
-    auto CloseSignal::get_stop_waiter() const -> Waiter::Ptr
+    auto CloseSignal::get_stop_waiter() const -> UniqueWaiter
     {
         if (m_state)
         {
@@ -798,14 +759,6 @@ namespace cfgo
         {
             // never stop.
             return {};
-        }
-    }
-
-    void CloseSignal::remove_stop_waiter(const Waiter::Ptr & waiter) const
-    {
-        if (m_state)
-        {
-            m_state->remove_stop_waiter(waiter);
         }
     }
 
@@ -909,7 +862,6 @@ namespace cfgo
         co_await init_timer();
         if (auto waiter = get_waiter())
         {
-            WaiterGuard wg(*this, waiter);
             co_await waiter->read();
         }
         co_return !is_timeout();
@@ -946,41 +898,6 @@ namespace cfgo
         co_return;
     }
 
-            
-    CloseSignal::WaiterGuard::WaiterGuard(const CloseSignal & closer, Waiter::Ptr waiter): m_closer(&closer), m_waiter(std::move(waiter)) {}
-    CloseSignal::WaiterGuard::WaiterGuard(const WeakCloseSignal & closer, Waiter::Ptr waiter): m_closer(&closer), m_waiter(std::move(waiter)) {}
-    CloseSignal::WaiterGuard::~WaiterGuard()
-    {
-        std::visit(magic::overloaded {
-            [&](const CloseSignal * closer) {
-                closer->remove_waiter(m_waiter);
-            },
-            [&](const WeakCloseSignal * weak_closer) {
-                if (auto closer = weak_closer->lock())
-                {
-                    closer.remove_waiter(m_waiter);
-                }
-            }
-        }, m_closer);
-    }
-
-    CloseSignal::StopWaiterGuard::StopWaiterGuard(const CloseSignal & closer, Waiter::Ptr waiter): m_closer(&closer), m_waiter(std::move(waiter)) {}
-    CloseSignal::StopWaiterGuard::StopWaiterGuard(const WeakCloseSignal & closer, Waiter::Ptr waiter): m_closer(&closer), m_waiter(std::move(waiter)) {}
-    CloseSignal::StopWaiterGuard::~StopWaiterGuard()
-    {
-        std::visit(magic::overloaded {
-            [&](const CloseSignal * closer) {
-                closer->remove_stop_waiter(m_waiter);
-            },
-            [&](const WeakCloseSignal * weak_closer) {
-                if (auto closer = weak_closer->lock())
-                {
-                    closer.remove_stop_waiter(m_waiter);
-                }
-            }
-        }, m_closer);
-    }
-
     auto wrap_cancel(std::function<asio::awaitable<void>()> func) -> asio::awaitable<void> {
         try
         {
@@ -1009,24 +926,20 @@ namespace cfgo
     namespace detail
     {
         struct StateMaybeChangedNotifierState {
-            std::vector<unique_void_chan> m_chs {};
-            mutex m_mux {};
+            using list_t = smart_list<unique_void_chan>;
+            using node_t = list_t::node_t;
+            using unique_node_t = unique_smart_node<unique_void_chan>;
+
+            list_t m_chs {};
 
             void notify() {
-                std::lock_guard lg(m_mux);
-                for (auto & ch : m_chs) {
+                m_chs.consume_all([](const unique_void_chan & ch) {
                     chan_must_write(ch);
-                }
-                m_chs.clear();
+                });
             }
 
-            auto make_notfiy_receiver() -> unique_void_chan {
-                unique_void_chan ch {};
-                {
-                    std::lock_guard lg(m_mux);
-                    m_chs.push_back(ch);
-                }
-                return ch;
+            auto make_notfiy_receiver() -> unique_node_t {
+                return { m_chs, m_chs.add(unique_void_chan {}) };
             }
         };
     } // namespace detail
@@ -1038,7 +951,7 @@ namespace cfgo
         m_state->notify();
     }
 
-    auto StateMaybeChangedNotifier::make_notfiy_receiver() const -> unique_void_chan {
+    auto StateMaybeChangedNotifier::make_notfiy_receiver() const -> unique_receiver_t {
         return m_state->make_notfiy_receiver();
     }
 

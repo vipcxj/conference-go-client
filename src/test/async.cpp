@@ -884,10 +884,10 @@ TEST(StateNotifier, Notify) {
             do_async([nt1, nt2, sum1, sum2, closer]() -> asio::awaitable<void> {
                 do
                 {
-                    auto ch = nt1.make_notfiy_receiver();
+                    auto receiver = nt1.make_notfiy_receiver();
                     sum1->value += 1;
                     nt2.notify();
-                    if (co_await chan_read<void>(ch, closer))
+                    if (co_await chan_read<void>(*receiver, closer))
                     {
                         sum2->value += 1;
                     }
@@ -896,18 +896,19 @@ TEST(StateNotifier, Notify) {
                         break;
                     }
                 } while (true);
+                co_return;
             });
         }
         auto i = 0;
         do
         {
-            auto ch = nt2.make_notfiy_receiver();
+            auto receiver = nt2.make_notfiy_receiver();
             if (sum1->value.load() % 100 == 0)
             {
                 nt1.notify();
                 ++i;
             }
-            if (!co_await chan_read<void>(ch, closer))
+            if (!co_await chan_read<void>(*receiver, closer))
             {
                 break;
             }

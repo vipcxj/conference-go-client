@@ -89,7 +89,7 @@ namespace cfgo
         {
             do
             {
-                auto ch = m_state_notifier.make_notfiy_receiver();
+                auto receiver = m_state_notifier.make_notfiy_receiver();
                 {
                     std::lock_guard g(m_mutex);
                     if (m_block)
@@ -107,7 +107,7 @@ namespace cfgo
                         }
                     }
                 }
-                if (!co_await chan_read<void>(ch, closer))
+                if (!co_await chan_read<void>(*receiver, closer))
                 {
                     co_return false;
                 }
@@ -129,7 +129,7 @@ namespace cfgo
         {
             do
             {
-                auto ch = m_state_notifier.make_notfiy_receiver();
+                auto receiver = m_state_notifier.make_notfiy_receiver();
                 {
                     std::lock_guard g(m_mutex);
                     if (m_blocked)
@@ -154,7 +154,7 @@ namespace cfgo
                         }
                     }
                 }
-                if (!co_await chan_read<void>(ch, closer))
+                if (!co_await chan_read<void>(*receiver, closer))
                 {
                     co_return false;
                 }
@@ -401,7 +401,7 @@ namespace cfgo
             
             do
             {
-                auto ch = m_ready_notifier.make_notfiy_receiver();
+                auto receiver = m_ready_notifier.make_notfiy_receiver();
                 {
                     std::lock_guard lk(m_mutex);
                     batch = _calc_batch();
@@ -416,7 +416,7 @@ namespace cfgo
                         break;
                     }
                 }
-                co_await chan_read_or_throw<void>(ch, closer);
+                co_await chan_read_or_throw<void>(*receiver, closer);
             } while (true);
             
             // After here, m_locked == true

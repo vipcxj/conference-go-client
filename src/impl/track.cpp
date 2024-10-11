@@ -254,12 +254,12 @@ namespace cfgo
             }
             do
             {
-                auto ch = m_state_notifier.make_notfiy_receiver();
+                auto receiver = m_state_notifier.make_notfiy_receiver();
                 if (m_opened || m_closed)
                 {
                     co_return true;
                 }
-                if (!co_await chan_read<void>(ch, closer))
+                if (!co_await chan_read<void>(*receiver, closer))
                 {
                     co_return false;
                 }
@@ -293,12 +293,12 @@ namespace cfgo
             }
             do
             {
-                auto ch = m_state_notifier.make_notfiy_receiver();
+                auto receiver = m_state_notifier.make_notfiy_receiver();
                 if (_is_first_msg_received(msg_type))
                 {
                     co_return true;
                 }
-                if (!co_await chan_read<void>(ch, closer))
+                if (!co_await chan_read<void>(*receiver, closer))
                 {
                     co_return false;
                 }
@@ -313,7 +313,7 @@ namespace cfgo
             }
             do
             {
-                auto ch = m_state_notifier.make_notfiy_receiver();
+                auto receiver = m_state_notifier.make_notfiy_receiver();
                 if (m_closed)
                 {
                     co_return nullptr;
@@ -326,7 +326,7 @@ namespace cfgo
                         co_return std::move(msg_ptr);
                     }
                 }
-                if (!co_await chan_read<void>(ch, close_ch))
+                if (!co_await chan_read<void>(*receiver, close_ch))
                 {
                     co_return nullptr;
                 }
