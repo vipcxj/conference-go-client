@@ -6,6 +6,10 @@
 #include "cfgo/signal.hpp"
 #include "cfgo/token.hpp"
 
+#ifdef CFGO_SIGNAL_ALLOCATOR_TRACER
+#include "cfgo/allocator_tracer.hpp"
+#endif
+
 #define AUTH_HOST "localhost"
 #define AUTH_PORT 3100
 #define SIGNAL_HOST "localhost"
@@ -13,6 +17,28 @@
 
 auto get_token(std::string_view uid, std::string_view room, bool auto_join = false) -> asio::awaitable<std::string> {
     return cfgo::utils::get_token(AUTH_HOST, AUTH_PORT, uid, uid, uid, "test", room, auto_join);
+}
+
+
+auto print_signal_allocator_tracer(cfgo::close_chan closer, std::chrono::nanoseconds wait_time) -> asio::awaitable<void>
+{
+#ifdef CFGO_SIGNAL_ALLOCATOR_TRACER
+    asio::co_spawn(co_await asio::this_coro::executor, [closer = std::move(closer), wait_time]() -> asio::awaitable<void> {
+        do
+        {
+            using tracer = cfgo::signal_allocator_tracer;
+            CFGO_INFO(
+                "raw msg rc: {}, raw acker rc: {}, sig msg rc: {}, sig acker rc: {}",
+                tracer::raw_msg_ref_count(),
+                tracer::raw_acker_ref_count(),
+                tracer::sig_msg_ref_count(),
+                tracer::sig_acker_ref_count()
+            );
+            co_await cfgo::wait_timeout(wait_time, closer);
+        } while (true);
+    }, asio::detached);
+#endif
+    co_return;
 }
 
 void do_async(std::function<asio::awaitable<void>()> func, bool multithread = true) {
@@ -291,9 +317,8 @@ TEST(Signal, KeepAlive) {
     do_async([]() -> asio::awaitable<void> {
         using namespace cfgo;
         close_chan closer {};
-        DEFER({
-            closer.close();
-        });
+        close_guard cg(closer);
+        co_await print_signal_allocator_tracer(closer, std::chrono::milliseconds(200));
         auto token1 = co_await get_token("1", "room", true);
         auto signal1 = make_websocket_signal(closer, cfgo::SignalConfigure{
             .url = fmt::format("ws://{}:{}/ws", SIGNAL_HOST, SIGNAL_PORT),

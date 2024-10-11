@@ -283,8 +283,107 @@ namespace cfgo
         }
         #endif
     };
+
+    class signal_allocator_tracer
+    {
+    private:
+        struct signal_tracer_ref
+        {
+            std::atomic_int64_t& raw_msg_ref_count;
+            std::atomic_int64_t& raw_acker_ref_count;
+            std::atomic_int64_t& sig_msg_ref_count;
+            std::atomic_int64_t& sig_acker_ref_count;
+        };
+        
+        static signal_tracer_ref global_tracer() noexcept
+        {
+            static std::atomic_int64_t g_raw_msg_ref_count;
+            static std::atomic_int64_t g_raw_acker_ref_count;
+            static std::atomic_int64_t g_sig_msg_ref_count;
+            static std::atomic_int64_t g_sig_acker_ref_count;
+
+            return {
+                g_raw_msg_ref_count,
+                g_raw_acker_ref_count,
+                g_sig_msg_ref_count,
+                g_sig_acker_ref_count
+            };
+        }
+    public:
+
+        static void raw_msg_ctor() noexcept
+        {
+            auto tracer = global_tracer();
+            tracer.raw_msg_ref_count ++;
+        }
+
+        static void raw_msg_dtor() noexcept
+        {
+            auto tracer = global_tracer();
+            tracer.raw_msg_ref_count --;
+        }
+
+        static std::int64_t raw_msg_ref_count() noexcept
+        {
+            auto tracer = global_tracer();
+            return tracer.raw_msg_ref_count.load();
+        }
+
+        static void raw_acker_ctor() noexcept
+        {
+            auto tracer = global_tracer();
+            tracer.raw_acker_ref_count ++;
+        }
+
+        static void raw_acker_dtor() noexcept
+        {
+            auto tracer = global_tracer();
+            tracer.raw_acker_ref_count --;
+        }
+
+        static std::int64_t raw_acker_ref_count() noexcept
+        {
+            auto tracer = global_tracer();
+            return tracer.raw_acker_ref_count.load();
+        }
+
+        static void sig_msg_ctor() noexcept
+        {
+            auto tracer = global_tracer();
+            tracer.sig_msg_ref_count ++;
+        }
+
+        static void sig_msg_dtor() noexcept
+        {
+            auto tracer = global_tracer();
+            tracer.sig_msg_ref_count --;
+        }
+
+        static std::int64_t sig_msg_ref_count() noexcept
+        {
+            auto tracer = global_tracer();
+            return tracer.sig_msg_ref_count.load();
+        }
+
+        static void sig_acker_ctor() noexcept
+        {
+            auto tracer = global_tracer();
+            tracer.sig_acker_ref_count ++;
+        }
+
+        static void sig_acker_dtor() noexcept
+        {
+            auto tracer = global_tracer();
+            tracer.sig_acker_ref_count --;
+        }
+
+        static std::int64_t sig_acker_ref_count() noexcept
+        {
+            auto tracer = global_tracer();
+            return tracer.sig_acker_ref_count.load();
+        }
+    };
     
 } // namespace cfgo
-
 
 #endif

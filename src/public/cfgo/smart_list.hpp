@@ -47,16 +47,12 @@ namespace cfgo
         {
             auto node = std::make_shared<node_t>(std::forward<T>(data));
             std::lock_guard lk(m_mux);
-            if (!m_head)
+            if (m_head)
             {
-                m_head = node;
+                m_head->m_prev = node;
+                node->m_next = m_head;
             }
-            else
-            {
-                m_tail->m_next = node;
-                node->m_prev = m_tail;
-            }
-            m_tail = node;
+            m_head = node;
             return node;
         }
         void remove(node_t::ptr & ptr)
@@ -65,10 +61,6 @@ namespace cfgo
             if (ptr == m_head)
             {
                 m_head = ptr->m_next;
-            }
-            if (ptr == m_tail)
-            {
-                m_tail = ptr->m_prev.lock();
             }
             if (auto prev = ptr->m_prev.lock())
             {
@@ -106,12 +98,10 @@ namespace cfgo
                 }
                 node->m_next.reset();
             }
-            m_tail.reset();
         }
 
         private:
             node_t::ptr m_head;
-            node_t::ptr m_tail;
             mutex m_mux;
 
     };

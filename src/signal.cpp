@@ -1,5 +1,8 @@
 #include "cfgo/signal.hpp"
 #include "cfgo/utils.hpp"
+#ifdef CFGO_SIGNAL_ALLOCATOR_TRACER
+#include "cfgo/allocator_tracer.hpp"
+#endif
 #include "boost/beast/core.hpp"
 #include "boost/beast/websocket.hpp"
 #include "boost/lexical_cast.hpp"
@@ -132,8 +135,16 @@ namespace cfgo
                 m_evt(evt),
                 m_payload(std::move(payload)),
                 m_ack(ack)
-            {}
-            ~WSMsg() {}
+            {
+            #ifdef CFGO_SIGNAL_ALLOCATOR_TRACER
+                signal_allocator_tracer::raw_msg_ctor();
+            #endif
+            }
+            ~WSMsg() {
+            #ifdef CFGO_SIGNAL_ALLOCATOR_TRACER
+                signal_allocator_tracer::raw_msg_dtor();
+            #endif
+            }
             static auto create(std::uint64_t msg_id, std::string_view evt, nlohmann::json && payload, bool ack) -> RawSigMsgUPtr {
                 return std::make_unique<WSMsg>(msg_id, evt, std::move(payload), ack);
             }
@@ -156,8 +167,16 @@ namespace cfgo
             std::weak_ptr<WebsocketRawSignal> m_signal;
             std::uint64_t m_msg_id;
         public:
-            WSAcker(std::weak_ptr<WebsocketRawSignal> signal, std::uint64_t msg_id): m_signal(signal), m_msg_id(msg_id) {}
-            ~WSAcker() {}
+            WSAcker(std::weak_ptr<WebsocketRawSignal> signal, std::uint64_t msg_id): m_signal(signal), m_msg_id(msg_id) {
+            #ifdef CFGO_SIGNAL_ALLOCATOR_TRACER
+                signal_allocator_tracer::raw_acker_ctor();
+            #endif
+            }
+            ~WSAcker() {
+            #ifdef CFGO_SIGNAL_ALLOCATOR_TRACER
+                signal_allocator_tracer::raw_acker_dtor();
+            #endif
+            }
             static auto create(std::weak_ptr<WebsocketRawSignal> signal, std::uint64_t msg_id) -> RawSigAckerPtr {
                 return std::make_shared<WSAcker>(signal, msg_id);
             }
@@ -582,8 +601,16 @@ namespace cfgo
                 m_socket(to),
                 m_payload(std::move(payload)),
                 m_msg_id(msg_id)
-            {}
-            ~SignalMsg() {}
+            {
+            #ifdef CFGO_SIGNAL_ALLOCATOR_TRACER
+                signal_allocator_tracer::sig_msg_ctor();
+            #endif
+            }
+            ~SignalMsg() {
+            #ifdef CFGO_SIGNAL_ALLOCATOR_TRACER
+                signal_allocator_tracer::sig_msg_dtor();
+            #endif
+            }
             static auto create(std::string_view evt, bool ack, std::string_view room, std::string_view to, std::string && payload, std::uint32_t msg_id) -> cfgo::SignalMsgUPtr {
                 return std::make_unique<SignalMsg>(evt, ack, room, to, std::move(payload), msg_id);
             }
@@ -618,8 +645,16 @@ namespace cfgo
             SignalAcker(std::weak_ptr<Signal> signal, SignalMsgPtr msg):
                 m_signal(std::move(signal)),
                 m_msg(std::move(msg))
-            {}
-            ~SignalAcker() {}
+            {
+            #ifdef CFGO_SIGNAL_ALLOCATOR_TRACER
+                signal_allocator_tracer::sig_acker_ctor();
+            #endif
+            }
+            ~SignalAcker() {
+            #ifdef CFGO_SIGNAL_ALLOCATOR_TRACER
+                signal_allocator_tracer::sig_acker_dtor();
+            #endif
+            }
             static SignalAckerPtr create(std::weak_ptr<Signal> signal, SignalMsgPtr msg) {
                 return std::make_shared<SignalAcker>(std::move(signal), std::move(msg));
             }
@@ -1055,8 +1090,10 @@ namespace cfgo
             auto self = shared_from_this();
             auto lazy_sub_msg_iter = self->m_subscribed_msgs.find(sub->id);
             if (lazy_sub_msg_iter != self->m_subscribed_msgs.end()) {
+                DEFER({
+                    self->m_subscribed_msgs.erase(lazy_sub_msg_iter);
+                });
                 auto res_msg = co_await lazy_sub_msg_iter->second->move(closer);
-                self->m_subscribed_msgs.erase(lazy_sub_msg_iter);
                 co_return res_msg;
             } else {
                 throw cpptrace::runtime_error("call subsrcibe at first. ");
@@ -1090,6 +1127,9 @@ namespace cfgo
             {
                 m_custom_ack_chans.insert(std::make_pair(key, ack_ch));
             }
+            DEFER({
+                m_custom_ack_chans.erase(key);
+            });
             co_await m_raw_signal->send_msg(closer, m_raw_signal->create_msg(fmt::format("custom:{}", evt), std::move(js_msg), false));
             if (cm.ack) {
                 auto ack_msg = co_await chan_read_or_throw<std::unique_ptr<msg::CustomAckMessage>>(ack_ch, closer);

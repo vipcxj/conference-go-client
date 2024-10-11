@@ -16,6 +16,7 @@ option(GSTREAMER_SUPPORT "gstreamer support")
 option(USE_GSTREAMER_FULL_STATIC "use gstreamer full static" ON)
 option(CLOSER_ALLOCATOR_TRACER "closer allocator tracer support" OFF)
 option(CLOSER_ALLOCATOR_TRACER_USE_ENTRIES "closer allocator tracer entries support" OFF)
+option(SIGNAL_ALLOCATOR_TRACER "signal allocator tracer support" OFF)
 #option(STANDALONE_ASIO "using standalone asio instead of boost-asio" OFF)
 option(ENABLE_TEST "enable testing" ON)
 if(GSTREAMER_SUPPORT)
@@ -239,6 +240,10 @@ endif()
 if(CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
     target_compile_definitions(cfgoclient PUBLIC CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
 endif()
+if(SIGNAL_ALLOCATOR_TRACER)
+    target_compile_definitions(cfgoclient PUBLIC CFGO_SIGNAL_ALLOCATOR_TRACER)
+endif()
+
 
 
 target_compile_options(cfgoclient 
