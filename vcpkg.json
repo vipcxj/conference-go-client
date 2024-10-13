@@ -6,6 +6,7 @@
     "asiochan",
     "boost-asio",
     "boost-beast",
+    "boost-core",
     "boost-uuid",
     "boost-circular-buffer",
     "boost-algorithm",

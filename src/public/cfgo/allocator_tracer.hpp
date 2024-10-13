@@ -3,10 +3,14 @@
 
 #include <cstdint>
 #include <atomic>
+#include <concepts>
 #include <mutex>
 #include <unordered_map>
 #include <unordered_set>
 #include <source_location>
+#include <typeindex>
+
+#include "boost/core/demangle.hpp"
 
 #include "cfgo/alias.hpp"
 #include "cfgo/utils.hpp"
@@ -382,6 +386,157 @@ namespace cfgo
             auto tracer = global_tracer();
             return tracer.sig_acker_ref_count.load();
         }
+    };
+
+    template<typename T>
+    concept allocate_tracer_support_detail = std::bool_constant<(T::allocate_tracer_detail)>::value;
+
+    struct allocator_tracers
+    {
+
+        struct object_deleter;
+        struct object_entry
+        {
+            object_entry(std::weak_ptr<void> weak_ptr): m_weak_ptr(std::move(weak_ptr)) {}
+            void unref()
+            {
+                if (auto ptr = m_weak_ptr.lock())
+                {
+                    std::get_deleter<object_deleter>(ptr)->entry = nullptr;
+                }
+            }
+        private:
+            std::weak_ptr<void> m_weak_ptr;
+        };
+
+        struct tracer_entry
+        {
+            tracer_entry(std::string type, bool detail): m_type(std::move(type)), m_detail(detail) {}
+            tracer_entry(const tracer_entry &) = delete;
+            tracer_entry & operator= (const tracer_entry &) = delete;
+
+            ~tracer_entry()
+            {
+                std::lock_guard lk(m_mux);
+                for (auto [_, entry] : m_entries)
+                {
+                    entry.unref();
+                }
+                m_entries.clear();
+                m_ref_count = 0;
+            }
+
+            void add_entry(std::shared_ptr<void> ptr)
+            {
+                m_ref_count ++;
+                if (m_detail)
+                {
+                    std::lock_guard lk(m_mux);
+                    m_entries.emplace(reinterpret_cast<std::uintptr_t>(ptr.get()), std::weak_ptr<void>(ptr));
+                }
+            }
+
+            void remove_entry(void * pointer)
+            {
+                -- m_ref_count;
+                if (m_detail)
+                {
+                    std::lock_guard lk(m_mux);
+                    m_entries.erase(reinterpret_cast<std::uintptr_t>(pointer));
+                }
+            }
+
+            std::uint64_t ref_count() const noexcept
+            {
+                return m_ref_count.load();
+            }
+
+            bool has_detail() const noexcept
+            {
+                return m_detail;
+            }
+        private:
+            std::string m_type;
+            bool m_detail;
+            std::atomic_uint64_t m_ref_count {0};
+            mutable mutex m_mux;
+            std::unordered_map<std::uintptr_t, object_entry> m_entries;
+        };
+
+        struct object_deleter
+        {
+            void operator()(void * ptr)
+            {
+                if (entry)
+                {
+                    entry->remove_entry(ptr);
+                }
+                delete ptr;
+            }
+
+            tracer_entry * entry = nullptr;
+        };
+
+        struct tracer_state
+        {
+            #ifdef CFGO_ALLOCATE_TRACER_DETAIL
+            static constexpr bool DEFAULT_DETAIL = true;
+            #else
+            static constexpr bool DEFAULT_DETAIL = false;
+            #endif
+
+            ~tracer_state()
+            {
+                std::lock_guard lk(m_mux);
+                m_entries.clear();
+            }
+
+            template<typename T>
+            requires allocate_tracer_support_detail<T>
+            static constexpr bool is_detail()
+            {
+                return T::allocate_tracer_detail;
+            }
+
+            template<typename T>
+            static constexpr bool is_detail()
+            {
+                return DEFAULT_DETAIL;
+            }
+
+            template<typename T>
+            tracer_entry & entry(const T * pointer)
+            {
+                return _entry(typeid(pointer), is_detail<T>());
+            }
+
+            const tracer_entry * entry(const std::type_info & type_id)
+            {
+                std::lock_guard lk(m_mux);
+                auto iter = m_entries.find(std::type_index(type_id));
+                return iter != m_entries.end() ? &iter->second : nullptr;
+            }
+
+            template<typename T, typename... Args>
+            std::shared_ptr<T> make_shared(Args &&... args)
+            {
+                auto ptr = new T(std::forward<Args>(args)...);
+                auto & entry = this->entry(ptr);
+                auto sptr = std::shared_ptr<T>(ptr, object_deleter{ .entry = &entry });
+                entry.add_entry(sptr);
+                return sptr;
+            }
+        private:
+            mutable mutex m_mux;
+            std::unordered_map<std::type_index, tracer_entry> m_entries;
+
+            tracer_entry & _entry(const std::type_info & type_id, bool detail)
+            {
+                std::lock_guard lk(m_mux);
+                auto [iter, _] = m_entries.try_emplace(std::type_index(type_id), boost::core::demangle(type_id.name()), detail);
+                return iter->second;
+            }
+        };
     };
     
 } // namespace cfgo

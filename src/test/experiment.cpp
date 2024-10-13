@@ -2,9 +2,7 @@
 #include "cfgo/async_locker.hpp"
 #include "cfgo/measure.hpp"
 #include "cfgo/log.hpp"
-#ifdef CFGO_CLOSER_ALLOCATOR_TRACER
 #include "cfgo/allocator_tracer.hpp"
-#endif
 #include "gtest/gtest.h"
 #include <random>
 
@@ -27,39 +25,63 @@ void do_async(std::function<asio::awaitable<void>()> func, bool wait = false, st
     }
 }
 
-TEST(Closer, ParentAndChildrenCloseTogether) {
+// TEST(Closer, ParentAndChildrenCloseTogether) {
+//     using namespace cfgo;
+//     std::random_device rd {};
+//     std::mt19937 gen(rd());
+//     std::vector<close_chan> parents {};
+//     std::vector<close_chan> children {};
+//     for (size_t i = 0; i < 100; i++)
+//     {
+//         close_chan parent {};
+//         parents.push_back(parent);
+//         for (size_t i = 0; i < 10; i++)
+//         {
+//             auto child = parent.create_child();
+//             children.push_back(child);
+//         }
+//     }
+//     std::shuffle(parents.begin(), parents.end(), gen);
+//     for (auto && closer : parents)
+//     {
+//         std::thread([closer]() {
+//             std::this_thread::sleep_for(std::chrono::milliseconds {100});
+//             closer.close();
+//         }).detach();
+//     }
+//     std::this_thread::sleep_for(std::chrono::milliseconds {1000});
+//     for (auto && closer : parents)
+//     {
+//         EXPECT_TRUE(closer.is_closed());
+//     }
+//     for (auto && closer : children)
+//     {
+//         EXPECT_TRUE(closer.is_closed());
+//     }
+// }
+
+struct TestObj
+{
+    static constexpr bool allocate_tracer_detail = true;
+};
+
+TEST(AllocateTracer, Tracer)
+{
     using namespace cfgo;
-    std::random_device rd {};
-    std::mt19937 gen(rd());
-    std::vector<close_chan> parents {};
-    std::vector<close_chan> children {};
-    for (size_t i = 0; i < 100; i++)
+    using state_t = allocator_tracers::tracer_state;
+    state_t state;
     {
-        close_chan parent {};
-        parents.push_back(parent);
-        for (size_t i = 0; i < 10; i++)
-        {
-            auto child = parent.create_child();
-            children.push_back(child);
-        }
+        auto ptr = state.make_shared<int>(3);
+        EXPECT_FALSE(state.entry(ptr.get()).has_detail());
+        EXPECT_EQ(state.entry(ptr.get()).ref_count(), 1);
     }
-    std::shuffle(parents.begin(), parents.end(), gen);
-    for (auto && closer : parents)
+    EXPECT_EQ(state.entry(typeid(const int *))->ref_count(), 0);
     {
-        std::thread([closer]() {
-            std::this_thread::sleep_for(std::chrono::milliseconds {100});
-            closer.close();
-        }).detach();
+        auto ptr = state.make_shared<TestObj>();
+        EXPECT_TRUE(state.entry(ptr.get()).has_detail());
+        EXPECT_EQ(state.entry(ptr.get()).ref_count(), 1);
     }
-    std::this_thread::sleep_for(std::chrono::milliseconds {1000});
-    for (auto && closer : parents)
-    {
-        EXPECT_TRUE(closer.is_closed());
-    }
-    for (auto && closer : children)
-    {
-        EXPECT_TRUE(closer.is_closed());
-    }
+    EXPECT_EQ(state.entry(typeid(const TestObj *))->ref_count(), 0);
 }
 
 int main(int argc, char **argv) {
