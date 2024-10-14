@@ -18,8 +18,8 @@ namespace cfgo
 
         Logger create_default_logger(std::string name)
         {
-            auto logger_sink = allocate_tracers::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-            return allocate_tracers::make_shared<spdlog::logger>(std::move(name), logger_sink);
+            auto logger_sink = allocate_tracers::make_shared_skip_n<spdlog::sinks::stdout_color_sink_mt>(1);
+            return allocate_tracers::make_shared_skip_n<spdlog::logger>(1, std::move(name), logger_sink);
         }
 
         class Log

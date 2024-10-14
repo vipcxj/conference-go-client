@@ -100,7 +100,7 @@ namespace cfgo
         explicit ImplBy(impl_ptr<T> impl) : mImpl(std::move(impl)) {}
         ImplBy(std::nullptr_t) : mImpl(impl_ptr<T>()) {}
         template <typename... Args>
-        explicit ImplBy(Args&&... args) : mImpl(allocate_tracers::make_shared<T>(std::forward<Args>(args)...)) {}
+        explicit ImplBy(Args&&... args) : mImpl(allocate_tracers::make_shared_skip_n<T>(2, std::forward<Args>(args)...)) {}
         ImplBy(ImplBy<T> &&cc) = default;
         ImplBy(const ImplBy<T> &) = default;
         virtual ~ImplBy() = default;
@@ -148,7 +148,7 @@ namespace cfgo
     public:
         explicit UniqueImplBy(impl_ptr<T> impl) : mImpl(std::move(impl)) {}
         template <typename... Args>
-        explicit UniqueImplBy(Args&&... args) : mImpl(allocate_tracers::make_shared<T>(std::forward<Args>(args)...)) {}
+        explicit UniqueImplBy(Args&&... args) : mImpl(allocate_tracers::make_shared_skip_n<T>(2, std::forward<Args>(args)...)) {}
         UniqueImplBy(UniqueImplBy<T> &&cc) = default;
         UniqueImplBy(const UniqueImplBy<T> &) = delete;
 

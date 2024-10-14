@@ -370,7 +370,7 @@ namespace cfgo
     } // namespace impl
 
     WebrtcPtr make_webrtc(SignalPtr signal, const cfgo::Configuration & conf) {
-        return allocate_tracers::make_shared<impl::Webrtc>(std::move(signal), conf);
+        return allocate_tracers::make_shared_skip_n<impl::Webrtc>(1, std::move(signal), conf);
     }
     
 } // namespace cfgo

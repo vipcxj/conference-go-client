@@ -715,9 +715,10 @@ namespace cfgo
         std::source_location source_loc
     #endif
     ): m_state(
-        allocate_tracers::make_shared<detail::CloseSignalState>(
+        allocate_tracers::make_shared_skip_n<detail::CloseSignalState>(
+            2
     #if defined(CFGO_CLOSER_ALLOCATE_TRACER) && defined(CFGO_CLOSER_ALLOCATE_TRACER_DETAIL)
-            std::move(source_loc)
+            , std::move(source_loc)
     #endif
         )
     ) {}
@@ -943,7 +944,7 @@ namespace cfgo
         };
     } // namespace detail
 
-    StateMaybeChangedNotifier::StateMaybeChangedNotifier(): m_state(allocate_tracers::make_shared<detail::StateMaybeChangedNotifierState>()) {}
+    StateMaybeChangedNotifier::StateMaybeChangedNotifier(): m_state(allocate_tracers::make_shared_skip_n<detail::StateMaybeChangedNotifierState>(2)) {}
     
 
     void StateMaybeChangedNotifier::notify() const {

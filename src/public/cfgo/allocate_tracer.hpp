@@ -11,6 +11,7 @@
 #include <typeindex>
 
 #include "boost/core/demangle.hpp"
+#include "cpptrace/cpptrace.hpp"
 
 #include "cfgo/alias.hpp"
 #include "cfgo/algorithm.hpp"
@@ -398,11 +399,12 @@ namespace cfgo
         struct object_deleter;
         struct object_entry
         {
+            cpptrace::object_trace object_trace;
         };
 
         struct tracer_entry
         {
-            tracer_entry(std::string type, bool detail): m_type(std::move(type)), m_detail(detail) {}
+            tracer_entry(std::string type, bool detail, int trace_skip): m_type(std::move(type)), m_detail(detail), m_trace_skip(trace_skip) {}
             tracer_entry(const tracer_entry &) = delete;
             tracer_entry & operator= (const tracer_entry &) = delete;
 
@@ -412,7 +414,8 @@ namespace cfgo
                 if (m_detail)
                 {
                     std::lock_guard lk(m_mux);
-                    m_entries.emplace(pointer, object_entry {});
+                    auto object_trace = cpptrace::generate_object_trace(m_trace_skip + 2, 6);
+                    m_entries.emplace(pointer, object_entry { .object_trace = std::move(object_trace) });
                 }
             }
 
@@ -443,6 +446,7 @@ namespace cfgo
         private:
             std::string m_type;
             bool m_detail;
+            int m_trace_skip {0};
             std::atomic_uint64_t m_ref_count {0};
             mutable mutex m_mux;
             std::unordered_map<std::uintptr_t, object_entry> m_entries;
@@ -499,9 +503,9 @@ namespace cfgo
             }
 
             template<typename T>
-            std::shared_ptr<tracer_entry> make_entry(const T * pointer)
+            std::shared_ptr<tracer_entry> make_entry(const T * pointer, int trace_skip = 0)
             {
-                return _entry(typeid(*const_cast<T *>(pointer)), is_detail<T>());
+                return _entry(typeid(*const_cast<T *>(pointer)), is_detail<T>(), trace_skip);
             }
 
             template<typename T>
@@ -525,23 +529,35 @@ namespace cfgo
             }
 
             template<typename T, typename... Args>
-            std::shared_ptr<T> make_shared(Args &&... args)
+            std::shared_ptr<T> make_shared_skip_n(int trace_skip, Args &&... args)
             {
                 auto ptr = new T(std::forward<Args>(args)...);
-                auto entry = this->make_entry(ptr);
+                auto entry = this->make_entry(ptr, trace_skip);
                 auto sptr = std::shared_ptr<T>(ptr, object_deleter<T>{ entry });
                 entry->add_entry(reinterpret_cast<std::uintptr_t>(ptr));
                 return sptr;
             }
 
             template<typename T, typename... Args>
-            std::unique_ptr<T, object_deleter<T>> make_unique(Args &&... args)
+            std::shared_ptr<T> make_shared(Args &&... args)
+            {
+                return make_shared_skip_n<T>(0, std::forward<Args>(args)...);
+            }
+
+            template<typename T, typename... Args>
+            std::unique_ptr<T, object_deleter<T>> make_unique_skip_n(int trace_skip, Args &&... args)
             {
                 auto ptr = new T(std::forward<Args>(args)...);
-                auto entry = this->make_entry(ptr);
+                auto entry = this->make_entry(ptr, trace_skip);
                 auto uptr = std::unique_ptr<T, object_deleter<T>>(ptr, object_deleter<T>{ entry });
                 entry->add_entry(reinterpret_cast<std::uintptr_t>(ptr));
                 return std::move(uptr);
+            }
+
+            template<typename T, typename... Args>
+            std::unique_ptr<T, object_deleter<T>> make_unique(Args &&... args)
+            {
+                return make_unique_skip_n<T>(0, std::forward<Args>(args)...);
             }
 
         private:
@@ -552,10 +568,10 @@ namespace cfgo
             tracer_state(const tracer_state &) = delete;
             tracer_state & operator= (const tracer_state &) = delete;
 
-            std::shared_ptr<tracer_entry> _entry(const std::type_info & type_id, bool detail)
+            std::shared_ptr<tracer_entry> _entry(const std::type_info & type_id, bool detail, int trace_skip)
             {
                 std::lock_guard lk(m_mux);
-                auto [iter, _] = m_entries.emplace(std::type_index(type_id), std::make_shared<tracer_entry>(boost::core::demangle(type_id.name()), detail));
+                auto [iter, _] = m_entries.emplace(std::type_index(type_id), std::make_shared<tracer_entry>(boost::core::demangle(type_id.name()), detail, trace_skip));
                 return iter->second;
             }
 
@@ -568,14 +584,24 @@ namespace cfgo
         {
             return tracer_state::instance().make_shared<T>(std::forward<Args>(args)...);
         }
+        template<typename T, typename... Args>
+        static std::shared_ptr<T> make_shared_skip_n(int trace_skip, Args &&... args)
+        {
+            return tracer_state::instance().make_shared_skip_n<T>(trace_skip, std::forward<Args>(args)...);
+        }
 
         template<typename T>
         using unique_ptr = std::unique_ptr<T, object_deleter<T>>;
 
         template<typename T, typename... Args>
-        static std::unique_ptr<T, object_deleter<T>> make_unique(Args &&... args)
+        static unique_ptr<T> make_unique(Args &&... args)
         {
             return tracer_state::instance().make_unique<T>(std::forward<Args>(args)...);
+        }
+        template<typename T, typename... Args>
+        static unique_ptr<T> make_unique_skip_n(int trace_skip, Args &&... args)
+        {
+            return tracer_state::instance().make_unique_skip_n<T>(trace_skip, std::forward<Args>(args)...);
         }
 
         static std::uint64_t ref_count(const std::type_info & type_id)
@@ -604,12 +630,22 @@ namespace cfgo
         {
             return std::make_shared<T>(std::forward<Args>(args)...);
         }
+        template<typename T, typename... Args>
+        static std::shared_ptr<T> make_shared_skip_n(int trace_skip, Args &&... args)
+        {
+            return std::make_shared<T>(std::forward<Args>(args)...);
+        }
 
         template<typename T>
         using unique_ptr = std::unique_ptr<T>;
 
         template<typename T, typename... Args>
-        static std::unique_ptr<T> make_unique(Args &&... args)
+        static unique_ptr<T> make_unique(Args &&... args)
+        {
+            return std::make_unique<T>(std::forward<Args>(args)...);
+        }
+        template<typename T, typename... Args>
+        static unique_ptr<T> make_unique_skip_n(int trace_skip, Args &&... args)
         {
             return std::make_unique<T>(std::forward<Args>(args)...);
         }

@@ -1876,7 +1876,7 @@ namespace cfgo
         struct enable_make_unique : public LazyBox<TT> {};
     public:
         static auto create() -> allocate_tracers::unique_ptr<LazyBox<T>> {
-            return allocate_tracers::make_unique<enable_make_unique<T>>();
+            return allocate_tracers::make_unique_skip_n<enable_make_unique<T>>(1);
         }
         void init(const T & data) {
             bool done = m_done.load(std::memory_order::acquire);

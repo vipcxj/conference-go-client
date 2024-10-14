@@ -286,7 +286,7 @@ namespace cfgo
 CFGO_API int cfgo_io_context_create()
 {
     return cfgo::c_wrap([]() {
-        return cfgo::wrap_io_context(cfgo::allocate_tracers::make_shared<asio::io_context>());
+        return cfgo::wrap_io_context(cfgo::allocate_tracers::make_shared<asio::io_context>(1));
     });
 }
 
@@ -343,7 +343,7 @@ CFGO_API int cfgo_client_create(const cfgoConfiguration * config, int io_context
     return cfgo::c_wrap([config, io_context_handle, closer_handle]() {
         auto io_context = cfgo::get_io_context(io_context_handle);
         auto closer = cfgo::get_close_chan(closer_handle);
-        return cfgo::wrap_client(cfgo::allocate_tracers::make_shared<cfgo::Client>(cfgo::cfgo_config_to_cpp(config), io_context, closer));
+        return cfgo::wrap_client(cfgo::allocate_tracers::make_shared_skip_n<cfgo::Client>(1, cfgo::cfgo_config_to_cpp(config), io_context, closer));
     });
 }
 
