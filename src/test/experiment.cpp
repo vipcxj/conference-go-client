@@ -3,6 +3,7 @@
 #include "cfgo/measure.hpp"
 #include "cfgo/log.hpp"
 #include "cfgo/allocate_tracer.hpp"
+#include "cfgo/black_magic.hpp"
 #include "gtest/gtest.h"
 #include <random>
 
@@ -91,6 +92,39 @@ TEST(AllocateTracer, Tracer)
         EXPECT_EQ(result[0].get().type_name(), boost::core::demangle(typeid(TestObj).name()));
     }
     EXPECT_EQ(alc_tracers::ref_count(typeid(TestObj)), 0);
+
+    do_async([]() -> asio::awaitable<void> {
+        using TestPtr = allocate_tracers::unique_ptr<TestObj>;
+        close_chan closer {};
+        close_guard cg(closer);
+        asiochan::channel<TestPtr> ch {};
+        {
+            TestPtr ptr = allocate_tracers::make_unique<TestObj>();
+            EXPECT_EQ(alc_tracers::ref_count(typeid(TestObj)), 1);
+            asio::co_spawn(co_await asio::this_coro::executor, [ch, closer, ptr = std::move(ptr)]() mutable -> asio::awaitable<void> {
+                EXPECT_EQ(alc_tracers::ref_count(typeid(TestObj)), 1);
+                co_await chan_write_or_throw<TestPtr>(ch, std::move(ptr), closer);
+            }, asio::detached);
+            EXPECT_EQ(alc_tracers::ref_count(typeid(TestObj)), 1);
+            auto result = co_await chan_read_or_throw<TestPtr>(ch, closer);
+            EXPECT_EQ(alc_tracers::ref_count(typeid(TestObj)), 1);
+        }
+        EXPECT_EQ(alc_tracers::ref_count(typeid(TestObj)), 0);
+        {
+            TestPtr ptr = allocate_tracers::make_unique<TestObj>();
+            EXPECT_EQ(alc_tracers::ref_count(typeid(TestObj)), 1);
+            auto timeouter = closer.create_child();
+            unique_void_chan trigger {};
+            asio::co_spawn(co_await asio::this_coro::executor, [ch, trigger, timeouter, ptr = std::move(ptr)]() mutable -> asio::awaitable<void> {
+                EXPECT_EQ(alc_tracers::ref_count(typeid(TestObj)), 1);
+                timeouter.set_timeout(std::chrono::milliseconds{1});
+                co_await chan_write<TestPtr>(ch, std::move(ptr), timeouter);
+                chan_must_write(trigger);
+            }, asio::detached);
+            co_await chan_read_or_throw<void>(trigger, closer);
+            EXPECT_EQ(alc_tracers::ref_count(typeid(TestObj)), 0);
+        }
+    }, true);
 }
 
 int main(int argc, char **argv) {

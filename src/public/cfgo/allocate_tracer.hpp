@@ -422,7 +422,7 @@ namespace cfgo
                 if (m_detail)
                 {
                     std::lock_guard lk(m_mux);
-                    m_entries.erase(reinterpret_cast<std::uintptr_t>(pointer));
+                    m_entries.erase(pointer);
                 }
             }
 
@@ -604,6 +604,9 @@ namespace cfgo
         {
             return std::make_shared<T>(std::forward<Args>(args)...);
         }
+
+        template<typename T>
+        using unique_ptr = std::unique_ptr<T>;
 
         template<typename T, typename... Args>
         static std::unique_ptr<T> make_unique(Args &&... args)
