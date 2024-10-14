@@ -6,9 +6,8 @@
 #include <unordered_map>
 #include <vector>
 #include <atomic>
-#include <functional>
-#include <algorithm>
-#include <ranges>
+
+#include "cfgo/allocate_tracer.hpp"
 
 // We haven't checked which filesystem to include yet
 #ifndef INCLUDE_STD_FILESYSTEM_EXPERIMENTAL
@@ -101,7 +100,7 @@ namespace cfgo
         explicit ImplBy(impl_ptr<T> impl) : mImpl(std::move(impl)) {}
         ImplBy(std::nullptr_t) : mImpl(impl_ptr<T>()) {}
         template <typename... Args>
-        explicit ImplBy(Args&&... args) : mImpl(std::make_shared<T>(std::forward<Args>(args)...)) {}
+        explicit ImplBy(Args&&... args) : mImpl(allocate_tracers::make_shared<T>(std::forward<Args>(args)...)) {}
         ImplBy(ImplBy<T> &&cc) = default;
         ImplBy(const ImplBy<T> &) = default;
         virtual ~ImplBy() = default;
@@ -149,7 +148,7 @@ namespace cfgo
     public:
         explicit UniqueImplBy(impl_ptr<T> impl) : mImpl(std::move(impl)) {}
         template <typename... Args>
-        explicit UniqueImplBy(Args&&... args) : mImpl(std::make_shared<T>(std::forward<Args>(args)...)) {}
+        explicit UniqueImplBy(Args&&... args) : mImpl(allocate_tracers::make_shared<T>(std::forward<Args>(args)...)) {}
         UniqueImplBy(UniqueImplBy<T> &&cc) = default;
         UniqueImplBy(const UniqueImplBy<T> &) = delete;
 
@@ -216,38 +215,6 @@ namespace cfgo
             }
         }
     };
-
-    /**
-     * @brief   Return a vector of iterators to the n largest elements of the given
-     *          range.
-     * 
-     * @tparam  R 
-     *          The type of range.
-     * @param   range 
-     *          The input range to find the largest elements in.
-     * @param   n 
-     *          The number of largest elements to return.
-     * @param   compare
-     *          function to compare two iterators,
-     *          bool(std::ranges::borrowed_iterator_t<R> iter1, std::ranges::borrowed_iterator_t<R> iter2)
-     * 
-     * @return  Vector containing iterators to the n largest elements of the range.
-     */
-    template <std::ranges::forward_range R, typename Cmp = std::ranges::greater>
-    constexpr std::vector<std::ranges::borrowed_iterator_t<R>>
-    max_n_elements(R &&range, size_t n, Cmp compare) {
-        // The iterator type of the input range
-        using iter_t = std::ranges::borrowed_iterator_t<R>;
-        // The range of iterators over the input range
-        auto iterators = std::views::iota(std::ranges::begin(range), 
-                                        std::ranges::end(range));
-        // Vector of iterators to the largest n elements
-        std::vector<iter_t> result(n);
-        // Sort the largest n elements of the input range, and store iterators to 
-        // these elements to the result vector
-        std::ranges::partial_sort_copy(iterators, result, compare);
-        return result;
-    }
 
     // template <class Base, class Derived>
     // struct derived_weak_ptr {

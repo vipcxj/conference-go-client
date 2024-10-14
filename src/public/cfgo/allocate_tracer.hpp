@@ -13,7 +13,7 @@
 #include "boost/core/demangle.hpp"
 
 #include "cfgo/alias.hpp"
-#include "cfgo/utils.hpp"
+#include "cfgo/algorithm.hpp"
 
 
 namespace cfgo
@@ -91,7 +91,7 @@ namespace cfgo
     };
 
     using loc_id_type = source_location_pool::id_type;
-    class close_allocator_tracer
+    class close_allocate_tracer
     {
     private:
         struct closer_tracer_entry
@@ -110,7 +110,7 @@ namespace cfgo
         struct closer_tracer_ref
         {
             std::atomic_int64_t& ref_count;
-            #ifdef CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES
+            #ifdef CFGO_CLOSER_ALLOCATE_TRACER_DETAIL
             mutex& mux;
             closer_tracer_entries_type& entries;
             closer_tracer_locs_type& locs;
@@ -120,7 +120,7 @@ namespace cfgo
         static closer_tracer_ref global_closer_tracer() noexcept
         {
             static std::atomic_int64_t g_ref_count;
-            #ifdef CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES
+            #ifdef CFGO_CLOSER_ALLOCATE_TRACER_DETAIL
             static mutex g_mux;
             static closer_tracer_entries_type g_entries;
             static closer_tracer_locs_type g_locs;
@@ -132,7 +132,7 @@ namespace cfgo
     public:
 
         static void ctor(
-        #ifdef CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES
+        #ifdef CFGO_CLOSER_ALLOCATE_TRACER_DETAIL
             std::uintptr_t key,
             std::uintptr_t parent,
             std::source_location src_loc
@@ -141,7 +141,7 @@ namespace cfgo
         {
             auto tracer = global_closer_tracer();
             tracer.ref_count ++;
-            #ifdef CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES
+            #ifdef CFGO_CLOSER_ALLOCATE_TRACER_DETAIL
             {
                 std::lock_guard lk(tracer.mux);
                 auto ctr_loc_id = source_location_pool::get().get_id(src_loc);
@@ -160,14 +160,14 @@ namespace cfgo
         }
 
         static void dtor(
-        #ifdef CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES
+        #ifdef CFGO_CLOSER_ALLOCATE_TRACER_DETAIL
             std::uintptr_t key
         #endif
         ) noexcept
         {
             auto tracer = global_closer_tracer();
             tracer.ref_count --;
-            #ifdef CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES
+            #ifdef CFGO_CLOSER_ALLOCATE_TRACER_DETAIL
             std::lock_guard lk(tracer.mux);
             auto iter = tracer.entries.find(key);
             if (iter != tracer.entries.end())
@@ -189,7 +189,7 @@ namespace cfgo
             return global_closer_tracer().ref_count.load();
         }
 
-        #ifdef CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES
+        #ifdef CFGO_CLOSER_ALLOCATE_TRACER_DETAIL
 
         static std::optional<std::source_location> get_ctr_loc(std::uintptr_t key)
         {
@@ -288,7 +288,7 @@ namespace cfgo
         #endif
     };
 
-    class signal_allocator_tracer
+    class signal_allocate_tracer
     {
     private:
         struct signal_tracer_ref
@@ -391,9 +391,10 @@ namespace cfgo
     template<typename T>
     concept allocate_tracer_support_detail = std::bool_constant<(T::allocate_tracer_detail)>::value;
 
-    struct allocator_tracers
+    struct allocate_tracers
     {
 
+        template<typename T>
         struct object_deleter;
         struct object_entry
         {
@@ -402,7 +403,7 @@ namespace cfgo
             {
                 if (auto ptr = m_weak_ptr.lock())
                 {
-                    std::get_deleter<object_deleter>(ptr)->entry = nullptr;
+                    std::get_deleter<object_deleter<void>>(ptr)->entry = nullptr;
                 }
             }
         private:
@@ -436,7 +437,7 @@ namespace cfgo
                 }
             }
 
-            void remove_entry(void * pointer)
+            void remove_entry(std::uintptr_t pointer)
             {
                 -- m_ref_count;
                 if (m_detail)
@@ -451,6 +452,11 @@ namespace cfgo
                 return m_ref_count.load();
             }
 
+            const std::string & type_name() const noexcept
+            {
+                return m_type;
+            }
+
             bool has_detail() const noexcept
             {
                 return m_detail;
@@ -463,13 +469,14 @@ namespace cfgo
             std::unordered_map<std::uintptr_t, object_entry> m_entries;
         };
 
+        template<typename T>
         struct object_deleter
         {
-            void operator()(void * ptr)
+            void operator()(T * ptr)
             {
                 if (entry)
                 {
-                    entry->remove_entry(ptr);
+                    entry->remove_entry(reinterpret_cast<std::uintptr_t>(ptr));
                 }
                 delete ptr;
             }
@@ -479,7 +486,7 @@ namespace cfgo
 
         struct tracer_state
         {
-            #ifdef CFGO_ALLOCATE_TRACER_DETAIL
+            #ifdef CFGO_GENERAL_ALLOCATE_TRACER_DETAIL
             static constexpr bool DEFAULT_DETAIL = true;
             #else
             static constexpr bool DEFAULT_DETAIL = false;
@@ -489,6 +496,12 @@ namespace cfgo
             {
                 std::lock_guard lk(m_mux);
                 m_entries.clear();
+            }
+
+            static tracer_state & instance()
+            {
+                static tracer_state state;
+                return state;
             }
 
             template<typename T>
@@ -507,7 +520,7 @@ namespace cfgo
             template<typename T>
             tracer_entry & entry(const T * pointer)
             {
-                return _entry(typeid(pointer), is_detail<T>());
+                return _entry(typeid(*const_cast<T *>(pointer)), is_detail<T>());
             }
 
             const tracer_entry * entry(const std::type_info & type_id)
@@ -517,12 +530,19 @@ namespace cfgo
                 return iter != m_entries.end() ? &iter->second : nullptr;
             }
 
+            std::uint64_t ref_count(const std::type_info & type_id) const
+            {
+                std::lock_guard lk(m_mux);
+                auto iter = m_entries.find(std::type_index(type_id));
+                return iter != m_entries.end() ? iter->second.ref_count() : 0;
+            }
+
             template<typename T, typename... Args>
             std::shared_ptr<T> make_shared(Args &&... args)
             {
                 auto ptr = new T(std::forward<Args>(args)...);
                 auto & entry = this->entry(ptr);
-                auto sptr = std::shared_ptr<T>(ptr, object_deleter{ .entry = &entry });
+                auto sptr = std::shared_ptr<T>(ptr, object_deleter<T>{ .entry = &entry });
                 entry.add_entry(sptr);
                 return sptr;
             }
@@ -530,13 +550,64 @@ namespace cfgo
             mutable mutex m_mux;
             std::unordered_map<std::type_index, tracer_entry> m_entries;
 
+            tracer_state() {}
+            tracer_state(const tracer_state &) = delete;
+            tracer_state & operator= (const tracer_state &) = delete;
+
             tracer_entry & _entry(const std::type_info & type_id, bool detail)
             {
                 std::lock_guard lk(m_mux);
                 auto [iter, _] = m_entries.try_emplace(std::type_index(type_id), boost::core::demangle(type_id.name()), detail);
                 return iter->second;
             }
+
+            friend struct allocate_tracers;
         };
+
+        #ifdef CFGO_GENERAL_ALLOCATE_TRACER
+        template<typename T, typename... Args>
+        static std::shared_ptr<T> make_shared(Args &&... args)
+        {
+            return tracer_state::instance().make_shared<T>(std::forward<Args>(args)...);
+        }
+
+        static std::uint64_t ref_count(const std::type_info & type_id)
+        {
+            return tracer_state::instance().ref_count(type_id);
+        }
+
+        using tracer_entry_result_set = std::vector<std::reference_wrapper<const tracer_entry>>;
+
+        static void collect_max_n_ref_count(tracer_entry_result_set & result, int n)
+        {
+            auto & state = tracer_state::instance();
+            std::lock_guard lk(state.m_mux);
+            using iter_t = decltype(state.m_entries)::iterator; // std::ranges::borrowed_iterator_t<decltype(state.m_entries)>;
+            result.clear();
+            for (auto & iter : max_n_elements(state.m_entries, n, [](iter_t iter1, iter_t iter2) -> bool {
+                return iter1->second.ref_count() > iter2->second.ref_count();
+            }))
+            {
+                result.push_back(iter->second);
+            }
+        }
+        #else
+        template<typename T, typename... Args>
+        static std::shared_ptr<T> make_shared(Args &&... args)
+        {
+            return std::make_shared<T>(std::forward<Args>(args)...);
+        }
+
+        static constexpr std::uint64_t ref_count(const std::type_info & type_id)
+        {
+            return 0;
+        }
+
+        static void collect_max_n_ref_count(std::vector<std::reference_wrapper<const tracer_entry>>& result, int n)
+        {}
+        #endif
+
+
     };
     
 } // namespace cfgo

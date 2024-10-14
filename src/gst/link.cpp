@@ -1,4 +1,5 @@
 #include "cfgo/gst/link.hpp"
+#include "cfgo/allocate_tracer.hpp"
 #include "impl/link.hpp"
 
 namespace cfgo
@@ -54,7 +55,7 @@ namespace cfgo
             auto ptr = co_await impl()->await(std::move(closer));
             if (ptr)
             {
-                co_return std::make_shared<Link>(ptr);
+                co_return allocate_tracers::make_shared<Link>(ptr);
             }
             else
             {

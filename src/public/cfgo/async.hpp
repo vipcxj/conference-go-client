@@ -73,7 +73,7 @@ namespace cfgo
 
         CloseSignal(std::nullptr_t);
         CloseSignal(
-        #if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+        #if defined(CFGO_CLOSER_ALLOCATE_TRACER) && defined(CFGO_CLOSER_ALLOCATE_TRACER_DETAIL)
             std::source_location source_loc = std::source_location::current()
         #endif
         );
@@ -103,7 +103,7 @@ namespace cfgo
         void set_timeout(duration_t dur, std::string reason = CLOSER_DEFAULT_TIMEOUT_REASON, std::source_location src_loc = std::source_location::current()) const;
         duration_t get_timeout() const noexcept;
         [[nodiscard]] CloseSignal create_child(
-#if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+#if defined(CFGO_CLOSER_ALLOCATE_TRACER) && defined(CFGO_CLOSER_ALLOCATE_TRACER_DETAIL)
             std::source_location src_loc = std::source_location::current()
 #endif
         ) const;
@@ -618,7 +618,7 @@ namespace cfgo
         duration_t dur, 
         close_chan closer = nullptr, 
         std::string reasion = "timeout"
-    #if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+    #if defined(CFGO_CLOSER_ALLOCATE_TRACER) && defined(CFGO_CLOSER_ALLOCATE_TRACER_DETAIL)
         , std::source_location src_loc = std::source_location::current()
     #endif
     ) -> asio::awaitable<void>;

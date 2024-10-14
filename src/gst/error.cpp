@@ -2,6 +2,7 @@
 #include "cfgo/gst/utils.hpp"
 #include "cfgo/log.hpp"
 #include "cfgo/utils.hpp"
+#include "cfgo/allocate_tracer.hpp"
 #include <exception>
 #include <mutex>
 #include <memory>
@@ -154,16 +155,16 @@ namespace cfgo
                 if (except && gen_trace)
                 {
                     auto trace = cpptrace::generate_trace(1);
-                    priv->m_state = std::make_shared<ErrorPrivateState>(except, trace);
+                    priv->m_state = allocate_tracers::make_shared<ErrorPrivateState>(except, trace);
                 }
                 else if (gen_trace)
                 {
                     auto trace = cpptrace::generate_trace(1);
-                    priv->m_state = std::make_shared<ErrorPrivateState>(trace);
+                    priv->m_state = allocate_tracers::make_shared<ErrorPrivateState>(trace);
                 }
                 else
                 {
-                    priv->m_state = std::make_shared<ErrorPrivateState>(except);
+                    priv->m_state = allocate_tracers::make_shared<ErrorPrivateState>(except);
                 }
             }
             return error;

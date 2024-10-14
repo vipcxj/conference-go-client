@@ -8,6 +8,7 @@
 #include "cfgo/defer.hpp"
 #include "cfgo/fmt_helper.hpp"
 #include "cfgo/measure.hpp"
+#include "cfgo/allocate_tracer.hpp"
 #include "spdlog/spdlog.h"
 #include "cpptrace/cpptrace.hpp"
 
@@ -185,7 +186,7 @@ namespace cfgo
 
         auto CfgoSrc::Session::create_channel(CfgoSrc * parent, GstCfgoSrc * owner, guint ssrc, guint pt, GstPad * pad) -> ChannelPtr
         {
-            auto channel = std::make_shared<Channel>();
+            auto channel = allocate_tracers::make_shared<Channel>();
             channel->init(parent, owner, m_id, ssrc, pt, pad);
             m_channels.push_back(
                 std::move(channel)
@@ -841,7 +842,7 @@ namespace cfgo
         {
             auto i = m_sessions.size();
             CFGO_THIS_DEBUG("Creating session {}.", i);
-            SessionPtr session = std::make_shared<Session>();
+            SessionPtr session = allocate_tracers::make_shared<Session>();
             session->m_id = i;
             session->m_track = track;
             string rtp_pad_name = fmt::sprintf("recv_rtp_sink_%u", i);

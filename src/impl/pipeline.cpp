@@ -4,6 +4,7 @@
 #include "cfgo/utils.hpp"
 #include "cfgo/log.hpp"
 #include "cfgo/gst/helper.h"
+#include "cfgo/allocate_tracer.hpp"
 #include <cctype>
 
 namespace cfgo
@@ -661,7 +662,7 @@ namespace cfgo
                             ));
                         }
                     }
-                    _link = std::make_shared<impl::Link>(
+                    _link = allocate_tracers::make_shared<impl::Link>(
                         this,
                         src_node, src_pad_name, src_pad,
                         tgt_node, tgt_pad_name, tgt_pad

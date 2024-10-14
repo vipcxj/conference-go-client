@@ -5,10 +5,7 @@
 #include "cfgo/log.hpp"
 #include "cfgo/signal.hpp"
 #include "cfgo/token.hpp"
-
-#ifdef CFGO_SIGNAL_ALLOCATOR_TRACER
-#include "cfgo/allocator_tracer.hpp"
-#endif
+#include "cfgo/allocate_tracer.hpp"
 
 #define AUTH_HOST "localhost"
 #define AUTH_PORT 3100
@@ -22,11 +19,11 @@ auto get_token(std::string_view uid, std::string_view room, bool auto_join = fal
 
 auto print_signal_allocator_tracer(cfgo::close_chan closer, std::chrono::nanoseconds wait_time) -> asio::awaitable<void>
 {
-#ifdef CFGO_SIGNAL_ALLOCATOR_TRACER
+#ifdef CFGO_SIGNAL_ALLOCATE_TRACER
     asio::co_spawn(co_await asio::this_coro::executor, [closer = std::move(closer), wait_time]() -> asio::awaitable<void> {
         do
         {
-            using tracer = cfgo::signal_allocator_tracer;
+            using tracer = cfgo::signal_allocate_tracer;
             CFGO_INFO(
                 "raw msg rc: {}, raw acker rc: {}, sig msg rc: {}, sig acker rc: {}",
                 tracer::raw_msg_ref_count(),

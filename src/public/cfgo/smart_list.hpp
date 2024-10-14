@@ -5,6 +5,7 @@
 #include <memory>
 
 #include "cfgo/alias.hpp"
+#include "cfgo/allocate_tracer.hpp"
 
 namespace cfgo
 {
@@ -45,7 +46,7 @@ namespace cfgo
 
         node_t::ptr add(T && data)
         {
-            auto node = std::make_shared<node_t>(std::forward<T>(data));
+            auto node = allocate_tracers::make_shared<node_t>(std::forward<T>(data));
             std::lock_guard lk(m_mux);
             if (m_head)
             {

@@ -1,6 +1,7 @@
 #include "cfgo/async_locker.hpp"
 #include "cfgo/async.hpp"
 #include "cfgo/log.hpp"
+#include "cfgo/allocate_tracer.hpp"
 // #include "cfgo/measure.hpp"
 #include <list>
 #include <memory>
@@ -314,7 +315,7 @@ namespace cfgo
                 std::lock_guard lk(m_mutex);
                 if (!m_locked)
                 {
-                    block_ptr = std::make_shared<AsyncBlocker>(m_next_id++);
+                    block_ptr = allocate_tracers::make_shared<AsyncBlocker>(m_next_id++);
                     m_blockers.push_back({block_ptr, m_next_epoch++, priority, true});
                     m_ready_notifier.notify();
                 }
@@ -555,7 +556,7 @@ namespace cfgo
                 }
                 for (auto && request : m_blocker_requests)
                 {
-                    auto block_ptr = std::make_shared<AsyncBlocker>(request.m_id);
+                    auto block_ptr = allocate_tracers::make_shared<AsyncBlocker>(request.m_id);
                     m_blockers.push_back({block_ptr, m_next_epoch++, request.m_priority, true});
                     chan_must_write(request.m_chan, block_ptr);
                     m_ready_notifier.notify();

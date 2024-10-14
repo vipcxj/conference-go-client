@@ -1,7 +1,7 @@
 #include "cfgo/signal.hpp"
 #include "cfgo/utils.hpp"
-#ifdef CFGO_SIGNAL_ALLOCATOR_TRACER
-#include "cfgo/allocator_tracer.hpp"
+#ifdef CFGO_SIGNAL_ALLOCATE_TRACER
+#include "cfgo/allocate_tracer.hpp"
 #endif
 #include "boost/beast/core.hpp"
 #include "boost/beast/websocket.hpp"
@@ -136,13 +136,13 @@ namespace cfgo
                 m_payload(std::move(payload)),
                 m_ack(ack)
             {
-            #ifdef CFGO_SIGNAL_ALLOCATOR_TRACER
-                signal_allocator_tracer::raw_msg_ctor();
+            #ifdef CFGO_SIGNAL_ALLOCATE_TRACER
+                signal_allocate_tracer::raw_msg_ctor();
             #endif
             }
             ~WSMsg() {
-            #ifdef CFGO_SIGNAL_ALLOCATOR_TRACER
-                signal_allocator_tracer::raw_msg_dtor();
+            #ifdef CFGO_SIGNAL_ALLOCATE_TRACER
+                signal_allocate_tracer::raw_msg_dtor();
             #endif
             }
             static auto create(std::uint64_t msg_id, std::string_view evt, nlohmann::json && payload, bool ack) -> RawSigMsgUPtr {
@@ -168,17 +168,17 @@ namespace cfgo
             std::uint64_t m_msg_id;
         public:
             WSAcker(std::weak_ptr<WebsocketRawSignal> signal, std::uint64_t msg_id): m_signal(signal), m_msg_id(msg_id) {
-            #ifdef CFGO_SIGNAL_ALLOCATOR_TRACER
-                signal_allocator_tracer::raw_acker_ctor();
+            #ifdef CFGO_SIGNAL_ALLOCATE_TRACER
+                signal_allocate_tracer::raw_acker_ctor();
             #endif
             }
             ~WSAcker() {
-            #ifdef CFGO_SIGNAL_ALLOCATOR_TRACER
-                signal_allocator_tracer::raw_acker_dtor();
+            #ifdef CFGO_SIGNAL_ALLOCATE_TRACER
+                signal_allocate_tracer::raw_acker_dtor();
             #endif
             }
             static auto create(std::weak_ptr<WebsocketRawSignal> signal, std::uint64_t msg_id) -> RawSigAckerPtr {
-                return std::make_shared<WSAcker>(signal, msg_id);
+                return allocate_tracers::make_shared<WSAcker>(signal, msg_id);
             }
             auto ack(close_chan closer, nlohmann::json payload) -> asio::awaitable<void> override;
             auto ack(close_chan closer, std::unique_ptr<ServerErrorObject> eo) -> asio::awaitable<void> override;
@@ -288,7 +288,7 @@ namespace cfgo
             {}
             ~WebsocketRawSignal() noexcept {}
             static auto create(close_chan closer, const SignalConfigure & conf) -> RawSignalPtr {
-                return std::make_shared<WebsocketRawSignal>(std::move(closer), conf);
+                return allocate_tracers::make_shared<WebsocketRawSignal>(std::move(closer), conf);
             }
             auto id() const noexcept -> std::string {
                 return m_id;
@@ -602,13 +602,13 @@ namespace cfgo
                 m_payload(std::move(payload)),
                 m_msg_id(msg_id)
             {
-            #ifdef CFGO_SIGNAL_ALLOCATOR_TRACER
-                signal_allocator_tracer::sig_msg_ctor();
+            #ifdef CFGO_SIGNAL_ALLOCATE_TRACER
+                signal_allocate_tracer::sig_msg_ctor();
             #endif
             }
             ~SignalMsg() {
-            #ifdef CFGO_SIGNAL_ALLOCATOR_TRACER
-                signal_allocator_tracer::sig_msg_dtor();
+            #ifdef CFGO_SIGNAL_ALLOCATE_TRACER
+                signal_allocate_tracer::sig_msg_dtor();
             #endif
             }
             static auto create(std::string_view evt, bool ack, std::string_view room, std::string_view to, std::string && payload, std::uint32_t msg_id) -> cfgo::SignalMsgUPtr {
@@ -646,17 +646,17 @@ namespace cfgo
                 m_signal(std::move(signal)),
                 m_msg(std::move(msg))
             {
-            #ifdef CFGO_SIGNAL_ALLOCATOR_TRACER
-                signal_allocator_tracer::sig_acker_ctor();
+            #ifdef CFGO_SIGNAL_ALLOCATE_TRACER
+                signal_allocate_tracer::sig_acker_ctor();
             #endif
             }
             ~SignalAcker() {
-            #ifdef CFGO_SIGNAL_ALLOCATOR_TRACER
-                signal_allocator_tracer::sig_acker_dtor();
+            #ifdef CFGO_SIGNAL_ALLOCATE_TRACER
+                signal_allocate_tracer::sig_acker_dtor();
             #endif
             }
             static SignalAckerPtr create(std::weak_ptr<Signal> signal, SignalMsgPtr msg) {
-                return std::make_shared<SignalAcker>(std::move(signal), std::move(msg));
+                return allocate_tracers::make_shared<SignalAcker>(std::move(signal), std::move(msg));
             }
             auto ack(close_chan closer, std::string payload) -> asio::awaitable<void> override;
             auto ack(close_chan closer, std::unique_ptr<ServerErrorObject> err) -> asio::awaitable<void> override;
@@ -914,7 +914,7 @@ namespace cfgo
                     if (evt == "ping")
                     {
                         assert(!msg->ack());
-                        auto pm = std::make_shared<msg::PingMessage>();
+                        auto pm = allocate_tracers::make_shared<msg::PingMessage>();
                         nlohmann::from_json(msg->payload(), *pm);
                         co_await self->_send_pong(closer, pm->msgId, pm->router.room, pm->router.socketFrom);
                         for (auto iter = self->m_ping_cbs.begin(); iter != self->m_ping_cbs.end();)
@@ -932,7 +932,7 @@ namespace cfgo
                     else if (evt == "pong")
                     {
                         assert(!msg->ack());
-                        auto pm = std::make_shared<msg::PongMessage>();
+                        auto pm = allocate_tracers::make_shared<msg::PongMessage>();
                         nlohmann::from_json(msg->payload(), *pm);
                         for (auto iter = self->m_pong_cbs.begin(); iter != self->m_pong_cbs.end();)
                         {
@@ -950,7 +950,7 @@ namespace cfgo
                     {
                         assert(msg->ack());
                         co_await acker->ack(closer, nlohmann::json ("ack"));
-                        auto sm = std::make_shared<msg::CandidateMessage>();
+                        auto sm = allocate_tracers::make_shared<msg::CandidateMessage>();
                         nlohmann::from_json(msg->payload(), *sm);
                         for (auto iter = self->m_cand_cbs.begin(); iter != self->m_cand_cbs.end();)
                         {
@@ -964,7 +964,7 @@ namespace cfgo
                     } else if (evt == "sdp") {
                         assert(msg->ack());
                         co_await acker->ack(closer, nlohmann::json ("ack"));
-                        auto sm = std::make_shared<msg::SdpMessage>();
+                        auto sm = allocate_tracers::make_shared<msg::SdpMessage>();
                         nlohmann::from_json(msg->payload(), *sm);
                         for (auto iter = self->m_sdp_cbs.begin(); iter != self->m_sdp_cbs.end();)
                         {
@@ -1354,7 +1354,7 @@ namespace cfgo
 
     auto make_websocket_signal(close_chan closer, const SignalConfigure & conf) -> SignalPtr {
         auto raw_signal = impl::WebsocketRawSignal::create(std::move(closer), conf);
-        return std::make_shared<impl::Signal>(std::move(raw_signal));
+        return allocate_tracers::make_shared<impl::Signal>(std::move(raw_signal));
     }
     
 } // namespace cfgo

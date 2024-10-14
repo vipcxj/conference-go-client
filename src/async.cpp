@@ -5,9 +5,8 @@
 #include "spdlog/spdlog.h"
 #include <list>
 #include <chrono>
-#ifdef CFGO_CLOSER_ALLOCATOR_TRACER
-#include "cfgo/allocator_tracer.hpp"
-#endif
+
+#include "cfgo/allocate_tracer.hpp"
 
 namespace cfgo
 {
@@ -124,14 +123,14 @@ namespace cfgo
         duration_t dur,
         close_chan closer,
         std::string reasion
-#if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+#if defined(CFGO_CLOSER_ALLOCATE_TRACER) && defined(CFGO_CLOSER_ALLOCATE_TRACER_DETAIL)
         , std::source_location src_loc
 #endif
     ) -> asio::awaitable<void> {
         if (closer)
         {
             auto timeout_closer = closer.create_child(
-#if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+#if defined(CFGO_CLOSER_ALLOCATE_TRACER) && defined(CFGO_CLOSER_ALLOCATE_TRACER_DETAIL)
                 std::move(src_loc)
 #endif
             );
@@ -221,19 +220,19 @@ namespace cfgo
             std::list<WeakPtr> m_children;
 
             CloseSignalState(
-            #if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+            #if defined(CFGO_CLOSER_ALLOCATE_TRACER) && defined(CFGO_CLOSER_ALLOCATE_TRACER_DETAIL)
                 std::source_location ctr_src_loc
             #endif
             );
             CloseSignalState(
                 const std::weak_ptr<CloseSignalState> & parent
-            #if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+            #if defined(CFGO_CLOSER_ALLOCATE_TRACER) && defined(CFGO_CLOSER_ALLOCATE_TRACER_DETAIL)
                 , std::source_location ctr_src_loc
             #endif
             );
             CloseSignalState(
                 std::weak_ptr<CloseSignalState> && parent
-            #if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+            #if defined(CFGO_CLOSER_ALLOCATE_TRACER) && defined(CFGO_CLOSER_ALLOCATE_TRACER_DETAIL)
                 , std::source_location ctr_src_loc
             #endif
             );
@@ -263,7 +262,7 @@ namespace cfgo
             void set_timeout(duration_t dur, std::string reason, std::source_location src_loc);
 
             Ptr create_child(
-            #if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+            #if defined(CFGO_CLOSER_ALLOCATE_TRACER) && defined(CFGO_CLOSER_ALLOCATE_TRACER_DETAIL)
                 std::source_location src_loc
             #endif
             );
@@ -334,14 +333,14 @@ namespace cfgo
         };
 
         CloseSignalState::CloseSignalState(
-            #if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+            #if defined(CFGO_CLOSER_ALLOCATE_TRACER) && defined(CFGO_CLOSER_ALLOCATE_TRACER_DETAIL)
             std::source_location ctr_src_loc
             #endif
         ) : m_parent()
         {
-            #ifdef CFGO_CLOSER_ALLOCATOR_TRACER
-            cfgo::close_allocator_tracer::ctor(
-                #ifdef CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES
+            #ifdef CFGO_CLOSER_ALLOCATE_TRACER
+            cfgo::close_allocate_tracer::ctor(
+                #ifdef CFGO_CLOSER_ALLOCATE_TRACER_DETAIL
                 reinterpret_cast<std::uintptr_t>(this),
                 0,
                 std::move(ctr_src_loc)
@@ -351,14 +350,14 @@ namespace cfgo
         }
         CloseSignalState::CloseSignalState(
             const std::weak_ptr<CloseSignalState> & parent
-            #if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+            #if defined(CFGO_CLOSER_ALLOCATE_TRACER) && defined(CFGO_CLOSER_ALLOCATE_TRACER_DETAIL)
             , std::source_location ctr_src_loc
             #endif
         ) : m_parent(parent)
         {
-            #ifdef CFGO_CLOSER_ALLOCATOR_TRACER
-            cfgo::close_allocator_tracer::ctor(
-                #ifdef CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES
+            #ifdef CFGO_CLOSER_ALLOCATE_TRACER
+            cfgo::close_allocate_tracer::ctor(
+                #ifdef CFGO_CLOSER_ALLOCATE_TRACER_DETAIL
                 reinterpret_cast<std::uintptr_t>(this),
                 reinterpret_cast<std::uintptr_t>(m_parent.lock().get()),
                 std::move(ctr_src_loc)
@@ -368,13 +367,13 @@ namespace cfgo
         }
         CloseSignalState::CloseSignalState(
             std::weak_ptr<CloseSignalState> && parent
-            #if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+            #if defined(CFGO_CLOSER_ALLOCATE_TRACER) && defined(CFGO_CLOSER_ALLOCATE_TRACER_DETAIL)
             , std::source_location ctr_src_loc
             #endif
         ) : m_parent(std::move(parent)) {
-            #ifdef CFGO_CLOSER_ALLOCATOR_TRACER
-            cfgo::close_allocator_tracer::ctor(
-                #ifdef CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES
+            #ifdef CFGO_CLOSER_ALLOCATE_TRACER
+            cfgo::close_allocate_tracer::ctor(
+                #ifdef CFGO_CLOSER_ALLOCATE_TRACER_DETAIL
                 reinterpret_cast<std::uintptr_t>(this),
                 reinterpret_cast<std::uintptr_t>(m_parent.lock().get()),
                 std::move(ctr_src_loc)
@@ -386,9 +385,9 @@ namespace cfgo
         CloseSignalState::~CloseSignalState() noexcept
         {
             close_no_except(false, "Destructor called.", std::source_location {});
-            #ifdef CFGO_CLOSER_ALLOCATOR_TRACER
-            cfgo::close_allocator_tracer::dtor(
-                #ifdef CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES
+            #ifdef CFGO_CLOSER_ALLOCATE_TRACER
+            cfgo::close_allocate_tracer::dtor(
+                #ifdef CFGO_CLOSER_ALLOCATE_TRACER_DETAIL
                 reinterpret_cast<std::uintptr_t>(this)
                 #endif
             );
@@ -425,7 +424,7 @@ namespace cfgo
                 {
                     return;
                 }
-                m_timer = std::make_shared<asio::steady_timer>(executor);
+                m_timer = allocate_tracers::make_shared<asio::steady_timer>(executor);
                 if (m_timeout != duration_t {0})
                 {
                     m_timer->expires_after(m_timeout);
@@ -461,8 +460,8 @@ namespace cfgo
             m_close_reason = std::move(reason);
             m_close_src_loc = std::move(src_loc);
 
-            #if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
-            cfgo::close_allocator_tracer::update_close_loc(reinterpret_cast<std::uintptr_t>(this), m_close_src_loc);
+            #if defined(CFGO_CLOSER_ALLOCATE_TRACER) && defined(CFGO_CLOSER_ALLOCATE_TRACER_DETAIL)
+            cfgo::close_allocate_tracer::update_close_loc(reinterpret_cast<std::uintptr_t>(this), m_close_src_loc);
             #endif
 
             m_is_timeout = is_timeout;
@@ -647,7 +646,7 @@ namespace cfgo
         }
 
         auto CloseSignalState::create_child(
-#if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+#if defined(CFGO_CLOSER_ALLOCATE_TRACER) && defined(CFGO_CLOSER_ALLOCATE_TRACER_DETAIL)
             std::source_location src_loc
 #endif
         ) -> Ptr
@@ -655,8 +654,8 @@ namespace cfgo
             std::lock_guard lock(m_mutex);
             if (m_closed)
             {
-                auto child = std::make_shared<CloseSignalState>(
-#if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+                auto child = allocate_tracers::make_shared<CloseSignalState>(
+#if defined(CFGO_CLOSER_ALLOCATE_TRACER) && defined(CFGO_CLOSER_ALLOCATE_TRACER_DETAIL)
                     std::move(src_loc)
 #endif
                 );
@@ -665,9 +664,9 @@ namespace cfgo
             }
             else
             {
-                auto child = std::make_shared<CloseSignalState>(
+                auto child = allocate_tracers::make_shared<CloseSignalState>(
                     weak_from_this()
-#if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+#if defined(CFGO_CLOSER_ALLOCATE_TRACER) && defined(CFGO_CLOSER_ALLOCATE_TRACER_DETAIL)
                     , std::move(src_loc)
 #endif
                 );
@@ -712,12 +711,12 @@ namespace cfgo
     {}
 
     CloseSignal::CloseSignal(
-    #if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+    #if defined(CFGO_CLOSER_ALLOCATE_TRACER) && defined(CFGO_CLOSER_ALLOCATE_TRACER_DETAIL)
         std::source_location source_loc
     #endif
     ): m_state(
-        std::make_shared<detail::CloseSignalState>(
-    #if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+        allocate_tracers::make_shared<detail::CloseSignalState>(
+    #if defined(CFGO_CLOSER_ALLOCATE_TRACER) && defined(CFGO_CLOSER_ALLOCATE_TRACER_DETAIL)
             std::move(source_loc)
     #endif
         )
@@ -833,7 +832,7 @@ namespace cfgo
     }
 
     CloseSignal CloseSignal::create_child(
-#if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+#if defined(CFGO_CLOSER_ALLOCATE_TRACER) && defined(CFGO_CLOSER_ALLOCATE_TRACER_DETAIL)
         std::source_location src_loc
 #endif
     ) const
@@ -841,7 +840,7 @@ namespace cfgo
         if (m_state)
         {
             return m_state->create_child(
-#if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+#if defined(CFGO_CLOSER_ALLOCATE_TRACER) && defined(CFGO_CLOSER_ALLOCATE_TRACER_DETAIL)
                 std::move(src_loc)
 #endif
             );
@@ -850,7 +849,7 @@ namespace cfgo
         {
             // just a new closer.
             return CloseSignal {
-#if defined(CFGO_CLOSER_ALLOCATOR_TRACER) && defined(CFGO_CLOSER_ALLOCATOR_TRACER_USE_ENTRIES)
+#if defined(CFGO_CLOSER_ALLOCATE_TRACER) && defined(CFGO_CLOSER_ALLOCATE_TRACER_DETAIL)
                 std::move(src_loc)
 #endif
             };
@@ -944,7 +943,7 @@ namespace cfgo
         };
     } // namespace detail
 
-    StateMaybeChangedNotifier::StateMaybeChangedNotifier(): m_state(std::make_shared<detail::StateMaybeChangedNotifierState>()) {}
+    StateMaybeChangedNotifier::StateMaybeChangedNotifier(): m_state(allocate_tracers::make_shared<detail::StateMaybeChangedNotifierState>()) {}
     
 
     void StateMaybeChangedNotifier::notify() const {

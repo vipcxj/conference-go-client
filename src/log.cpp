@@ -1,4 +1,5 @@
 #include "cfgo/log.hpp"
+#include "cfgo/allocate_tracer.hpp"
 
 #include "spdlog/sinks/stdout_color_sinks.h"
 #include "cpptrace/cpptrace.hpp"
@@ -17,8 +18,8 @@ namespace cfgo
 
         Logger create_default_logger(std::string name)
         {
-            auto logger_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-            return std::make_shared<spdlog::logger>(std::move(name), logger_sink);
+            auto logger_sink = allocate_tracers::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+            return allocate_tracers::make_shared<spdlog::logger>(std::move(name), logger_sink);
         }
 
         class Log

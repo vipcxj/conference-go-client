@@ -2,6 +2,7 @@
 #include "cfgo/track.hpp"
 #include "rtc/rtc.hpp"
 #include "cfgo/defer.hpp"
+#include "cfgo/allocate_tracer.hpp"
 
 #include <unordered_set>
 
@@ -120,7 +121,7 @@ namespace cfgo
             auto _access_peer_box(close_chan closer) -> asio::awaitable<PeerBoxPtr> {
                 auto self = shared_from_this();
                 close_chan peer_closer = self->m_closer.create_child();
-                auto box = std::make_shared<PeerBox>(m_conf.m_rtc_config);
+                auto box = allocate_tracers::make_shared<PeerBox>(m_conf.m_rtc_config);
                 box->peer.onStateChange([box, weak_self = self->weak_from_this(), peer_closer](rtc::PeerConnection::State state) {
                     if (auto self = weak_self.lock())
                     {
@@ -195,7 +196,7 @@ namespace cfgo
         auto Webrtc::negotiate(close_chan closer, PeerBoxPtr box, int sdp_id, bool active) -> asio::awaitable<void> {
             auto self = shared_from_this();
             auto remoted = std::make_shared<std::atomic<bool>>(false);
-            auto cands = std::make_shared<std::vector<cfgo::Signal::CandMsgPtr>>();
+            auto cands = allocate_tracers::make_shared<std::vector<cfgo::Signal::CandMsgPtr>>();
             auto executor = co_await asio::this_coro::executor;
             if (co_await self->m_neg_mux.accquire(closer))
             {
@@ -230,7 +231,7 @@ namespace cfgo
                     asiochan::unbounded_channel<Signal::SdpMsgPtr> desc_ch;
                     box->peer.onLocalDescription([box, desc_ch, sdp_id](const rtc::Description & desc) {
                         box->update_gst_sdp(desc);
-                        auto req_sdp = std::make_shared<msg::SdpMessage>();
+                        auto req_sdp = allocate_tracers::make_shared<msg::SdpMessage>();
                         req_sdp->mid = sdp_id;
                         req_sdp->sdp = desc;
                         req_sdp->type = desc.typeString();
@@ -281,7 +282,7 @@ namespace cfgo
                         box->peer.onLocalDescription([box, answer_sdp_ch, sdp_id](const rtc::Description & desc) {
                             assert(desc.type() == rtc::Description::Type::Answer || desc.type() == rtc::Description::Type::Pranswer);
                             box->update_gst_sdp(desc);
-                            auto req_sdp = std::make_shared<msg::SdpMessage>();
+                            auto req_sdp = allocate_tracers::make_shared<msg::SdpMessage>();
                             req_sdp->mid = sdp_id;
                             req_sdp->sdp = desc;
                             req_sdp->type = desc.typeString();
@@ -314,14 +315,14 @@ namespace cfgo
             sub_req_msg->pattern = std::move(pattern);
             auto sub_req_res = co_await self->m_signal->subsrcibe(closer, std::move(sub_req_msg));
             auto sub_res = co_await self->m_signal->wait_subscribed(closer, std::move(sub_req_res));
-            auto sub_ptr = std::make_shared<cfgo::Subscribation>(sub_res->subId, sub_res->pubId);
+            auto sub_ptr = allocate_tracers::make_shared<cfgo::Subscribation>(sub_res->subId, sub_res->pubId);
             if (sub_res->tracks.empty())
             {
                 co_return sub_ptr;
             }
             for (auto && track : sub_res->tracks)
             {
-                sub_ptr->tracks().push_back(std::make_shared<cfgo::Track>(
+                sub_ptr->tracks().push_back(allocate_tracers::make_shared<cfgo::Track>(
                     track, 
                     m_conf.m_track_config.rtp_cache_min_segments,
                     m_conf.m_track_config.rtp_cache_max_segments,
@@ -369,7 +370,7 @@ namespace cfgo
     } // namespace impl
 
     WebrtcPtr make_webrtc(SignalPtr signal, const cfgo::Configuration & conf) {
-        return std::make_shared<impl::Webrtc>(std::move(signal), conf);
+        return allocate_tracers::make_shared<impl::Webrtc>(std::move(signal), conf);
     }
     
 } // namespace cfgo

@@ -2,7 +2,7 @@
 #include "cfgo/async_locker.hpp"
 #include "cfgo/measure.hpp"
 #include "cfgo/log.hpp"
-#include "cfgo/allocator_tracer.hpp"
+#include "cfgo/allocate_tracer.hpp"
 #include "gtest/gtest.h"
 #include <random>
 
@@ -68,20 +68,29 @@ struct TestObj
 TEST(AllocateTracer, Tracer)
 {
     using namespace cfgo;
-    using state_t = allocator_tracers::tracer_state;
-    state_t state;
+    using alc_tracers =  allocate_tracers;
+    using state_t = alc_tracers::tracer_state;
+    state_t & state = state_t::instance();
     {
-        auto ptr = state.make_shared<int>(3);
+        auto ptr = alc_tracers::make_shared<int>(3);
+        #ifdef CFGO_GENERAL_ALLOCATE_TRACER_DETAIL
+        EXPECT_TRUE(state.entry(ptr.get()).has_detail());
+        #else
         EXPECT_FALSE(state.entry(ptr.get()).has_detail());
-        EXPECT_EQ(state.entry(ptr.get()).ref_count(), 1);
+        #endif
+        EXPECT_EQ(alc_tracers::ref_count(typeid(int)), 1);
     }
-    EXPECT_EQ(state.entry(typeid(const int *))->ref_count(), 0);
+    EXPECT_EQ(alc_tracers::ref_count(typeid(int)), 0);
     {
         auto ptr = state.make_shared<TestObj>();
         EXPECT_TRUE(state.entry(ptr.get()).has_detail());
-        EXPECT_EQ(state.entry(ptr.get()).ref_count(), 1);
+        EXPECT_EQ(alc_tracers::ref_count(typeid(TestObj)), 1);
+        alc_tracers::tracer_entry_result_set result;
+        alc_tracers::collect_max_n_ref_count(result, 1);
+        EXPECT_EQ(result.size(), 1);
+        EXPECT_EQ(result[0].get().type_name(), boost::core::demangle(typeid(TestObj).name()));
     }
-    EXPECT_EQ(state.entry(typeid(const TestObj *))->ref_count(), 0);
+    EXPECT_EQ(alc_tracers::ref_count(typeid(TestObj)), 0);
 }
 
 int main(int argc, char **argv) {

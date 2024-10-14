@@ -3,6 +3,7 @@
 #include "cfgo/utils.hpp"
 #include "cfgo/async.hpp"
 #include "cfgo/log.hpp"
+#include "cfgo/allocate_tracer.hpp"
 #include "cpptrace/cpptrace.hpp"
 #include "spdlog/spdlog.h"
 #include "cfgo/asio.hpp"
@@ -285,23 +286,9 @@ namespace cfgo
 CFGO_API int cfgo_io_context_create()
 {
     return cfgo::c_wrap([]() {
-        return cfgo::wrap_io_context(std::make_shared<asio::io_context>());
+        return cfgo::wrap_io_context(cfgo::allocate_tracers::make_shared<asio::io_context>());
     });
 }
-
-// CFGO_API int cfgo_execution_context_create_thread_pool(int n)
-// {
-//     return cfgo::c_wrap([n]() {
-//         return cfgo::wrap_execution_context(std::make_shared<asio::thread_pool>(n));
-//     });
-// }
-
-// CFGO_API int cfgo_execution_context_create_thread_pool_auto()
-// {
-//     return cfgo::c_wrap([]() {
-//         return cfgo::wrap_execution_context(std::make_shared<asio::thread_pool>());
-//     });
-// }
 
 CFGO_API int cfgo_io_context_ref(int handle)
 {
@@ -356,7 +343,7 @@ CFGO_API int cfgo_client_create(const cfgoConfiguration * config, int io_context
     return cfgo::c_wrap([config, io_context_handle, closer_handle]() {
         auto io_context = cfgo::get_io_context(io_context_handle);
         auto closer = cfgo::get_close_chan(closer_handle);
-        return cfgo::wrap_client(std::make_shared<cfgo::Client>(cfgo::cfgo_config_to_cpp(config), io_context, closer));
+        return cfgo::wrap_client(cfgo::allocate_tracers::make_shared<cfgo::Client>(cfgo::cfgo_config_to_cpp(config), io_context, closer));
     });
 }
 

@@ -2,6 +2,7 @@
 #include "impl/pipeline.hpp"
 #include "cfgo/defer.hpp"
 #include "cfgo/utils.hpp"
+#include "cfgo/allocate_tracer.hpp"
 #include "cpptrace/cpptrace.hpp"
 
 #include <set>
@@ -60,13 +61,13 @@ namespace cfgo
         auto Pipeline::link_async(const std::string & src, const std::string & target) -> AsyncLinkPtr
         {
             auto link_impl = impl()->link_async(src, target);
-            return link_impl ? std::make_shared<AsyncLink>(link_impl) : nullptr;
+            return link_impl ? allocate_tracers::make_shared<AsyncLink>(link_impl) : nullptr;
         }
 
         auto Pipeline::link_async(const std::string & src_name, const std::string & src_pad_name, const std::string & tgt_name, const std::string & tgt_pad_name) -> AsyncLinkPtr
         {
             auto link_impl = impl()->link_async(src_name, src_pad_name, tgt_name, tgt_pad_name);
-            return link_impl ? std::make_shared<AsyncLink>(link_impl) : nullptr;
+            return link_impl ? allocate_tracers::make_shared<AsyncLink>(link_impl) : nullptr;
         }
 
         const char * Pipeline::name() const noexcept
