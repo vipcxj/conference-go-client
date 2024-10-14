@@ -149,7 +149,7 @@ namespace cfgo
                     while (true)
                     {
                         auto cand = co_await chan_read_or_throw<rtc::Candidate>(cand_ch, self->m_closer);
-                        auto msg = std::make_unique<msg::CandidateMessage>();
+                        auto msg = allocate_tracers::make_unique<msg::CandidateMessage>();
                         msg->op = msg::CandidateOp::ADD;
                         msg->candidate.candidate = cand.candidate();
                         msg->candidate.sdpMid = cand.mid();
@@ -309,7 +309,7 @@ namespace cfgo
             closer = closer.create_child();
             auto self = shared_from_this();
             self->m_logger->debug("subscribing...");
-            auto sub_req_msg = std::make_unique<msg::SubscribeMessage>();
+            auto sub_req_msg = allocate_tracers::make_unique<msg::SubscribeMessage>();
             sub_req_msg->op = msg::SubscribeOp::ADD;
             sub_req_msg->reqTypes = std::move(req_types);
             sub_req_msg->pattern = std::move(pattern);
@@ -361,7 +361,7 @@ namespace cfgo
 
         auto Webrtc::unsubscribe(close_chan closer, std::string sub_id) -> asio::awaitable<void> {
             auto self = shared_from_this();
-            auto sub_req_msg = std::make_unique<msg::SubscribeMessage>();
+            auto sub_req_msg = allocate_tracers::make_unique<msg::SubscribeMessage>();
             sub_req_msg->op = msg::SubscribeOp::REMOVE;
             sub_req_msg->id = sub_id;
             co_await self->m_signal->subsrcibe(closer, std::move(sub_req_msg));

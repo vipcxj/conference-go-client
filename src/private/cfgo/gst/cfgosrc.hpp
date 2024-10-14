@@ -158,7 +158,6 @@ namespace cfgo
         public:
             ~CfgoSrc();
 
-            using UPtr = std::unique_ptr<CfgoSrc>;
             using Ptr = std::shared_ptr<CfgoSrc>;
             static auto create(
                 int client_handle, 

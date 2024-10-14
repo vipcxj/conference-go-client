@@ -33,7 +33,6 @@ namespace cfgo
     inline Webrtc::~Webrtc() {}
     using WebrtcPtr = std::shared_ptr<Webrtc>;
     using WebrtcWPtr = std::weak_ptr<Webrtc>;
-    using WebrtcUPtr = std::unique_ptr<Webrtc>;
 
     WebrtcPtr make_webrtc(SignalPtr signal, const cfgo::Configuration & conf);
     

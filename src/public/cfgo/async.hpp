@@ -17,6 +17,7 @@
 #include "cfgo/smart_list.hpp"
 #include "cfgo/utils.hpp"
 #include "cfgo/log.hpp"
+#include "cfgo/allocate_tracer.hpp"
 #include "cpptrace/cpptrace.hpp"
 
 namespace cfgo
@@ -1874,8 +1875,8 @@ namespace cfgo
         template<typename TT>
         struct enable_make_unique : public LazyBox<TT> {};
     public:
-        static auto create() -> std::unique_ptr<LazyBox<T>> {
-            return std::make_unique<enable_make_unique<T>>();
+        static auto create() -> allocate_tracers::unique_ptr<LazyBox<T>> {
+            return allocate_tracers::make_unique<enable_make_unique<T>>();
         }
         void init(const T & data) {
             bool done = m_done.load(std::memory_order::acquire);

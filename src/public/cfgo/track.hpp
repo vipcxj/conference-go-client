@@ -141,7 +141,7 @@ namespace cfgo
         };
 
         using Ptr = std::shared_ptr<Track>;
-        using MsgPtr = std::unique_ptr<rtc::binary>;
+        using MsgPtr = allocate_tracers::unique_ptr<rtc::binary>;
         using MsgSharedPtr = std::shared_ptr<rtc::binary>;
         using OnDataCb = std::function<void(const rtc::binary &, bool)>;
         using OnStatCb = std::function<void(const Statistics &)>;

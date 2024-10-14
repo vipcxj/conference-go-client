@@ -74,7 +74,7 @@ TEST(AllocateTracer, Tracer)
     {
         auto ptr = alc_tracers::make_shared<int>(3);
         #ifdef CFGO_GENERAL_ALLOCATE_TRACER_DETAIL
-        EXPECT_TRUE(state.entry(ptr.get()).has_detail());
+        EXPECT_TRUE(state.get_entry(ptr.get())->has_detail());
         #else
         EXPECT_FALSE(state.entry(ptr.get()).has_detail());
         #endif
@@ -83,7 +83,7 @@ TEST(AllocateTracer, Tracer)
     EXPECT_EQ(alc_tracers::ref_count(typeid(int)), 0);
     {
         auto ptr = state.make_shared<TestObj>();
-        EXPECT_TRUE(state.entry(ptr.get()).has_detail());
+        EXPECT_TRUE(state.get_entry(ptr.get())->has_detail());
         EXPECT_EQ(alc_tracers::ref_count(typeid(TestObj)), 1);
         alc_tracers::tracer_entry_result_set result;
         alc_tracers::collect_max_n_ref_count(result, 1);

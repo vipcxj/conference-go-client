@@ -214,7 +214,7 @@ namespace cfgo
                 {
                     m_on_stat(m_statistics);
                 }
-                cache.enqueue(std::make_pair(++m_seq, std::make_unique<rtc::binary>(std::move(data))), true);
+                cache.enqueue(std::make_pair(++m_seq, allocate_tracers::make_unique<rtc::binary>(std::move(data))), true);
             }
             m_state_notifier.notify();
         }

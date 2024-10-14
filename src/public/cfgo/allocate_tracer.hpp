@@ -398,16 +398,6 @@ namespace cfgo
         struct object_deleter;
         struct object_entry
         {
-            object_entry(std::weak_ptr<void> weak_ptr): m_weak_ptr(std::move(weak_ptr)) {}
-            void unref()
-            {
-                if (auto ptr = m_weak_ptr.lock())
-                {
-                    std::get_deleter<object_deleter<void>>(ptr)->entry = nullptr;
-                }
-            }
-        private:
-            std::weak_ptr<void> m_weak_ptr;
         };
 
         struct tracer_entry
@@ -416,24 +406,13 @@ namespace cfgo
             tracer_entry(const tracer_entry &) = delete;
             tracer_entry & operator= (const tracer_entry &) = delete;
 
-            ~tracer_entry()
-            {
-                std::lock_guard lk(m_mux);
-                for (auto [_, entry] : m_entries)
-                {
-                    entry.unref();
-                }
-                m_entries.clear();
-                m_ref_count = 0;
-            }
-
-            void add_entry(std::shared_ptr<void> ptr)
+            void add_entry(std::uintptr_t pointer)
             {
                 m_ref_count ++;
                 if (m_detail)
                 {
                     std::lock_guard lk(m_mux);
-                    m_entries.emplace(reinterpret_cast<std::uintptr_t>(ptr.get()), std::weak_ptr<void>(ptr));
+                    m_entries.emplace(pointer, object_entry {});
                 }
             }
 
@@ -472,16 +451,24 @@ namespace cfgo
         template<typename T>
         struct object_deleter
         {
+            constexpr object_deleter() noexcept = default;
+            object_deleter(std::weak_ptr<tracer_entry> weak_ptr) noexcept: weak_entry(std::move(weak_ptr)) {}
+            template<typename U>
+            requires std::convertible_to<U*, T*>
+            object_deleter(const object_deleter<U> &) noexcept { }
+
             void operator()(T * ptr)
             {
-                if (entry)
+                if (auto entry = weak_entry.lock())
                 {
                     entry->remove_entry(reinterpret_cast<std::uintptr_t>(ptr));
                 }
+                static_assert(!std::is_void<T>::value, "can't delete pointer to incomplete type");
+                static_assert(sizeof(T) > 0, "can't delete pointer to incomplete type");
                 delete ptr;
             }
 
-            tracer_entry * entry = nullptr;
+            std::weak_ptr<tracer_entry> weak_entry;
         };
 
         struct tracer_state
@@ -491,12 +478,6 @@ namespace cfgo
             #else
             static constexpr bool DEFAULT_DETAIL = false;
             #endif
-
-            ~tracer_state()
-            {
-                std::lock_guard lk(m_mux);
-                m_entries.clear();
-            }
 
             static tracer_state & instance()
             {
@@ -518,46 +499,63 @@ namespace cfgo
             }
 
             template<typename T>
-            tracer_entry & entry(const T * pointer)
+            std::shared_ptr<tracer_entry> make_entry(const T * pointer)
             {
                 return _entry(typeid(*const_cast<T *>(pointer)), is_detail<T>());
             }
 
-            const tracer_entry * entry(const std::type_info & type_id)
+            template<typename T>
+            std::shared_ptr<tracer_entry> get_entry(const T * pointer)
+            {
+                return get_entry(typeid(*const_cast<T *>(pointer)));
+            }
+
+            std::shared_ptr<tracer_entry> get_entry(const std::type_info & type_id) const
             {
                 std::lock_guard lk(m_mux);
                 auto iter = m_entries.find(std::type_index(type_id));
-                return iter != m_entries.end() ? &iter->second : nullptr;
+                return iter != m_entries.end() ? iter->second : nullptr;
             }
 
             std::uint64_t ref_count(const std::type_info & type_id) const
             {
                 std::lock_guard lk(m_mux);
                 auto iter = m_entries.find(std::type_index(type_id));
-                return iter != m_entries.end() ? iter->second.ref_count() : 0;
+                return iter != m_entries.end() ? iter->second->ref_count() : 0;
             }
 
             template<typename T, typename... Args>
             std::shared_ptr<T> make_shared(Args &&... args)
             {
                 auto ptr = new T(std::forward<Args>(args)...);
-                auto & entry = this->entry(ptr);
-                auto sptr = std::shared_ptr<T>(ptr, object_deleter<T>{ .entry = &entry });
-                entry.add_entry(sptr);
+                auto entry = this->make_entry(ptr);
+                auto sptr = std::shared_ptr<T>(ptr, object_deleter<T>{ entry });
+                entry->add_entry(reinterpret_cast<std::uintptr_t>(ptr));
                 return sptr;
             }
+
+            template<typename T, typename... Args>
+            std::unique_ptr<T, object_deleter<T>> make_unique(Args &&... args)
+            {
+                auto ptr = new T(std::forward<Args>(args)...);
+                auto entry = this->make_entry(ptr);
+                auto uptr = std::unique_ptr<T, object_deleter<T>>(ptr, object_deleter<T>{ entry });
+                entry->add_entry(reinterpret_cast<std::uintptr_t>(ptr));
+                return std::move(uptr);
+            }
+
         private:
             mutable mutex m_mux;
-            std::unordered_map<std::type_index, tracer_entry> m_entries;
+            std::unordered_map<std::type_index, std::shared_ptr<tracer_entry>> m_entries;
 
             tracer_state() {}
             tracer_state(const tracer_state &) = delete;
             tracer_state & operator= (const tracer_state &) = delete;
 
-            tracer_entry & _entry(const std::type_info & type_id, bool detail)
+            std::shared_ptr<tracer_entry> _entry(const std::type_info & type_id, bool detail)
             {
                 std::lock_guard lk(m_mux);
-                auto [iter, _] = m_entries.try_emplace(std::type_index(type_id), boost::core::demangle(type_id.name()), detail);
+                auto [iter, _] = m_entries.emplace(std::type_index(type_id), std::make_shared<tracer_entry>(boost::core::demangle(type_id.name()), detail));
                 return iter->second;
             }
 
@@ -569,6 +567,15 @@ namespace cfgo
         static std::shared_ptr<T> make_shared(Args &&... args)
         {
             return tracer_state::instance().make_shared<T>(std::forward<Args>(args)...);
+        }
+
+        template<typename T>
+        using unique_ptr = std::unique_ptr<T, object_deleter<T>>;
+
+        template<typename T, typename... Args>
+        static std::unique_ptr<T, object_deleter<T>> make_unique(Args &&... args)
+        {
+            return tracer_state::instance().make_unique<T>(std::forward<Args>(args)...);
         }
 
         static std::uint64_t ref_count(const std::type_info & type_id)
@@ -585,10 +592,10 @@ namespace cfgo
             using iter_t = decltype(state.m_entries)::iterator; // std::ranges::borrowed_iterator_t<decltype(state.m_entries)>;
             result.clear();
             for (auto & iter : max_n_elements(state.m_entries, n, [](iter_t iter1, iter_t iter2) -> bool {
-                return iter1->second.ref_count() > iter2->second.ref_count();
+                return iter1->second->ref_count() > iter2->second->ref_count();
             }))
             {
-                result.push_back(iter->second);
+                result.push_back(*iter->second);
             }
         }
         #else
@@ -596,6 +603,12 @@ namespace cfgo
         static std::shared_ptr<T> make_shared(Args &&... args)
         {
             return std::make_shared<T>(std::forward<Args>(args)...);
+        }
+
+        template<typename T, typename... Args>
+        static std::unique_ptr<T> make_unique(Args &&... args)
+        {
+            return std::make_unique<T>(std::forward<Args>(args)...);
         }
 
         static constexpr std::uint64_t ref_count(const std::type_info & type_id)

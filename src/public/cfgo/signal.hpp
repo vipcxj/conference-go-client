@@ -7,6 +7,7 @@
 #include "cfgo/error.hpp"
 #include "cfgo/message.hpp"
 #include "cfgo/log.hpp"
+#include "cfgo/allocate_tracer.hpp"
 
 #include <memory>
 #include <vector>
@@ -27,14 +28,14 @@ namespace cfgo
     };
     inline RawSigMsg::~RawSigMsg() {}
     using RawSigMsgPtr = std::shared_ptr<RawSigMsg>;
-    using RawSigMsgUPtr = std::unique_ptr<RawSigMsg>;
+    using RawSigMsgUPtr = allocate_tracers::unique_ptr<RawSigMsg>;
 
     struct RawSigAcker {
         virtual ~RawSigAcker() = 0;
         [[nodiscard]]
         virtual auto ack(close_chan closer, nlohmann::json payload) -> asio::awaitable<void> = 0;
         [[nodiscard]]
-        virtual auto ack(close_chan closer, std::unique_ptr<ServerErrorObject> err) -> asio::awaitable<void> = 0;
+        virtual auto ack(close_chan closer, allocate_tracers::unique_ptr<ServerErrorObject> err) -> asio::awaitable<void> = 0;
     };
     inline RawSigAcker::~RawSigAcker() {}
     using RawSigAckerPtr = std::shared_ptr<RawSigAcker>;
@@ -69,7 +70,6 @@ namespace cfgo
     };
     inline RawSignal::~RawSignal() {}
     using RawSignalPtr = std::shared_ptr<RawSignal>;
-    using RawSignalUPtr = std::unique_ptr<RawSignal>;
 
     struct SignalMsg {
         virtual ~SignalMsg() = 0;
@@ -90,14 +90,14 @@ namespace cfgo
     };
     inline SignalMsg::~SignalMsg() {}
     using SignalMsgPtr = std::shared_ptr<SignalMsg>;
-    using SignalMsgUPtr = std::unique_ptr<SignalMsg>;
+    using SignalMsgUPtr = allocate_tracers::unique_ptr<SignalMsg>;
 
     struct SignalAcker {
         virtual ~SignalAcker() = 0;
         [[nodiscard]]
         virtual auto ack(close_chan closer, std::string payload) -> asio::awaitable<void> = 0;
         [[nodiscard]]
-        virtual auto ack(close_chan closer, std::unique_ptr<ServerErrorObject> err) -> asio::awaitable<void> = 0;
+        virtual auto ack(close_chan closer, allocate_tracers::unique_ptr<ServerErrorObject> err) -> asio::awaitable<void> = 0;
     };
     inline SignalAcker::~SignalAcker() {}
     using SignalAckerPtr = std::shared_ptr<SignalAcker>;
@@ -128,9 +128,9 @@ namespace cfgo
         using CandCb = std::function<bool(CandMsgPtr)>;
         using SdpMsgPtr = std::shared_ptr<msg::SdpMessage>;
         using SdpCb = std::function<bool(SdpMsgPtr)>;
-        using SubscribeMsgPtr = std::unique_ptr<msg::SubscribeMessage>;
-        using SubscribedMsgPtr = std::unique_ptr<msg::SubscribedMessage>;
-        using SubscribeResultPtr = std::unique_ptr<msg::SubscribeResultMessage>;
+        using SubscribeMsgPtr = allocate_tracers::unique_ptr<msg::SubscribeMessage>;
+        using SubscribedMsgPtr = allocate_tracers::unique_ptr<msg::SubscribedMessage>;
+        using SubscribeResultPtr = allocate_tracers::unique_ptr<msg::SubscribeResultMessage>;
 
         virtual ~Signal() = 0;
         [[nodiscard]]
@@ -190,7 +190,6 @@ namespace cfgo
     };
     inline Signal::~Signal() {}
     using SignalPtr = std::shared_ptr<Signal>;
-    using SignalUPtr = std::unique_ptr<Signal>;
     using Rooms = std::vector<std::string>;
     using RoomSet = std::unordered_set<std::string>;
 
