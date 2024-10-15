@@ -18,12 +18,16 @@ namespace cfgo
         AdaptiveRingBufferNode *next = nullptr;
 
         AdaptiveRingBufferNode(std::size_t capacity) : data(capacity) {
-            ring_buffer_node_allocate_tracer::ctr(capacity);
+        #ifdef CFGO_RING_BUFFER_NODE_ALLOCATE_TRACER
+            ring_buffer_node_allocate_tracer::ctr(capacity * sizeof(T));
+        #endif
         }
 
         ~AdaptiveRingBufferNode()
         {
-            ring_buffer_node_allocate_tracer::dtr(data.size());
+        #ifdef CFGO_RING_BUFFER_NODE_ALLOCATE_TRACER
+            ring_buffer_node_allocate_tracer::dtr(data.size() * sizeof(T));
+        #endif
         }
 
         AdaptiveRingBufferNode(const AdaptiveRingBufferNode &) = delete;
