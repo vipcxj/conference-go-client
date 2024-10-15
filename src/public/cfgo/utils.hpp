@@ -184,7 +184,7 @@ namespace cfgo
             m_looping.store(true, std::memory_order::release);
         }
         void complete_loop() noexcept {
-            m_looping.store(true, std::memory_order::release);
+            m_looping.store(false, std::memory_order::release);
             for(auto && k : m_to_removes) {
                 m_map.erase(k);
             }
