@@ -71,11 +71,11 @@ TEST(AllocateTracer, Tracer)
     using namespace cfgo;
     using alc_tracers =  allocate_tracers;
     using state_t = alc_tracers::tracer_state;
-    state_t & state = state_t::instance();
+    auto state = state_t::instance();
     {
         auto ptr = alc_tracers::make_shared<int>(3);
         #ifdef CFGO_GENERAL_ALLOCATE_TRACER_DETAIL
-        EXPECT_TRUE(state.get_entry(ptr.get())->has_detail());
+        EXPECT_TRUE(state->get_entry(ptr.get())->has_detail());
         #else
         EXPECT_FALSE(state.entry(ptr.get()).has_detail());
         #endif
@@ -83,8 +83,8 @@ TEST(AllocateTracer, Tracer)
     }
     EXPECT_EQ(alc_tracers::ref_count(typeid(int)), 0);
     {
-        auto ptr = state.make_shared<TestObj>();
-        EXPECT_TRUE(state.get_entry(ptr.get())->has_detail());
+        auto ptr = allocate_tracers::make_shared<TestObj>();
+        EXPECT_TRUE(state->get_entry(ptr.get())->has_detail());
         EXPECT_EQ(alc_tracers::ref_count(typeid(TestObj)), 1);
         alc_tracers::tracer_entry_result_set result;
         alc_tracers::collect_max_n_ref_count(result, 1);
@@ -113,6 +113,21 @@ TEST(AllocateTracer, Tracer)
         {
             TestPtr ptr = allocate_tracers::make_unique<TestObj>();
             EXPECT_EQ(alc_tracers::ref_count(typeid(TestObj)), 1);
+            alc_tracers::raw_trace_result_set result {};
+            alc_tracers::collect_max_n_raw_trace(result, 3);
+            EXPECT_GE(result.size(), 1);
+            auto trace = result[0].first->resolve();
+            if (!trace.empty())
+            {
+                auto & frame = *trace.cbegin();
+                CFGO_INFO(
+                    "max ref count of stack trace: {}/{} [{}:{}]",
+                    result[0].second,
+                    frame.filename,
+                    frame.line.value_or(0),
+                    frame.column.value_or(0)
+                );
+            }
             auto timeouter = closer.create_child();
             unique_void_chan trigger {};
             asio::co_spawn(co_await asio::this_coro::executor, [ch, trigger, timeouter, ptr = std::move(ptr)]() mutable -> asio::awaitable<void> {
