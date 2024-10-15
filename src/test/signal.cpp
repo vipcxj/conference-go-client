@@ -19,22 +19,19 @@ auto get_token(std::string_view uid, std::string_view room, bool auto_join = fal
 
 auto print_signal_allocator_tracer(cfgo::close_chan closer, std::chrono::nanoseconds wait_time) -> asio::awaitable<void>
 {
-#ifdef CFGO_SIGNAL_ALLOCATE_TRACER
     asio::co_spawn(co_await asio::this_coro::executor, [closer = std::move(closer), wait_time]() -> asio::awaitable<void> {
         do
         {
-            using tracer = cfgo::signal_allocate_tracer;
-            CFGO_INFO(
-                "raw msg rc: {}, raw acker rc: {}, sig msg rc: {}, sig acker rc: {}",
-                tracer::raw_msg_ref_count(),
-                tracer::raw_acker_ref_count(),
-                tracer::sig_msg_ref_count(),
-                tracer::sig_acker_ref_count()
-            );
+            using tracer = cfgo::allocate_tracers;
+            tracer::tracer_entry_result_set tracer_result;
+            tracer::collect_max_n_ref_count(tracer_result, 3);
+            for (auto & entry : tracer_result)
+            {
+                CFGO_INFO("{} ref count: {}", entry.get().type_name(), entry.get().ref_count());
+            }
             co_await cfgo::wait_timeout(wait_time, closer);
         } while (true);
     }, asio::detached);
-#endif
     co_return;
 }
 

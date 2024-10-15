@@ -405,106 +405,6 @@ namespace cfgo
         #endif
     };
 
-    class signal_allocate_tracer
-    {
-    private:
-        struct signal_tracer_ref
-        {
-            std::atomic_int64_t& raw_msg_ref_count;
-            std::atomic_int64_t& raw_acker_ref_count;
-            std::atomic_int64_t& sig_msg_ref_count;
-            std::atomic_int64_t& sig_acker_ref_count;
-        };
-        
-        static signal_tracer_ref global_tracer() noexcept
-        {
-            static std::atomic_int64_t g_raw_msg_ref_count;
-            static std::atomic_int64_t g_raw_acker_ref_count;
-            static std::atomic_int64_t g_sig_msg_ref_count;
-            static std::atomic_int64_t g_sig_acker_ref_count;
-
-            return {
-                g_raw_msg_ref_count,
-                g_raw_acker_ref_count,
-                g_sig_msg_ref_count,
-                g_sig_acker_ref_count
-            };
-        }
-    public:
-
-        static void raw_msg_ctor() noexcept
-        {
-            auto tracer = global_tracer();
-            tracer.raw_msg_ref_count ++;
-        }
-
-        static void raw_msg_dtor() noexcept
-        {
-            auto tracer = global_tracer();
-            tracer.raw_msg_ref_count --;
-        }
-
-        static std::int64_t raw_msg_ref_count() noexcept
-        {
-            auto tracer = global_tracer();
-            return tracer.raw_msg_ref_count.load();
-        }
-
-        static void raw_acker_ctor() noexcept
-        {
-            auto tracer = global_tracer();
-            tracer.raw_acker_ref_count ++;
-        }
-
-        static void raw_acker_dtor() noexcept
-        {
-            auto tracer = global_tracer();
-            tracer.raw_acker_ref_count --;
-        }
-
-        static std::int64_t raw_acker_ref_count() noexcept
-        {
-            auto tracer = global_tracer();
-            return tracer.raw_acker_ref_count.load();
-        }
-
-        static void sig_msg_ctor() noexcept
-        {
-            auto tracer = global_tracer();
-            tracer.sig_msg_ref_count ++;
-        }
-
-        static void sig_msg_dtor() noexcept
-        {
-            auto tracer = global_tracer();
-            tracer.sig_msg_ref_count --;
-        }
-
-        static std::int64_t sig_msg_ref_count() noexcept
-        {
-            auto tracer = global_tracer();
-            return tracer.sig_msg_ref_count.load();
-        }
-
-        static void sig_acker_ctor() noexcept
-        {
-            auto tracer = global_tracer();
-            tracer.sig_acker_ref_count ++;
-        }
-
-        static void sig_acker_dtor() noexcept
-        {
-            auto tracer = global_tracer();
-            tracer.sig_acker_ref_count --;
-        }
-
-        static std::int64_t sig_acker_ref_count() noexcept
-        {
-            auto tracer = global_tracer();
-            return tracer.sig_acker_ref_count.load();
-        }
-    };
-
     using trace_id_t = raw_trace_pool::id_type;
 
     template<typename T>
@@ -606,7 +506,10 @@ namespace cfgo
             object_deleter(std::weak_ptr<tracer_entry> weak_ptr) noexcept: weak_entry(std::move(weak_ptr)) {}
             template<typename U>
             requires std::convertible_to<U*, T*>
-            object_deleter(const object_deleter<U> &) noexcept { }
+            object_deleter(const object_deleter<U> & other) noexcept: weak_entry(other.weak_entry) { }
+            template<typename U>
+            requires std::convertible_to<U*, T*>
+            object_deleter(object_deleter<U> && other) noexcept: weak_entry(std::move(other.weak_entry)) { }
 
             void operator()(T * ptr)
             {
@@ -617,6 +520,33 @@ namespace cfgo
                 static_assert(!std::is_void<T>::value, "can't delete pointer to incomplete type");
                 static_assert(sizeof(T) > 0, "can't delete pointer to incomplete type");
                 delete ptr;
+            }
+
+            std::weak_ptr<tracer_entry> weak_entry;
+        };
+
+        template<typename T>
+        struct object_deleter<T[]>
+        {
+            constexpr object_deleter() noexcept = default;
+            object_deleter(std::weak_ptr<tracer_entry> weak_ptr) noexcept: weak_entry(std::move(weak_ptr)) {}
+            template<typename U>
+            requires std::convertible_to<U(*)[], T(*)[]>
+            object_deleter(const object_deleter<U[]> & other) noexcept: weak_entry(other.weak_entry) { }
+            template<typename U>
+            requires std::convertible_to<U(*)[], T(*)[]>
+            object_deleter(object_deleter<U[]> && other) noexcept: weak_entry(std::move(other.weak_entry)) { }
+
+            template<typename U>
+            requires std::convertible_to<U(*)[], T(*)[]>
+            void operator()(U * ptr)
+            {
+                if (auto entry = weak_entry.lock())
+                {
+                    entry->remove_entry(reinterpret_cast<std::uintptr_t>(ptr));
+                }
+                static_assert(sizeof(T) > 0, "can't delete pointer to incomplete type");
+                delete [] ptr;
             }
 
             std::weak_ptr<tracer_entry> weak_entry;
