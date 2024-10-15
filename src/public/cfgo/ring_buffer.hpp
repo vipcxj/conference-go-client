@@ -7,6 +7,7 @@
 #include <type_traits>
 #include <iterator>
 #include <cstddef>
+#include "cfgo/allocate_tracer.hpp"
 
 namespace cfgo
 {
@@ -16,7 +17,17 @@ namespace cfgo
         std::vector<T> data;
         AdaptiveRingBufferNode *next = nullptr;
 
-        AdaptiveRingBufferNode(std::size_t capacity) : data(capacity) {}
+        AdaptiveRingBufferNode(std::size_t capacity) : data(capacity) {
+            ring_buffer_node_allocate_tracer::ctr(capacity);
+        }
+
+        ~AdaptiveRingBufferNode()
+        {
+            ring_buffer_node_allocate_tracer::dtr(data.size());
+        }
+
+        AdaptiveRingBufferNode(const AdaptiveRingBufferNode &) = delete;
+        AdaptiveRingBufferNode & operator= (const AdaptiveRingBufferNode &) = delete;
     };
 
     template <typename T>

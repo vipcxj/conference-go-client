@@ -405,6 +405,35 @@ namespace cfgo
         #endif
     };
 
+    struct ring_buffer_node_allocate_tracer
+    {
+        struct tracer_ref
+        {
+            std::atomic_uint64_t& size;
+        };
+        
+        static tracer_ref get() noexcept
+        {
+            static std::atomic_uint64_t g_size;
+            return { g_size };
+        }
+
+        static std::uint64_t size()
+        {
+            return get().size.load();
+        }
+
+        static void ctr(std::size_t size)
+        {
+            get().size += size;
+        }
+
+        static void dtr(std::size_t size)
+        {
+            get().size -= size;
+        }
+    };
+
     using trace_id_t = raw_trace_pool::id_type;
 
     template<typename T>
