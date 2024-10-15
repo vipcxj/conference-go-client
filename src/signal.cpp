@@ -143,8 +143,8 @@ namespace cfgo
                 signal_allocate_tracer::raw_msg_dtor();
             #endif
             }
-            static auto create(std::uint64_t msg_id, std::string_view evt, nlohmann::json && payload, bool ack) -> RawSigMsgUPtr {
-                return allocate_tracers::make_unique_skip_n<WSMsg>(1, msg_id, evt, std::move(payload), ack);
+            static auto create(std::uint64_t msg_id, std::string_view evt, nlohmann::json && payload, bool ack, int trace_skip = 0) -> RawSigMsgUPtr {
+                return allocate_tracers::make_unique_skip_n<WSMsg>(1 + trace_skip, msg_id, evt, std::move(payload), ack);
             }
             std::uint64_t msg_id() const noexcept override {
                 return m_msg_id;
@@ -294,7 +294,7 @@ namespace cfgo
             auto create_msg(const std::string_view & evt, nlohmann::json && payload, bool ack) -> RawSigMsgUPtr override {
                 auto msg_id = m_next_msg_id;
                 m_next_msg_id += 2;
-                return WSMsg::create(msg_id, evt, std::move(payload), ack);
+                return WSMsg::create(msg_id, evt, std::move(payload), ack, 1);
             }
             auto connect(close_chan closer, std::string socket_id) -> asio::awaitable<void> override {
                 return m_connect(std::move(closer), std::move(socket_id));
