@@ -5,6 +5,7 @@
 #include <system_error>
 #include <type_traits>
 #include "cfgo/json.hpp"
+#include "cfgo/allocate_tracer.hpp"
 #include "cpptrace/cpptrace.hpp"
 
 namespace cfgo {
@@ -20,6 +21,10 @@ namespace cfgo {
     
 
     struct ServerErrorObject {
+        static constexpr int ERR_CODE_OK = 0;
+        static constexpr int ERR_CODE_FATAL = 1000;
+        static constexpr int ERR_CODE_CLIENT_ERR = 5000;
+
         int code = 0;
         std::string msg {};
         nlohmann::json data {nullptr};
@@ -27,6 +32,8 @@ namespace cfgo {
         std::string cause {};
 
         NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(ServerErrorObject, code, msg, data, callFrames, cause)
+
+        static allocate_tracers::unique_ptr<ServerErrorObject> create(std::string msg, int code = ERR_CODE_CLIENT_ERR, bool call_frames = false);
     };
 
     class ServerError : public cpptrace::exception_with_message {

@@ -6,6 +6,7 @@
 #include "cfgo/configuration.hpp"
 #include "cfgo/error.hpp"
 #include "cfgo/message.hpp"
+#include "cfgo/publication.hpp"
 #include "cfgo/log.hpp"
 #include "cfgo/allocate_tracer.hpp"
 
@@ -131,6 +132,43 @@ namespace cfgo
         using SubscribeMsgPtr = allocate_tracers::unique_ptr<msg::SubscribeMessage>;
         using SubscribedMsgPtr = allocate_tracers::unique_ptr<msg::SubscribedMessage>;
         using SubscribeResultPtr = allocate_tracers::unique_ptr<msg::SubscribeResultMessage>;
+        using PublishAddMsgPtr = allocate_tracers::unique_ptr<msg::PublishAddMessage>;
+        using PublishRemoveMsgPtr = allocate_tracers::unique_ptr<msg::PublishRemoveMessage>;
+        using PublishResultMsgPtr = allocate_tracers::unique_ptr<msg::PublishResultMessage>;
+        using PublishedMsgPtr = allocate_tracers::unique_ptr<msg::PublishedMessage>;
+
+        struct publish_handle
+        {
+            std::uint64_t cb_id {0};
+            asiochan::unbounded_channel<PublishedMsgPtr> ch {};
+            RawSignalPtr raw_signal {};
+
+            publish_handle(std::uint64_t cb_id, asiochan::unbounded_channel<PublishedMsgPtr> ch, RawSignalPtr raw_signal) noexcept
+            : cb_id(cb_id), ch(ch), raw_signal(raw_signal) {}
+
+            publish_handle(const publish_handle &) = delete;
+            publish_handle(publish_handle && other) noexcept: cb_id(other.cb_id), ch(other.ch), raw_signal(other.raw_signal)
+            {
+                other.raw_signal.reset();
+            }
+            publish_handle & operator= (const publish_handle &) = delete;
+            publish_handle & operator= (publish_handle && other) noexcept
+            {
+                cb_id = other.cb_id;
+                ch = other.ch;
+                raw_signal = std::move(other.raw_signal);
+                other.raw_signal.reset();
+                return *this;
+            }
+
+            ~publish_handle()
+            {
+                if (raw_signal)
+                {
+                    raw_signal->off_msg(cb_id);
+                }
+            }
+        };
 
         virtual ~Signal() = 0;
         [[nodiscard]]
@@ -175,9 +213,11 @@ namespace cfgo
         virtual std::uint64_t on_sdp(SdpCb cb) = 0;
         virtual void off_sdp(std::uint64_t id) = 0;
         [[nodiscard]]
-        virtual auto subsrcibe(close_chan closer, SubscribeMsgPtr msg) -> asio::awaitable<SubscribeResultPtr> = 0;
+        virtual auto subsrcibe(close_chan closer, SubscribeMsgPtr msg) -> asio::awaitable<SubscribedMsgPtr> = 0;
         [[nodiscard]]
-        virtual auto wait_subscribed(close_chan closer, SubscribeResultPtr sub) -> asio::awaitable<SubscribedMsgPtr> = 0;
+        virtual auto publish(close_chan closer, Publication pub) -> asio::awaitable<publish_handle> = 0;
+        [[nodiscard]]
+        virtual auto wait_published(close_chan closer, publish_handle pub_handle) -> asio::awaitable<void> = 0;
         [[nodiscard]]
         virtual auto create_message(std::string_view evt, bool ack, std::string_view room, std::string_view to, std::string && payload) -> cfgo::SignalMsgUPtr = 0;
         [[nodiscard]]

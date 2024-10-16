@@ -146,6 +146,53 @@ namespace cfgo
             NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(SubscribedMessage, subId, pubId, sdpId, tracks)
         };
 
+        enum struct PublishOp
+        {
+            ADD = 0,
+            REMOVE = 1
+        };
+
+        struct TrackToPublish
+        {
+            std::string type {};
+            std::string bindId {};
+            std::optional<std::string> rid {};
+            std::string sid {};
+            std::unordered_map<std::string, std::string> labels {};
+
+            NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(TrackToPublish, type, bindId, rid, sid, labels)
+        };
+
+        struct PublishAddMessage
+        {
+            PublishOp op {PublishOp::ADD};
+            std::vector<TrackToPublish> tracks {};
+
+            NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(PublishAddMessage, op, tracks)
+        };
+
+        struct PublishRemoveMessage
+        {
+            PublishOp op {PublishOp::REMOVE};
+            std::string id {};
+
+            NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(PublishRemoveMessage, op, id)
+        };
+
+        struct PublishResultMessage
+        {
+            std::string id {};
+
+            NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(PublishResultMessage, id)
+        };
+
+        struct PublishedMessage
+        {
+            Track track {};
+
+            NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(PublishedMessage, track)
+        };
+
         struct CustomMessage {
             Router router {};
             std::string content {};

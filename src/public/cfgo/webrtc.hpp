@@ -6,6 +6,7 @@
 #include "cfgo/pattern.hpp"
 #include "cfgo/configuration.hpp"
 #include "cfgo/subscribation.hpp"
+#include "cfgo/publication.hpp"
 #include "cfgo/signal.hpp"
 #include "cfgo/config/configuration.h"
 
@@ -26,6 +27,7 @@ namespace cfgo
         virtual ~Webrtc() = 0;
         virtual auto subscribe(close_chan closer, Pattern pattern, std::vector<std::string> req_types) -> asio::awaitable<SubPtr> = 0;
         virtual auto unsubscribe(close_chan closer, std::string sub_id) -> asio::awaitable<void> = 0;
+        virtual auto publish(close_chan closer, Publication pub) -> asio::awaitable<void> = 0;
         virtual close_chan get_notify_closer() = 0;
         virtual close_chan get_closer() noexcept = 0;
         virtual void close() = 0;

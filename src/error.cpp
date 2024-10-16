@@ -38,4 +38,24 @@ namespace cfgo {
             static_cast<int>(e),
             signal_category());
     }
+
+    allocate_tracers::unique_ptr<ServerErrorObject> ServerErrorObject::create(std::string msg, int code, bool call_frames)
+    {
+        auto ptr = allocate_tracers::make_unique<ServerErrorObject>();
+        ptr->msg = std::move(msg);
+        ptr->code = code;
+        if (call_frames)
+        {
+            auto trace = cpptrace::generate_trace(1);
+            for(auto iter = trace.begin(); iter != trace.end(); ++iter)
+            {
+                ptr->callFrames.push_back(CallFrame {
+                    .filename = iter->filename,
+                    .line = (int) iter->line.value_or(0),
+                    .funcname = iter->symbol
+                });
+            }
+        }
+        return ptr;
+    }
 }

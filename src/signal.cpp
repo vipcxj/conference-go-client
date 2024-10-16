@@ -643,6 +643,11 @@ namespace cfgo
             using SubscribeMsgPtr = cfgo::Signal::SubscribeMsgPtr;
             using SubscribeResultPtr = cfgo::Signal::SubscribeResultPtr;
             using SubscribedMsgPtr = cfgo::Signal::SubscribedMsgPtr;
+            using PublishAddMsgPtr = cfgo::Signal::PublishAddMsgPtr;
+            using PublishRemoveMsgPtr = cfgo::Signal::PublishRemoveMsgPtr;
+            using PublishResultMsgPtr = cfgo::Signal::PublishResultMsgPtr;
+            using PublishedMsgPtr = cfgo::Signal::PublishedMsgPtr;
+            using publish_handle = cfgo::Signal::publish_handle;
             using PingCh = asiochan::unbounded_channel<PingMsgPtr>;
             RawSignalPtr m_raw_signal;
             Logger m_logger;
@@ -656,7 +661,6 @@ namespace cfgo
             std::unordered_map<std::uint64_t, SdpCb> m_sdp_cbs {};
             LazyRemoveMap<std::uint64_t, cfgo::SigMsgCb> m_custom_msg_cbs {};
             std::unordered_map<CustomAckKey, unique_chan<CustomAckMessagePtr>> m_custom_ack_chans {};
-            std::unordered_map<std::string, std::shared_ptr<LazyBox<SubscribedMsgPtr>>> m_subscribed_msgs {};
             std::unordered_set<std::string> m_rooms {};
             InitableBox<void, std::string> m_connect;
 
@@ -800,8 +804,9 @@ namespace cfgo
             void off_sdp(std::uint64_t id) override {
                 m_sdp_cbs.erase(id);
             }
-            auto subsrcibe(close_chan closer, SubscribeMsgPtr msg) -> asio::awaitable<SubscribeResultPtr> override;
-            auto wait_subscribed(close_chan closer, SubscribeResultPtr sub) -> asio::awaitable<SubscribedMsgPtr> override;
+            auto subsrcibe(close_chan closer, SubscribeMsgPtr msg) -> asio::awaitable<SubscribedMsgPtr> override;
+            auto publish(close_chan closer, cfgo::Publication pub) -> asio::awaitable<publish_handle> override;
+            auto wait_published(close_chan closer, publish_handle pub_handle) -> asio::awaitable<void> override;
             auto create_message(std::string_view evt, bool ack, std::string_view room, std::string_view to, std::string && payload) -> cfgo::SignalMsgUPtr override;
             auto send_message(close_chan closer, SignalMsgUPtr msg) -> asio::awaitable<std::string> override;
             std::uint64_t on_message(cfgo::SigMsgCb && cb) override {
@@ -1018,52 +1023,94 @@ namespace cfgo
             co_await self->m_raw_signal->send_msg(closer, self->m_raw_signal->create_msg("sdp", std::move(js_msg), true));
         }
 
-        auto Signal::subsrcibe(close_chan closer, SubscribeMsgPtr msg) -> asio::awaitable<SubscribeResultPtr> {
+        auto Signal::subsrcibe(close_chan closer, SubscribeMsgPtr msg) -> asio::awaitable<SubscribedMsgPtr> {
             auto self = shared_from_this();
             co_await self->connect(closer);
             std::shared_ptr<LazyBox<std::string>> lazy_sub_id = LazyBox<std::string>::create();
-            auto executor = co_await asio::this_coro::executor;
-            self->m_raw_signal->on_msg([self, lazy_sub_id, closer, executor = std::move(executor)](RawSigMsgPtr msg, RawSigAckerPtr acker) -> asio::awaitable<bool> {
+            std::shared_ptr<LazyBox<SubscribedMsgPtr>> lzay_subed_msg = LazyBox<SubscribedMsgPtr>::create();
+            auto cb_id = self->m_raw_signal->on_msg([self, lazy_sub_id, lzay_subed_msg, closer](RawSigMsgPtr msg, RawSigAckerPtr acker) -> asio::awaitable<bool> {
                 if (msg->evt() == "subscribed")
                 {
-                    co_await acker->ack(closer, "ack");
                     auto sub_id = co_await lazy_sub_id->get(closer);
                     if (msg->payload().value("subId", "") == sub_id)
                     {
-                        auto sub_msg_iter = self->m_subscribed_msgs.find(sub_id);
-                        if (sub_msg_iter != self->m_subscribed_msgs.end())
-                        {
-                            auto sm = allocate_tracers::make_unique<msg::SubscribedMessage>();
-                            nlohmann::from_json(msg->payload(), *sm);
-                            sub_msg_iter->second->init(std::move(sm));
-                        }
+                        co_await acker->ack(closer, "ack");
+                        auto sm = allocate_tracers::make_unique<msg::SubscribedMessage>();
+                        nlohmann::from_json(msg->payload(), *sm);
+                        lzay_subed_msg->init(std::move(sm));
                         co_return false;
+                    }
+                }
+                co_return true;
+            });
+            DEFER({
+                self->m_raw_signal->off_msg(cb_id);
+            });
+            nlohmann::json js_msg;
+            nlohmann::to_json(js_msg, *msg);
+            auto res = co_await m_raw_signal->send_msg(closer, m_raw_signal->create_msg("subscribe", std::move(js_msg), true));
+            msg::SubscribeResultMessage sub_res_msg {};
+            nlohmann::from_json(res, sub_res_msg);
+            lazy_sub_id->init(sub_res_msg.id);
+            auto res_msg = co_await lzay_subed_msg->move(closer);
+            co_return res_msg;
+        }
+
+        auto Signal::publish(close_chan closer, cfgo::Publication pub) -> asio::awaitable<publish_handle>
+        {
+            auto self = shared_from_this();
+            co_await self->connect(closer);
+            auto msg = pub.create_publish_msg();
+            std::shared_ptr<LazyBox<std::string>> lazy_pub_id = LazyBox<std::string>::create();
+            asiochan::unbounded_channel<PublishedMsgPtr> res_ch {};
+
+            auto cb_id = self->m_raw_signal->on_msg([self, lazy_pub_id, res_ch, pub, closer](RawSigMsgPtr msg, RawSigAckerPtr acker) mutable -> asio::awaitable<bool> {
+                if (msg->evt() == "published")
+                {
+                    auto pubed_msg = allocate_tracers::make_unique<msg::PublishedMessage>();
+                    nlohmann::from_json(msg->payload(), *pubed_msg);
+                    auto pub_id = co_await lazy_pub_id->get(closer);
+                    if (pubed_msg->track.pubId == pub_id)
+                    {
+                        if (pub.bind(pubed_msg->track))
+                        {
+                            co_await acker->ack(closer, "ack");
+                            chan_must_write(res_ch, std::move(pubed_msg));
+                            if (pub.ready())
+                            {
+                                chan_must_write(res_ch, PublishedMsgPtr {nullptr});
+                                co_return false;
+                            }
+                        }
+                        else
+                        {
+                            co_await acker->ack(
+                                closer, 
+                                ServerErrorObject::create(fmt::format("pub {} bind failed, no matched track with bind id {}", pub_id, pubed_msg->track.bindId))
+                            );
+                        }
                     }
                 }
                 co_return true;
             });
             nlohmann::json js_msg;
             nlohmann::to_json(js_msg, *msg);
-            auto res = co_await m_raw_signal->send_msg(closer, m_raw_signal->create_msg("subscribe", std::move(js_msg), true));
-            auto sub_res_msg = allocate_tracers::make_unique<msg::SubscribeResultMessage>();
-            nlohmann::from_json(res, *sub_res_msg);
-            m_subscribed_msgs.emplace(sub_res_msg->id, LazyBox<SubscribedMsgPtr>::create());
-            lazy_sub_id->init(sub_res_msg->id);
-            co_return sub_res_msg;
+            auto res = co_await m_raw_signal->send_msg(closer, m_raw_signal->create_msg("publish", std::move(js_msg), true));
+            msg::PublishResultMessage res_msg {};
+            nlohmann::from_json(res, res_msg);
+            co_return publish_handle { std::move(cb_id), std::move(res_ch), self->m_raw_signal };
         }
 
-        auto Signal::wait_subscribed(close_chan closer, SubscribeResultPtr sub) -> asio::awaitable<SubscribedMsgPtr> {
+        auto Signal::wait_published(close_chan closer, cfgo::Signal::publish_handle pub_handle) -> asio::awaitable<void>
+        {
             auto self = shared_from_this();
-            auto lazy_sub_msg_iter = self->m_subscribed_msgs.find(sub->id);
-            if (lazy_sub_msg_iter != self->m_subscribed_msgs.end()) {
-                DEFER({
-                    self->m_subscribed_msgs.erase(lazy_sub_msg_iter);
-                });
-                auto res_msg = co_await lazy_sub_msg_iter->second->move(closer);
-                co_return res_msg;
-            } else {
-                throw cpptrace::runtime_error("call subsrcibe at first. ");
-            }
+            do {
+                auto msg = co_await chan_read_or_throw<PublishedMsgPtr>(pub_handle.ch, closer);
+                if (!msg)
+                {
+                    break;
+                }
+            } while (true);
         }
 
         auto Signal::create_message(std::string_view evt, bool ack, std::string_view room, std::string_view to, std::string && payload) -> cfgo::SignalMsgUPtr {

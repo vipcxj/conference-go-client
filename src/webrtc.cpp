@@ -110,6 +110,7 @@ namespace cfgo
             Logger m_logger;
             cfgo::AsyncMutex m_neg_mux {};
             InitableBox<PeerBoxPtr> m_access_peer;
+            std::atomic_int m_sdp_msg_id {1};
             
             [[nodiscard]] auto negotiate(close_chan closer, PeerBoxPtr peer, int sdp_id, bool active) -> asio::awaitable<void>;
             static void add_candidate(PeerBoxPtr box, cfgo::Signal::CandMsgPtr msg) {
@@ -162,6 +163,13 @@ namespace cfgo
             auto access_peer_box(close_chan closer) -> asio::awaitable<PeerBoxPtr> {
                 return m_access_peer(std::move(closer));
             }
+
+            int next_sdp_msg_id() noexcept
+            {
+                auto sdp_id = m_sdp_msg_id.load();
+                m_sdp_msg_id += 2;
+                return sdp_id;
+            }
         public:
             /**
              * The logger name is cfgo::webrtc::${signal_id[0:4]}. 
@@ -182,6 +190,7 @@ namespace cfgo
             ~Webrtc() noexcept {}
             [[nodiscard]] auto subscribe(close_chan closer, Pattern pattern, std::vector<std::string> req_types) -> asio::awaitable<SubPtr> override;
             [[nodiscard]] auto unsubscribe(close_chan closer, std::string sub_id) -> asio::awaitable<void> override;
+            [[nodiscard]] auto publish(close_chan closer, cfgo::Publication pub) -> asio::awaitable<void> override;
             close_chan get_notify_closer() override {
                 return m_closer.create_child();
             }
@@ -313,8 +322,7 @@ namespace cfgo
             sub_req_msg->op = msg::SubscribeOp::ADD;
             sub_req_msg->reqTypes = std::move(req_types);
             sub_req_msg->pattern = std::move(pattern);
-            auto sub_req_res = co_await self->m_signal->subsrcibe(closer, std::move(sub_req_msg));
-            auto sub_res = co_await self->m_signal->wait_subscribed(closer, std::move(sub_req_res));
+            auto sub_res = co_await self->m_signal->subsrcibe(closer, std::move(sub_req_msg));
             auto sub_ptr = allocate_tracers::make_shared<cfgo::Subscribation>(sub_res->subId, sub_res->pubId);
             if (sub_res->tracks.empty())
             {
@@ -359,13 +367,24 @@ namespace cfgo
             co_return sub_ptr;
         }
 
-        auto Webrtc::unsubscribe(close_chan closer, std::string sub_id) -> asio::awaitable<void> {
+        auto Webrtc::unsubscribe(close_chan closer, std::string sub_id) -> asio::awaitable<void>
+        {
             auto self = shared_from_this();
             auto sub_req_msg = allocate_tracers::make_unique<msg::SubscribeMessage>();
             sub_req_msg->op = msg::SubscribeOp::REMOVE;
             sub_req_msg->id = sub_id;
             co_await self->m_signal->subsrcibe(closer, std::move(sub_req_msg));
             co_return;
+        }
+
+        auto Webrtc::publish(close_chan closer, cfgo::Publication pub) -> asio::awaitable<void>
+        {
+            auto self = shared_from_this();
+            auto pub_handle = co_await self->m_signal->publish(closer, std::move(pub));
+            auto box = co_await self->access_peer_box(closer);
+            int sdp_id = self->next_sdp_msg_id();
+            co_await self->negotiate(closer, box, sdp_id, true);
+            co_await self->m_signal->wait_published(closer, std::move(pub_handle));
         }
     } // namespace impl
 
