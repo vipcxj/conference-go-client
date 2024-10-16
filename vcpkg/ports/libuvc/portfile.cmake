@@ -1,8 +1,8 @@
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO vipcxj/libuvc
-    REF df8001fc2b280c6105515efe7620363f2cdcad3c
-    SHA512 bacbad91baa027d6278cdd704844997ea0df76f565c7be3183a483e7da3f8e9b929ebe4787026dd69c1af7ca5405761a516965164b9cc49748869a7807a90e77
+    REF 3fbd9c48f4e5acfde75752bb714f5d1eeb32a458
+    SHA512 c0c008d29f8911f6a5d2c1176a8d554775b91cf4cae16ddf55dd710c8829c648ed6dc75176a4e8ed5fe8d4bc797b6035e69a12033460e2ff74e9c61236e3371d
     HEAD_REF master
 )
 
@@ -25,7 +25,7 @@ vcpkg_cmake_install()
 vcpkg_cmake_config_fixup(CONFIG_PATH lib/cmake/${PORT})
 vcpkg_fixup_pkgconfig()
 
-file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include" "${CURRENT_PACKAGES_DIR}/debug/share")
 
 vcpkg_install_copyright(FILE_LIST "${SOURCE_PATH}/LICENSE.txt")
 
