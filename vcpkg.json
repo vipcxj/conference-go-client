@@ -18,6 +18,7 @@
     "cpptrace",
     "spdlog",
     "nlohmann-json",
+    "libuvc",
     {
       "name": "libdatachannel",
       "features": ["srtp"]
