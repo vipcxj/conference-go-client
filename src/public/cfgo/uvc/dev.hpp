@@ -7,6 +7,7 @@ namespace cfgo
 {
     namespace uvc
     {
+        class DeviceHandle;
         class Device
         {
         private:
@@ -29,7 +30,7 @@ namespace cfgo
         private:
             uvc_device_handle_t * m_raw_handle;
         public:
-            DeviceHandle(uvc_device_handle_t * raw_handle);
+            DeviceHandle(uvc_device_handle_t * raw_handle) noexcept;
             DeviceHandle(const DeviceHandle &) = delete;
             DeviceHandle & operator= (const DeviceHandle &) = delete;
             DeviceHandle(DeviceHandle &&) noexcept;

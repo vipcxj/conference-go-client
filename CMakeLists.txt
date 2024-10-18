@@ -102,6 +102,11 @@ set(MY_UVC_PUBLIC_HEADERS
     "${H_PUBLIC_PATH}/uvc/err.hpp"
     "${H_PUBLIC_PATH}/uvc/uvc.hpp"
 )
+set(MY_VIDEO_PUBLIC_HEADERS
+    "${H_PUBLIC_PATH}/video/encoder.hpp"
+    "${H_PUBLIC_PATH}/video/err.hpp"
+    "${H_PUBLIC_PATH}/video/ffmpeg_cv.hpp"
+)
 set(H_PRIVATE "${SRC_PATH}/private")
 set(H_PRIVATE_PATH "${H_PRIVATE}/cfgo")
 set(MY_PRIVATE_HEADERS
@@ -165,6 +170,11 @@ set(MY_UVC_PUBLIC_SOURCES
     "${SRC_PATH}/uvc/dev.cpp"
     "${SRC_PATH}/uvc/err.cpp"
     "${SRC_PATH}/uvc/uvc.cpp"
+)
+set(MY_VIDEO_PUBLIC_SOURCES
+    "${SRC_PATH}/video/encoder.cpp"
+    "${SRC_PATH}/video/err.cpp"
+    "${SRC_PATH}/video/ffmpeg_cv.cpp"
 )
 set(MY_TEST_PATH "${SRC_PATH}/test")
 
@@ -346,11 +356,13 @@ if(ENABLE_TEST)
     target_link_options(test-experiment PRIVATE $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:GNU>>:-fsanitize=address>)
     add_test(NAME test-experiment COMMAND test-experiment)
 
-    add_executable(test-uvc "${MY_TEST_PATH}/uvc.cpp" "${MY_UVC_PUBLIC_SOURCES}" "${MY_UVC_PUBLIC_HEADERS}")
+    add_executable(test-uvc "${MY_TEST_PATH}/uvc.cpp" "${MY_UVC_PUBLIC_SOURCES}" "${MY_UVC_PUBLIC_HEADERS}" "${MY_VIDEO_PUBLIC_SOURCES}" "${MY_VIDEO_PUBLIC_HEADERS}")
     fix_win_version_warn(test-uvc)
     target_link_libraries(test-uvc PRIVATE cfgoclient)
     find_package(libuvc CONFIG REQUIRED)
     target_link_libraries(test-uvc PRIVATE $<IF:$<TARGET_EXISTS:LibUVC::UVCStatic>,LibUVC::UVCStatic,LibUVC::UVCShared>)
+    find_package(OpenCV CONFIG REQUIRED)
+    target_link_libraries(test-uvc PRIVATE opencv_core opencv_videoio)
     target_compile_options(test-experiment PRIVATE $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:GNU>>:-fsanitize=address>)
     target_link_options(test-experiment PRIVATE $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:GNU>>:-fsanitize=address>)
     add_test(NAME test-uvc COMMAND test-uvc)

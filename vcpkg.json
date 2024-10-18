@@ -20,6 +20,14 @@
     "nlohmann-json",
     "libuvc",
     {
+      "name": "opencv",
+      "features": ["ffmpeg"]
+    },
+    {
+      "name": "ffmpeg",
+      "features": ["x264", "nvcodec"]
+    },
+    {
       "name": "libdatachannel",
       "features": ["srtp"]
     },

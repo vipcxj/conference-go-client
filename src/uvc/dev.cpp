@@ -20,6 +20,7 @@ namespace cfgo
             {
                 uvc_ref_device(m_raw_dev);
             }
+            return *this;
         }
         Device::Device(Device && other) noexcept: m_raw_dev(other.m_raw_dev)
         {
@@ -29,6 +30,7 @@ namespace cfgo
         {
             m_raw_dev = other.m_raw_dev;
             other.m_raw_dev = nullptr;
+            return *this;
         }
         Device::~Device()
         {
@@ -52,6 +54,7 @@ namespace cfgo
         {
             m_raw_handle = other.m_raw_handle;
             other.m_raw_handle = nullptr;
+            return *this;
         }
         DeviceHandle::~DeviceHandle()
         {
