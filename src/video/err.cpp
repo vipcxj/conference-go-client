@@ -1,8 +1,6 @@
 #include "cfgo/video/err.hpp"
 #include "cfgo/fmt.hpp"
 
-#include "libavutil/error.h"
-
 namespace cfgo
 {
     namespace video
@@ -11,8 +9,9 @@ namespace cfgo
             cpptrace::exception_with_message(
                 fmt::format(
                     "{}{}",
-                    std::move(prefix_msg), av_err2str(err)),
-                    trace ? cpptrace::detail::get_raw_trace_and_absorb() : cpptrace::raw_trace{}
+                    std::move(prefix_msg), av_err2string(err)
+                ),
+                trace ? cpptrace::detail::get_raw_trace_and_absorb() : cpptrace::raw_trace{}
             ),
             m_err(err)
         {} 

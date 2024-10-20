@@ -10,7 +10,7 @@ namespace cfgo
 {
     namespace video
     {
-        AVFrame * cv_mat_to_yuv420p_av_frame(cv::Mat & mat);
+        AVFrame * cv_mat_to_yuv420p_av_frame(const cv::Mat & mat, AVFrame * frame);
     } // namespace video
     
 } // namespace cfgo

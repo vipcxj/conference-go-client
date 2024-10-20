@@ -7,6 +7,7 @@ extern "C"
 #include "libavcodec/avcodec.h"
 }
 
+#include <string>
 #include <fstream>
 
 namespace cfgo
@@ -20,16 +21,31 @@ namespace cfgo
         class Encoder
         {
         private:
+            int m_width;
+            int m_height;
+            AVCodecID m_codec_id;
+            AVPixelFormat m_format;
             AVCodecContext * m_codec_ctx; // a shortcut to st->codec
-            AVPacket m_pkt;
+            AVFrame * m_frame;
+            AVPacket * m_pkt;
             int m_pts = 0;
             std::ofstream m_file;
             int m_got_output = 0;
 
+            void encode(AVFrame * frame);
+
         public:
-            Encoder(int width, int height, const char *target);
+            Encoder(
+                std::string file, 
+                int width = 640, 
+                int height = 480, 
+                AVCodecID codec_id = AV_CODEC_ID_H264, 
+                AVPixelFormat format = AV_PIX_FMT_YUV420P
+            );
             ~Encoder();
-            int write(AVFrame *frame);
+            AVFrame * get_frame() noexcept;
+            void write();
+            void flush();
         };
 
         using encoder_t = Encoder;

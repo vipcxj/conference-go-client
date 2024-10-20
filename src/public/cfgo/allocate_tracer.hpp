@@ -9,6 +9,7 @@
 #include <unordered_set>
 #include <source_location>
 #include <typeindex>
+#include <array>
 
 #include "boost/core/demangle.hpp"
 #include "cpptrace/cpptrace.hpp"
