@@ -1,8 +1,10 @@
 #include "cfgo/video/ffmpeg_cv.hpp"
 #include "cfgo/video/err.hpp"
 
+extern "C" {
 #include "libavutil/imgutils.h"
 #include "libswscale/swscale.h"
+}
 
 namespace cfgo
 {
@@ -21,6 +23,7 @@ namespace cfgo
                 av_image_alloc(frame->data, frame->linesize, width, height,
                                AVPixelFormat::AV_PIX_FMT_YUV420P, 1);
             }
+            check_av_err(av_frame_make_writable(frame), "could not make frame writable, ");
             SwsContext *conversion = sws_getContext(
                 width, height, AVPixelFormat::AV_PIX_FMT_BGR24, 
                 frame->width, frame->height, (AVPixelFormat) frame->format, 

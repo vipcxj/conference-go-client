@@ -63,6 +63,10 @@ namespace cfgo
             {
                 throw cpptrace::runtime_error("could not allocate video frame");
             }
+            m_frame->format = m_codec_ctx->pix_fmt;
+            m_frame->width = m_codec_ctx->width;
+            m_frame->height = m_codec_ctx->height;
+            check_av_err(av_frame_get_buffer(m_frame, 0), "could not allocate data for frame, ");
         }
 
         Encoder::~Encoder()
@@ -79,31 +83,44 @@ namespace cfgo
             return m_frame;
         }
 
-        void Encoder::encode(AVFrame * frame)
+        void Encoder::encode(AVFrame * frame, AVFormatContext * fmt_ctx, AVStream * st)
         {
+            check_av_err(av_frame_make_writable(frame), "could not make frame writable, ");
+            frame->pts = m_pts ++;
             check_av_err(avcodec_send_frame(m_codec_ctx, frame), "could not sending a frame for encoding, ");
             int err;
             do
             {
-                check_av_err(err = avcodec_receive_packet(m_codec_ctx, m_pkt), "error during encoding, ");
+                err = avcodec_receive_packet(m_codec_ctx, m_pkt);
                 if (err == AVERROR(EAGAIN) || err == AVERROR_EOF)
                 {
                     return;
                 }
-                m_file.write((char *) m_pkt->data, m_pkt->size);
-                av_packet_unref(m_pkt);
+                check_av_err(err, "error during encoding, ");
+                if (fmt_ctx && st)
+                {
+                    av_packet_rescale_ts(m_pkt, m_codec_ctx->time_base, st->time_base);
+                    check_av_err(av_interleaved_write_frame(fmt_ctx, m_pkt), "could not writing output packet, ");
+                    /* pkt is now blank (av_interleaved_write_frame() takes ownership of
+                    * its contents and resets pkt), so that no unreferencing is necessary.
+                    * This would be different if one used av_write_frame().
+                    * */
+                }
+                else
+                {
+                    av_packet_unref(m_pkt);
+                }
             } while (true);
-            
         }
 
-        void Encoder::write()
+        void Encoder::write(AVFormatContext * fmt_ctx, AVStream * st)
         {
-            encode(m_frame);
+            encode(m_frame, fmt_ctx, st);
         }
 
-        void Encoder::flush()
+        void Encoder::flush(AVFormatContext * fmt_ctx, AVStream * st)
         {
-            encode(NULL);
+            encode(NULL, fmt_ctx, st);
         }
     } // namespace video
 

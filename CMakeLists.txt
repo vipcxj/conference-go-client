@@ -106,6 +106,7 @@ set(MY_VIDEO_PUBLIC_HEADERS
     "${H_PUBLIC_PATH}/video/encoder.hpp"
     "${H_PUBLIC_PATH}/video/err.hpp"
     "${H_PUBLIC_PATH}/video/ffmpeg_cv.hpp"
+    "${H_PUBLIC_PATH}/video/muxer.hpp"
 )
 set(H_PRIVATE "${SRC_PATH}/private")
 set(H_PRIVATE_PATH "${H_PRIVATE}/cfgo")
@@ -175,6 +176,7 @@ set(MY_VIDEO_PUBLIC_SOURCES
     "${SRC_PATH}/video/encoder.cpp"
     "${SRC_PATH}/video/err.cpp"
     "${SRC_PATH}/video/ffmpeg_cv.cpp"
+    "${SRC_PATH}/video/muxer.cpp"
 )
 set(MY_TEST_PATH "${SRC_PATH}/test")
 
@@ -368,8 +370,8 @@ if(ENABLE_TEST)
     target_link_directories(test-uvc PRIVATE ${FFMPEG_LIBRARY_DIRS})
     target_link_libraries(test-uvc PRIVATE ${FFMPEG_LIBRARIES})
     message(STATUS ffmpeg:${FFMPEG_LIBRARIES})
-    target_compile_options(test-experiment PRIVATE $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:GNU>>:-fsanitize=address>)
-    target_link_options(test-experiment PRIVATE $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:GNU>>:-fsanitize=address>)
+    target_compile_options(test-uvc PRIVATE $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:GNU>>:-fsanitize=address>)
+    target_link_options(test-uvc PRIVATE $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:GNU>>:-fsanitize=address>)
     add_test(NAME test-uvc COMMAND test-uvc)
 
     add_executable(test-ring-buffer "${MY_TEST_PATH}/ring_buffer.cpp")

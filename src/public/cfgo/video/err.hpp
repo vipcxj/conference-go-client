@@ -2,7 +2,9 @@
 #define _CFGO_VIDEO_ERR_HPP_
 
 #include "cpptrace/cpptrace.hpp"
+extern "C" {
 #include "libavutil/error.h"
+}
 
 #ifdef av_err2str
 #undef av_err2str

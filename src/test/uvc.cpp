@@ -2,10 +2,18 @@
 #include "opencv2/opencv.hpp"
 #include "cfgo/video/encoder.hpp"
 #include "cfgo/video/ffmpeg_cv.hpp"
+#include <csignal>
 
+static volatile sig_atomic_t g_exit = 0;
+
+void exit_handler(int)
+{
+    g_exit = 1;
+}
 
 int main()
 {
+    signal (SIGINT, exit_handler);
     cfgo::video::encoder_t encoder("test.avi");
     CFGO_INFO("build info: {}", cv::getBuildInformation());
     cv::VideoCapture cap(-1, cv::CAP_ANY);
@@ -21,8 +29,7 @@ int main()
         }
         cfgo::video::cv_mat_to_yuv420p_av_frame(mat, encoder.get_frame());
         encoder.write();
-        int c = cv::waitKey(0);
-        if (c == 27)
+        if (g_exit)
         {
             break;
         }

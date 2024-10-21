@@ -32,7 +32,7 @@ namespace cfgo
             std::ofstream m_file;
             int m_got_output = 0;
 
-            void encode(AVFrame * frame);
+            void encode(AVFrame * frame, AVFormatContext * fmt_ctx, AVStream * st);
 
         public:
             Encoder(
@@ -44,8 +44,8 @@ namespace cfgo
             );
             ~Encoder();
             AVFrame * get_frame() noexcept;
-            void write();
-            void flush();
+            void write(AVFormatContext * fmt_ctx, AVStream * st);
+            void flush(AVFormatContext * fmt_ctx, AVStream * st);
         };
 
         using encoder_t = Encoder;
