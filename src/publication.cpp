@@ -40,7 +40,7 @@ namespace cfgo
                 return false;
             }
 
-            bool ready()
+            bool ready() const noexcept
             {
                 return m_binded == m_rtc_tracks.size();
             }
@@ -72,7 +72,7 @@ namespace cfgo
     {
         return impl()->bind(track);
     }
-    bool Publication::ready() const
+    bool Publication::ready() const noexcept
     {
         return impl()->ready();
     }

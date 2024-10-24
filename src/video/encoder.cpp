@@ -71,7 +71,7 @@ namespace cfgo
 
         Encoder::~Encoder()
         {
-            flush();
+            flush(NULL, NULL);
 
             avcodec_free_context(&m_codec_ctx);
             av_frame_free(&m_frame);
