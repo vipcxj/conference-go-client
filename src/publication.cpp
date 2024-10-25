@@ -9,22 +9,26 @@ namespace cfgo
         struct Publication
         {
             using Tracks = std::vector<std::optional<msg::Track>>;
-            SinkUPtr m_sink;
-            RTCTracks m_rtc_tracks;
+            RtcTracks m_rtc_tracks;
             Tracks m_tracks;
             int m_binded {0};
             Labels m_labels;
 
-            Publication(SinkUPtr sink, Labels labels):
-                m_sink(std::move(sink)),
-                m_rtc_tracks(m_sink->get_rtc_tracks()),
-                m_tracks(Tracks(m_rtc_tracks.size())),
-                m_labels(std::move(labels))
-            {}
+            Publication(Labels labels): m_labels(std::move(labels)) {}
+
+            void add_track(RtcTrackPtr track)
+            {
+                m_rtc_tracks.push_back(std::move(track));
+            }
 
             bool bind(const msg::Track & track)
             {
-                auto iter = std::find_if(m_rtc_tracks.begin(), m_rtc_tracks.end(), [mid = track.bindId](const RTCTrackPtr & rtc_track) {
+                if (m_tracks.size() < m_rtc_tracks.size())
+                {
+                    m_tracks = Tracks(m_rtc_tracks.size(), std::nullopt);
+                }
+                
+                auto iter = std::find_if(m_rtc_tracks.begin(), m_rtc_tracks.end(), [mid = track.bindId](const RtcTrackPtr & rtc_track) {
                     return rtc_track->mid() == mid;
                 });
                 if (iter != m_rtc_tracks.end())
@@ -58,16 +62,15 @@ namespace cfgo
                 }
                 return msg;
             }
-
-            Sink & sink()
-            {
-                return *m_sink;
-            }
         };
         
     } // namespace impl
 
-    Publication::Publication(SinkUPtr sink, Labels labels): ImplBy(std::move(sink), std::move(labels)) {}
+    Publication::Publication(Labels labels): ImplBy(std::move(labels)) {}
+    void Publication::add_track(RtcTrackPtr track) const
+    {
+        impl()->add_track(std::move(track));
+    }
     bool Publication::bind(const msg::Track & track) const
     {
         return impl()->bind(track);
@@ -79,10 +82,6 @@ namespace cfgo
     PubMsgPtr Publication::create_publish_msg() const
     {
         return impl()->create_publish_msg();
-    }
-    Sink & Publication::sink() const
-    {
-        return impl()->sink();
     }
     
 } // namespace cfgo

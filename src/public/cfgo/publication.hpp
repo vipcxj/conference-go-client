@@ -21,11 +21,11 @@ namespace cfgo
     private:
         /* data */
     public:
-        Publication(SinkUPtr sink, Labels labels);
+        Publication(Labels labels);
+        void add_track(RtcTrackPtr track) const;
         bool bind(const msg::Track & track) const;
         bool ready() const noexcept;
         PubMsgPtr create_publish_msg() const;
-        Sink & sink() const;
     };
 
 } // namespace cfgo

@@ -278,24 +278,24 @@ namespace cfgo
             return !is_canceled();
         }
 
-        inline auto operator->() & -> T &
+        inline auto operator->() -> T & requires requires (T & a) { a.operator->(); }
         {
             return value();
         }
 
-        inline auto operator->() const & -> T const &
+        inline auto operator->() -> T *
         {
-            return value();
+            return &value();
         }
 
-        inline auto operator->() && -> T &&
+        inline auto operator->() const -> const T & requires requires (const T & a) { a.operator->(); }
         {
-            return value();
+            return &value();
         }
 
-        inline auto operator->() const && -> T const &&
+        inline auto operator->() const -> T const *
         {
-            return value();
+            return &value();
         }
     };
 

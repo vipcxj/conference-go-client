@@ -2,24 +2,28 @@
 #define _CFGO_SINK_HPP_
 
 
-#include "cfgo/allocate_tracer.hpp"
 #include "rtc/rtc.hpp"
+#include <memory>
+#include <vector>
 
 namespace cfgo
 {
-    using RTCTrackPtr = std::shared_ptr<rtc::Track>;
-    using RTCTracks = std::vector<RTCTrackPtr>;
-
+    using RtcTrackPtr = std::shared_ptr<rtc::Track>;
+    using RtcTrackWPtr = std::weak_ptr<rtc::Track>;
+    using RtcTracks = std::vector<RtcTrackPtr>;
     class Sink
     {
     public:
         virtual ~Sink() = 0;
-        virtual const RTCTracks & get_rtc_tracks() const = 0;
-        virtual void start() = 0;
-        virtual void close() = 0;
+        virtual RtcTrackPtr create_track(rtc::PeerConnection & peer) = 0;
+        virtual bool start() = 0;
+        virtual bool close() = 0;
         virtual auto await() -> asio::awaitable<void> = 0;
     };
-    using SinkUPtr = allocate_tracers::unique_ptr<Sink>;
+    using SinkPtr = std::shared_ptr<Sink>;
+
+    SinkPtr make_camera_sink(int device_id);
+
 } // namespace cfgo
 
 
