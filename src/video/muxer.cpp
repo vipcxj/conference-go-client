@@ -69,7 +69,7 @@ namespace cfgo
                         (const uint8_t **)frame->data, frame->nb_samples
                     ), "could not convert audio frame, ");
 
-                    frame->pts = av_rescale_q(samples_count, (AVRational){1, enc->sample_rate}, enc->time_base);
+                    frame->pts = av_rescale_q(samples_count, AVRational {1, enc->sample_rate}, enc->time_base);
                     samples_count += dst_nb_samples;
                 }
             }
@@ -94,7 +94,17 @@ namespace cfgo
             return err == AVERROR_EOF;
         }
 
-        Muxer::Muxer(std::string url, const AVOutputFormat * ofmt): m_url(std::move(url)), m_o_fmt(ofmt)
+        AVDictionary * create_av_opt(const muxer_t::opt_t & opts)
+        {
+            AVDictionary * av_opt = nullptr;
+            for (auto & [key, value] : opts)
+            {
+                av_dict_set(&av_opt, key.c_str(), value.c_str(), 0);
+            }
+            return av_opt;
+        }
+
+        Muxer::Muxer(std::string url, const AVOutputFormat * ofmt, const opt_t & opts): m_url(std::move(url)), m_o_fmt(ofmt), m_opts(opts)
         {
             if (m_url.empty() && !ofmt)
             {
@@ -105,10 +115,10 @@ namespace cfgo
             check_av_err(avformat_alloc_output_context2(
                 &m_fmt_ctx, m_o_fmt, NULL, m_url.empty() ? NULL : m_url.c_str()
             ), "could not alloc the format context, ");
-            
             cleaner.add_defer([fmt_ctx = m_fmt_ctx]() {
                 avformat_free_context(fmt_ctx);
             });
+
             if (!strcmp(m_fmt_ctx->oformat->name, "rtp"))
             {
                 m_fmt_ctx->packet_size = 1480;
@@ -282,6 +292,7 @@ namespace cfgo
             switch (codec->type)
             {
             case AVMEDIA_TYPE_AUDIO:
+            {
                 c->sample_fmt = codec->sample_fmts ? codec->sample_fmts[0] : AV_SAMPLE_FMT_FLTP;
                 c->bit_rate = 64000;
                 c->sample_rate = 44100;
@@ -295,9 +306,13 @@ namespace cfgo
                     }
                 }
                 c->ch_layout = AV_CHANNEL_LAYOUT_STEREO;
-                check_av_err(avcodec_open2(c, codec, NULL), "could not open codec");
+                auto opt = create_av_opt(m_opts);
+                DEFER({
+                    av_dict_free(&opt);
+                });
+                check_av_err(avcodec_open2(c, codec, &opt), "could not open codec");
 
-                ost.st->time_base = (AVRational){1, c->sample_rate};
+                ost.st->time_base = {1, c->sample_rate};
                 ost.t = 0;
                 ost.tincr = 2 * M_PI * 110.0 / c->sample_rate;
                 /* increment frequency by 110 Hz per second */
@@ -328,8 +343,9 @@ namespace cfgo
                 av_opt_set_sample_fmt(ost.swr_ctx, "out_sample_fmt",     c->sample_fmt,     0);
                 check_av_err(swr_init(ost.swr_ctx), "failed to initialize the resampling context, ");
                 break;
-
+            }
             case AVMEDIA_TYPE_VIDEO:
+            {
                 c->codec_id = codec_id;
 
                 c->bit_rate = 400000;
@@ -340,7 +356,7 @@ namespace cfgo
                  * of which frame timestamps are represented. For fixed-fps content,
                  * timebase should be 1/framerate and timestamp increments should be
                  * identical to 1. */
-                ost.st->time_base = (AVRational){1, STREAM_FRAME_RATE};
+                ost.st->time_base = {1, STREAM_FRAME_RATE};
                 c->time_base = ost.st->time_base;
 
                 c->gop_size = 12; /* emit one intra frame every twelve frames at most */
@@ -357,8 +373,11 @@ namespace cfgo
                      * the motion of the chroma plane does not match the luma plane. */
                     c->mb_decision = 2;
                 }
-
-                check_av_err(avcodec_open2(c, codec, NULL), "could not open codec");
+                auto opt = create_av_opt(m_opts);
+                DEFER({
+                    av_dict_free(&opt);
+                });
+                check_av_err(avcodec_open2(c, codec, &opt), "could not open codec");
                 ost.frame = alloc_video_frame(c->pix_fmt, c->width, c->height);
                 if (c->pix_fmt != STREAM_PIX_FMT)
                 {
@@ -374,7 +393,7 @@ namespace cfgo
                     }
                 }
                 break;
-
+            }
             default:
                 break;
             }
@@ -408,7 +427,11 @@ namespace cfgo
         {
             if (!m_head)
             {
-                check_av_err(avformat_write_header(m_fmt_ctx, NULL), "could not write header, ");
+                auto opt = create_av_opt(m_opts);
+                DEFER({
+                    av_dict_free(&opt);
+                });
+                check_av_err(avformat_write_header(m_fmt_ctx, &opt), "could not write header, ");
                 m_head = true;
             }
         }

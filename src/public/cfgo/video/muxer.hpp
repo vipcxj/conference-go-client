@@ -64,9 +64,11 @@ namespace cfgo
         #else
             using buffer_t = const uint8_t *;
         #endif
+        using opt_t = std::unordered_map<std::string, std::string>;
         private:
             std::string m_url;
             const AVOutputFormat * m_o_fmt;
+            opt_t m_opts;
             AVFormatContext * m_fmt_ctx = nullptr;
             AVIOContext * m_io = nullptr;
             std::vector<output_stream_t> m_streams;
@@ -78,7 +80,7 @@ namespace cfgo
             void _make_sure_header();
             static int _write_packet_handle(void * opaque, buffer_t buf, int buf_size);
         public:
-            Muxer(std::string url, const AVOutputFormat * ofmt);
+            Muxer(std::string url, const AVOutputFormat * ofmt = nullptr, const opt_t & opts = {});
             ~Muxer();
 
             int add_stream(enum AVCodecID codec_id);

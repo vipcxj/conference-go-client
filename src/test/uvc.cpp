@@ -15,13 +15,21 @@ int main()
 {
     signal (SIGINT, exit_handler);
     auto ofmt = av_guess_format("rtp", nullptr, nullptr);
-    cfgo::video::muxer_t muxer("", ofmt);
+    cfgo::video::muxer_t::opt_t opt = {{"payload_type", "99"}, {"ssrc", "12345"}};
+    cfgo::video::muxer_t muxer("", ofmt, opt);
     muxer.add_callback([](uint8_t * buf, int buf_size) {
         CFGO_INFO("accept buffer with size {}", buf_size);
     });
+    char sdp_buf[4096];
+    AVFormatContext * av[] = {muxer.get_format_context()};
+    av_sdp_create(av, 1, sdp_buf, sizeof(sdp_buf) / sizeof(char));
+    CFGO_INFO("sdp: \n{}", sdp_buf);
+    memset(sdp_buf, 0, sizeof(sdp_buf) / sizeof(char));
     auto sid = muxer.add_stream(AV_CODEC_ID_H264);
+    av_sdp_create(av, 1, sdp_buf, sizeof(sdp_buf) / sizeof(char));
+    CFGO_INFO("sdp: \n{}", sdp_buf);
     CFGO_INFO("build info: {}", cv::getBuildInformation());
-    cv::VideoCapture cap(-1, cv::CAP_ANY);
+    cv::VideoCapture cap(0, cv::CAP_ANY);
     CFGO_INFO("open: {}", cap.isOpened());
     CFGO_INFO("backend: {}", cap.getBackendName());
     cv::Mat mat;
