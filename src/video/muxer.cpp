@@ -121,7 +121,7 @@ namespace cfgo
 
             if (!strcmp(m_fmt_ctx->oformat->name, "rtp"))
             {
-                m_fmt_ctx->packet_size = 1480;
+                m_fmt_ctx->packet_size = 1472;
             }
             
 
