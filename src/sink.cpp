@@ -5,6 +5,9 @@
 #include "cfgo/video/ffmpeg_cv.hpp"
 #include "cfgo/block_queue.hpp"
 
+#include "boost/uuid/uuid_io.hpp"
+#include "boost/uuid/uuid_generators.hpp"
+
 #include "opencv2/opencv.hpp"
 
 #include <list>
@@ -23,6 +26,7 @@ namespace cfgo
             // 1 start
             // 2 closed
             std::atomic_int m_state {0};
+            std::atomic_bool m_pli = false;
             bool m_streams_locked = false;
             std::list<RtcTrackWPtr> m_tracks;
             BlockingQueue<std::pair<int, AVFrame *>> m_frames;
@@ -31,13 +35,14 @@ namespace cfgo
             close_chan m_closer;
             unique_chan<std::exception_ptr> m_err_chan;
             int add_stream(AVCodecID codec_id);
+            void mark_pli();
             using std::enable_shared_from_this<Derived>::weak_from_this;
             using std::enable_shared_from_this<Derived>::shared_from_this;
         public:
             BaseSink();
             ~BaseSink() noexcept {}
 
-            RtcTrackPtr create_track(rtc::PeerConnection & peer);
+            RtcTrackPtr create_track(rtc::PeerConnection & peer, const rtc::Description::Media & media);
 
             bool start();
             bool close();
@@ -95,15 +100,71 @@ namespace cfgo
         }
 
         template<typename Derived>
-        RtcTrackPtr BaseSink<Derived>::create_track(rtc::PeerConnection & peer)
+        void BaseSink<Derived>::mark_pli()
+        {
+            m_pli = true;
+        }
+
+        static rtc::Description::Video createVideo(std::string mid, uint32_t ssrc)
+        {
+            auto video = rtc::Description::Video(std::move(mid));
+            // from pion payload types.
+
+            video.addVP8Codec(96);
+            // video.addRtxCodec(97, 96, 90000);
+            video.addH264Codec(106, "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f");
+            // video.addRtxCodec(107, 106, 90000);
+            video.addH264Codec(108, "level-asymmetry-allowed=1;packetization-mode=0;profile-level-id=42e01f");
+            // video.addRtxCodec(109, 108, 90000);
+            video.addH264Codec(102, "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42001f");
+            // video.addRtxCodec(103, 102, 90000);
+            video.addH264Codec(104, "level-asymmetry-allowed=1;packetization-mode=0;profile-level-id=42001f");
+            // video.addRtxCodec(105, 104, 90000);
+            video.addH264Codec(127, "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=4d001f");
+            // video.addRtxCodec(125, 127, 90000);
+            video.addH264Codec(39, "level-asymmetry-allowed=1;packetization-mode=0;profile-level-id=4d001f");
+            // video.addRtxCodec(40, 39, 90000);
+            video.addAV1Codec(45);
+            // video.addRtxCodec(46, 45, 90000);
+            video.addVP9Codec(98, "profile-id=0");
+            // video.addRtxCodec(99, 98, 90000);
+            video.addVP9Codec(100, "profile-id=2");
+            // video.addRtxCodec(101, 100, 90000);
+            video.addH264Codec(112, "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=64001f");
+            // video.addRtxCodec(113, 112, 90000);
+            video.addSSRC(ssrc, boost::uuids::to_string(boost::uuids::random_generator()()));
+            return video;
+        }
+
+        static rtc::Description::Audio createAudio(std::string mid, uint32_t ssrc)
+        {
+            auto audio = rtc::Description::Audio(std::move(mid));
+            // from pion payload types.
+            // acc is not supported by pion, so not list here.
+            
+            audio.addOpusCodec(111);
+            audio.addPCMUCodec(0);
+            audio.addPCMACodec(8);
+            audio.addSSRC(ssrc, boost::uuids::to_string(boost::uuids::random_generator()()));
+            return audio;
+        }
+
+        template<typename Derived>
+        RtcTrackPtr BaseSink<Derived>::create_track(rtc::PeerConnection & peer, const rtc::Description::Media & media)
         {
             std::lock_guard lk(m_mux);
             m_streams_locked = true;
-            char buf [1024 * 16] = {};
-            AVFormatContext * ac[] = { m_muxer.get_format_context() };
-            video::check_av_err(av_sdp_create(ac, 1, buf, sizeof(buf)/sizeof(char)), "could not create sdp from format context, ");
-            rtc::Description::Media media(buf);
+
             auto track = peer.addTrack(media);
+            auto pli_handler = std::make_shared<rtc::PliHandler>([weak_self = weak_from_this()]() {
+                if (auto self = weak_self.lock())
+                {
+                    self->mark_pli();
+                }
+            });
+            auto nack_handler = std::make_shared<rtc::RtcpNackResponder>(32);
+            nack_handler->addToChain(pli_handler);
+            track->setMediaHandler(nack_handler);
             m_tracks.push_back(track);
             return track;
         }
@@ -132,6 +193,7 @@ namespace cfgo
                             {
                                 std::lock_guard lk(self->m_mux);
                                 self->m_muxer.write_frame(stream_frame_pair.first, stream_frame_pair.second);
+                                stream_frame_pair.second->pict_type = AVPictureType::AV_PICTURE_TYPE_NONE;
                             }
                         }
                         else
@@ -204,6 +266,11 @@ namespace cfgo
                                     {
                                         std::lock_guard lk(self->m_mux);
                                         auto frame = self->m_muxer.get_frame(self->m_stream_id);
+                                        if (self->m_pli)
+                                        {
+                                            frame->pict_type = AVPictureType::AV_PICTURE_TYPE_I;
+                                            self->m_pli = false;
+                                        }
                                         frame = video::cv_mat_to_yuv420p_av_frame(mat, frame);
                                         self->m_frames.put(std::make_pair(self->m_stream_id, frame));
                                     }

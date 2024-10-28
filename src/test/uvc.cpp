@@ -11,6 +11,21 @@ void exit_handler(int)
     g_exit = 1;
 }
 
+uint8_t getPayloadType(uint8_t * buf, int buf_size)
+{
+    if (buf_size < 2)
+    {
+        return 0;
+    }
+    return buf[1] & 0x7F;
+}
+
+bool isRtcp(uint8_t pt)
+{
+    
+    return pt >= 64 && pt <= 95;
+}
+
 int main()
 {
     signal (SIGINT, exit_handler);
@@ -18,16 +33,18 @@ int main()
     cfgo::video::muxer_t::opt_t opt = {{"payload_type", "99"}, {"ssrc", "12345"}};
     cfgo::video::muxer_t muxer("", ofmt, opt);
     muxer.add_callback([](uint8_t * buf, int buf_size) {
-        CFGO_INFO("accept buffer with size {}", buf_size);
+        auto pt = getPayloadType(buf, buf_size);
+        if (isRtcp(pt))
+        {
+            CFGO_INFO("accept rtcp buffer with pt {} and size {}", pt, buf_size);
+        }
+        else
+        {
+            CFGO_INFO("accept rtp buffer with pt {} and size {}", pt, buf_size);
+        }
+        
     });
-    char sdp_buf[4096];
-    AVFormatContext * av[] = {muxer.get_format_context()};
-    av_sdp_create(av, 1, sdp_buf, sizeof(sdp_buf) / sizeof(char));
-    CFGO_INFO("sdp: \n{}", sdp_buf);
-    memset(sdp_buf, 0, sizeof(sdp_buf) / sizeof(char));
     auto sid = muxer.add_stream(AV_CODEC_ID_H264);
-    av_sdp_create(av, 1, sdp_buf, sizeof(sdp_buf) / sizeof(char));
-    CFGO_INFO("sdp: \n{}", sdp_buf);
     CFGO_INFO("build info: {}", cv::getBuildInformation());
     cv::VideoCapture cap(0, cv::CAP_ANY);
     CFGO_INFO("open: {}", cap.isOpened());
