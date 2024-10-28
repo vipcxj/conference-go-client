@@ -45,7 +45,7 @@ namespace cfgo
         };
 
         std::optional<H264ProfileLevelId> parse_h264_profile_level_id(std::string_view str);
-
+        std::optional<H264Level> h264_supported_level(int max_frame_pixel_count, float max_fps);
         std::optional<std::string> h264_profile_level_id_to_string(const H264ProfileLevelId &profile_level_id);
     } // namespace video
 } // namespace cfgo
