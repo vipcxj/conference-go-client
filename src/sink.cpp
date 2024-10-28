@@ -44,7 +44,7 @@ namespace cfgo
 
             RtcTrackPtr create_track(rtc::PeerConnection & peer, const rtc::Description::Media & media);
 
-            bool start();
+            bool start(int payload_type);
             bool close();
             auto await() -> asio::awaitable<void>
             {
@@ -105,7 +105,7 @@ namespace cfgo
             m_pli = true;
         }
 
-        static rtc::Description::Video createVideo(std::string mid, uint32_t ssrc)
+        rtc::Description::Video create_video(std::string mid, uint32_t ssrc)
         {
             auto video = rtc::Description::Video(std::move(mid));
             // from pion payload types.
@@ -136,7 +136,7 @@ namespace cfgo
             return video;
         }
 
-        static rtc::Description::Audio createAudio(std::string mid, uint32_t ssrc)
+        rtc::Description::Audio create_audio(std::string mid, uint32_t ssrc)
         {
             auto audio = rtc::Description::Audio(std::move(mid));
             // from pion payload types.
@@ -170,7 +170,7 @@ namespace cfgo
         }
 
         template<typename Derived>
-        bool BaseSink<Derived>::start()
+        bool BaseSink<Derived>::start(int payload_type)
         {
             std::lock_guard lk(m_state_mux);
             if (m_state > 0)
@@ -238,12 +238,12 @@ namespace cfgo
             int m_stream_id;
         public:
             CameraSink(int device_id = -1): m_device(device_id) {
-                m_stream_id = add_stream(AV_CODEC_ID_H264);
+                // m_stream_id = add_stream(AV_CODEC_ID_H264);
             }
 
-            bool start()
+            bool start(int payload_type)
             {
-                if (CameraSink::start())
+                if (CameraSink::start(payload_type))
                 {
                     std::thread t([weak_self = weak_from_this(), device_id = m_device]() {
                         try

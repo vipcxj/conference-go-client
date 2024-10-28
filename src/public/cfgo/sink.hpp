@@ -16,7 +16,7 @@ namespace cfgo
     public:
         virtual ~Sink() = 0;
         virtual RtcTrackPtr create_track(rtc::PeerConnection & peer, const rtc::Description::Media & media) = 0;
-        virtual bool start() = 0;
+        virtual bool start(int payload_type) = 0;
         virtual bool close() = 0;
         virtual auto await() -> asio::awaitable<void> = 0;
     };
