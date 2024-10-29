@@ -1,9 +1,8 @@
 diff --git a/libavformat/avformat.h b/libavformat/avformat.h
-index cd7b0d941c..b4a6dce885 100644
+index 56c1c80289..75221d9d1a 100644
 --- a/libavformat/avformat.h
 +++ b/libavformat/avformat.h
-@@ -1169,7 +1169,11 @@ typedef struct AVStreamGroup {
- } AVStreamGroup;
+@@ -1202,6 +1202,10 @@ typedef struct AVStreamGroup {
  
  struct AVCodecParserContext *av_stream_get_parser(const AVStream *s);
  
@@ -15,11 +14,10 @@ index cd7b0d941c..b4a6dce885 100644
  
  /**
 diff --git a/libavformat/mux_utils.c b/libavformat/mux_utils.c
-index de7580c32d..0ef0fe530e 100644
+index ed1242a6a2..7c04d4b9f2 100644
 --- a/libavformat/mux_utils.c
 +++ b/libavformat/mux_utils.c
-@@ -29,7 +29,14 @@ #include "avformat.h"
- #include "avio.h"
+@@ -30,6 +30,13 @@
  #include "internal.h"
  #include "mux.h"
  

@@ -1,9 +1,8 @@
 diff --git a/configure b/configure
-index 4f5353f84b..dd9147c677 100755
+index d77a55b653..52801144ee 100755
 --- a/configure
 +++ b/configure
-@@ -5607,8 +5607,8 @@ check_cppflags -D_FILE_OFFSET_BITS=64
- check_cppflags -D_LARGEFILE_SOURCE
+@@ -5651,7 +5651,7 @@ check_cppflags -D_LARGEFILE_SOURCE
  
  add_host_cppflags -D_ISOC11_SOURCE
  check_host_cflags_cc -std=$stdc ctype.h "__STDC_VERSION__ >= 201112L" ||

@@ -1,8 +1,8 @@
 diff --git a/libavdevice/opengl_enc.c b/libavdevice/opengl_enc.c
-index b2ac6eb..6351614 100644
+index 93d3959880..25eba7d7cf 100644
 --- a/libavdevice/opengl_enc.c
 +++ b/libavdevice/opengl_enc.c
-@@ -116,7 +116,7 @@ typedef void   (APIENTRY *FF_PFNGLATTACHSHADERPROC) (GLuint program, GLuint shad
+@@ -117,7 +117,7 @@ typedef void   (APIENTRY *FF_PFNGLATTACHSHADERPROC) (GLuint program, GLuint shad
  typedef GLuint (APIENTRY *FF_PFNGLCREATESHADERPROC) (GLenum type);
  typedef void   (APIENTRY *FF_PFNGLDELETESHADERPROC) (GLuint shader);
  typedef void   (APIENTRY *FF_PFNGLCOMPILESHADERPROC) (GLuint shader);

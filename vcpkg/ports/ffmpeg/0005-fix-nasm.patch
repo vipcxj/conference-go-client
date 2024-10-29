@@ -1,7 +1,9 @@
 diff --git a/libavcodec/x86/Makefile b/libavcodec/x86/Makefile
+index 331183f450..f3ee735a50 100644
 --- a/libavcodec/x86/Makefile
 +++ b/libavcodec/x86/Makefile
-@@ -158,6 +158,8 @@ X86ASM-OBJS-$(CONFIG_ALAC_DECODER)     += x86/alacdsp.o
+@@ -151,7 +151,9 @@ X86ASM-OBJS-$(CONFIG_ADPCM_G722_ENCODER) += x86/g722dsp.o
+ X86ASM-OBJS-$(CONFIG_ALAC_DECODER)     += x86/alacdsp.o
  X86ASM-OBJS-$(CONFIG_APNG_DECODER)     += x86/pngdsp.o
  X86ASM-OBJS-$(CONFIG_CAVS_DECODER)     += x86/cavsidct.o
 +ifdef ARCH_X86_64
@@ -10,7 +12,8 @@ diff --git a/libavcodec/x86/Makefile b/libavcodec/x86/Makefile
  X86ASM-OBJS-$(CONFIG_CFHD_DECODER)     += x86/cfhddsp.o
  X86ASM-OBJS-$(CONFIG_DCA_DECODER)      += x86/dcadsp.o x86/synth_filter.o
  X86ASM-OBJS-$(CONFIG_DIRAC_DECODER)    += x86/diracdsp.o                \
-@@ -175,15 +177,21 @@                                           x86/hevc_sao_10bit.o
+@@ -171,15 +173,21 @@ X86ASM-OBJS-$(CONFIG_HEVC_DECODER)     += x86/hevc_add_res.o            \
+                                           x86/hevc_sao_10bit.o
  X86ASM-OBJS-$(CONFIG_JPEG2000_DECODER) += x86/jpeg2000dsp.o
  X86ASM-OBJS-$(CONFIG_LSCR_DECODER)     += x86/pngdsp.o
 +ifdef ARCH_X86_64
@@ -20,7 +23,6 @@ diff --git a/libavcodec/x86/Makefile b/libavcodec/x86/Makefile
  X86ASM-OBJS-$(CONFIG_PNG_DECODER)      += x86/pngdsp.o
 +ifdef ARCH_X86_64
  X86ASM-OBJS-$(CONFIG_PRORES_DECODER)   += x86/proresdsp.o
- X86ASM-OBJS-$(CONFIG_PRORES_LGPL_DECODER) += x86/proresdsp.o
 +endif
  X86ASM-OBJS-$(CONFIG_RV40_DECODER)     += x86/rv40dsp.o
  X86ASM-OBJS-$(CONFIG_SBC_ENCODER)      += x86/sbcdsp.o
@@ -33,9 +35,11 @@ diff --git a/libavcodec/x86/Makefile b/libavcodec/x86/Makefile
  X86ASM-OBJS-$(CONFIG_TTA_ENCODER)      += x86/ttaencdsp.o
  X86ASM-OBJS-$(CONFIG_UTVIDEO_DECODER)  += x86/utvideodsp.o
 diff --git a/libavfilter/x86/Makefile b/libavfilter/x86/Makefile
+index 40d5b790ac..a6f7582804 100644
 --- a/libavfilter/x86/Makefile
 +++ b/libavfilter/x86/Makefile
-@@ -44,6 +44,8 @@ 
+@@ -47,7 +47,9 @@ X86ASM-OBJS-$(CONFIG_SCENE_SAD)              += x86/scene_sad.o
+ 
  X86ASM-OBJS-$(CONFIG_AFIR_FILTER)            += x86/af_afir.o
  X86ASM-OBJS-$(CONFIG_ANLMDN_FILTER)          += x86/af_anlmdn.o
 +ifdef ARCH_X86_64
@@ -44,7 +48,8 @@ diff --git a/libavfilter/x86/Makefile b/libavfilter/x86/Makefile
  X86ASM-OBJS-$(CONFIG_BLEND_FILTER)           += x86/vf_blend.o
  X86ASM-OBJS-$(CONFIG_BWDIF_FILTER)           += x86/vf_bwdif.o
  X86ASM-OBJS-$(CONFIG_COLORSPACE_FILTER)      += x86/colorspacedsp.o
-@@ -62,6 +62,8 @@ X86ASM-OBJS-$(CONFIG_LUT3D_FILTER)           += x86/vf_lut3d.o
+@@ -66,7 +68,9 @@ X86ASM-OBJS-$(CONFIG_LIMITER_FILTER)         += x86/vf_limiter.o
+ X86ASM-OBJS-$(CONFIG_LUT3D_FILTER)           += x86/vf_lut3d.o
  X86ASM-OBJS-$(CONFIG_MASKEDCLAMP_FILTER)     += x86/vf_maskedclamp.o
  X86ASM-OBJS-$(CONFIG_MASKEDMERGE_FILTER)     += x86/vf_maskedmerge.o
 +ifdef ARCH_X86_64
@@ -53,16 +58,3 @@ diff --git a/libavfilter/x86/Makefile b/libavfilter/x86/Makefile
  X86ASM-OBJS-$(CONFIG_OVERLAY_FILTER)         += x86/vf_overlay.o
  X86ASM-OBJS-$(CONFIG_PP7_FILTER)             += x86/vf_pp7.o
  X86ASM-OBJS-$(CONFIG_PSNR_FILTER)            += x86/vf_psnr.o
-diff --git a/libavcodec/x86/vvc/Makefile b/libavcodec/x86/vvc/Makefile
---- a/libavcodec/x86/vvc/Makefile
-+++ b/libavcodec/x86/vvc/Makefile
-@@ -3,5 +3,7 @@ clean::
- 
- OBJS-$(CONFIG_VVC_DECODER)             += x86/vvc/vvcdsp_init.o \
-                                           x86/h26x/h2656dsp.o
--X86ASM-OBJS-$(CONFIG_VVC_DECODER)      += x86/vvc/vvc_mc.o       \
--                                          x86/h26x/h2656_inter.o
-+ifdef ARCH_X86_64
-+X86ASM-OBJS-$(CONFIG_VVC_DECODER)      += x86/vvc/vvc_mc.o
-+endif
-+X86ASM-OBJS-$(CONFIG_VVC_DECODER)      += x86/h26x/h2656_inter.o

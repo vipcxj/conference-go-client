@@ -1,8 +1,8 @@
 diff --git a/configure b/configure
-index 1f0b9497cb..3243e23021 100644
+index d77a55b653..8af401597d 100755
 --- a/configure
 +++ b/configure
-@@ -5697,17 +5697,19 @@ case $target_os in
+@@ -5867,17 +5867,19 @@ case $target_os in
          ;;
      win32|win64)
          disable symver
