@@ -178,11 +178,11 @@ namespace cfgo
                 switch (profile_level_id.profile)
                 {
                 case AV_PROFILE_H264_CONSTRAINED_BASELINE:
-                    return {"42f00b"};
+                    return "42f00b";
                 case AV_PROFILE_H264_BASELINE:
-                    return {"42100b"};
+                    return "42100b";
                 case AV_PROFILE_H264_MAIN:
-                    return {"4d100b"};
+                    return "4d100b";
                 // Level 1b is not allowed for other profiles.
                 default:
                     return std::nullopt;

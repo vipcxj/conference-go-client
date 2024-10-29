@@ -2,6 +2,7 @@
 #include "opencv2/opencv.hpp"
 #include "cfgo/video/muxer.hpp"
 #include "cfgo/video/ffmpeg_cv.hpp"
+#include "cfgo/video/camera.hpp"
 #include <csignal>
 
 static volatile sig_atomic_t g_exit = 0;
@@ -29,6 +30,10 @@ bool isRtcp(uint8_t pt)
 int main()
 {
     signal (SIGINT, exit_handler);
+    
+    auto device_list = cfgo::video::list_devices();
+    CFGO_INFO("{}", device_list);
+
     auto ofmt = av_guess_format("rtp", nullptr, nullptr);
     cfgo::video::muxer_t::opt_t opt = {{"payload_type", "99"}, {"ssrc", "12345"}};
     cfgo::video::muxer_t muxer("", ofmt, opt);

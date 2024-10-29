@@ -177,40 +177,6 @@ namespace cfgo
             {
                 return false;
             }
-            std::thread t([weak_self = weak_from_this()]() {
-                try
-                {
-                    do
-                    {
-                        if (auto self = weak_self.lock())
-                        {
-                            if (self->m_state == 2)
-                            {
-                                break;
-                            }
-                            std::pair<int, AVFrame *> stream_frame_pair;
-                            self->m_frames.take(stream_frame_pair);
-                            {
-                                std::lock_guard lk(self->m_mux);
-                                self->m_muxer.write_frame(stream_frame_pair.first, stream_frame_pair.second);
-                                stream_frame_pair.second->pict_type = AVPictureType::AV_PICTURE_TYPE_NONE;
-                            }
-                        }
-                        else
-                        {
-                            break;
-                        }
-                    } while (true);
-                }
-                catch(...)
-                {
-                    if (auto self = weak_self.lock())
-                    {
-                        chan_maybe_write(self->m_err_chan, std::current_exception());
-                    }
-                }
-            });
-            t.detach();
             m_state = 1;
             return true;
         }
@@ -272,7 +238,8 @@ namespace cfgo
                                             self->m_pli = false;
                                         }
                                         frame = video::cv_mat_to_yuv420p_av_frame(mat, frame);
-                                        self->m_frames.put(std::make_pair(self->m_stream_id, frame));
+                                        self->m_muxer.write_frame(self->m_stream_id, frame);
+                                        frame->pict_type = AVPictureType::AV_PICTURE_TYPE_NONE;
                                     }
                                 }
                                 else

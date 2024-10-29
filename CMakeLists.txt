@@ -105,6 +105,7 @@ set(MY_UVC_PUBLIC_HEADERS
     "${H_PUBLIC_PATH}/uvc/uvc.hpp"
 )
 set(MY_VIDEO_PUBLIC_HEADERS
+    "${H_PUBLIC_PATH}/video/camera.hpp"
     "${H_PUBLIC_PATH}/video/encoder.hpp"
     "${H_PUBLIC_PATH}/video/err.hpp"
     "${H_PUBLIC_PATH}/video/ffmpeg_cv.hpp"
@@ -178,6 +179,7 @@ set(MY_UVC_PUBLIC_SOURCES
     "${SRC_PATH}/uvc/uvc.cpp"
 )
 set(MY_VIDEO_PUBLIC_SOURCES
+    "${SRC_PATH}/video/camera.cpp"
     "${SRC_PATH}/video/encoder.cpp"
     "${SRC_PATH}/video/err.cpp"
     "${SRC_PATH}/video/ffmpeg_cv.cpp"
