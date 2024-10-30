@@ -25,7 +25,7 @@
     },
     {
       "name": "ffmpeg",
-      "features": ["swscale", "x264", "x265", "nvcodec"]
+      "features": ["swscale", "x264", "x265", "nvcodec", "v4l-utils"]
     },
     {
       "name": "libdatachannel",

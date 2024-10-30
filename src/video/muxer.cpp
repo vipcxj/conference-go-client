@@ -7,7 +7,6 @@
 
 extern "C" {
     #include "libavutil/avassert.h"
-    #include "libavutil/opt.h"
     #include "libswscale/swscale.h"
     #include "libswresample/swresample.h"
 }
@@ -92,16 +91,6 @@ namespace cfgo
 
             } while (true);
             return err == AVERROR_EOF;
-        }
-
-        AVDictionary * create_av_opt(const muxer_t::opt_t & opts)
-        {
-            AVDictionary * av_opt = nullptr;
-            for (auto & [key, value] : opts)
-            {
-                av_dict_set(&av_opt, key.c_str(), value.c_str(), 0);
-            }
-            return av_opt;
         }
 
         Muxer::Muxer(std::string url, const AVOutputFormat * ofmt, const opt_t & opts): m_url(std::move(url)), m_o_fmt(ofmt), m_opts(opts)
@@ -288,29 +277,30 @@ namespace cfgo
                 throw cpptrace::runtime_error("could not alloc an encoding context");
             }
             ost.enc = c;
-
+            int ret;
             switch (codec->type)
             {
             case AVMEDIA_TYPE_AUDIO:
             {
-                c->sample_fmt = codec->sample_fmts ? codec->sample_fmts[0] : AV_SAMPLE_FMT_FLTP;
+                const enum AVSampleFormat * sample_fmts = nullptr;
+                ret = avcodec_get_supported_config(c, nullptr, AVCodecConfig::AV_CODEC_CONFIG_SAMPLE_FORMAT, 0, (const void **) &sample_fmts, nullptr);
+                c->sample_fmt = (ret >= 0 && sample_fmts) ? sample_fmts[0] : AV_SAMPLE_FMT_FLTP;
                 c->bit_rate = 64000;
                 c->sample_rate = 44100;
-                if (codec->supported_samplerates)
+                const int * supported_samplerates = nullptr;
+                ret = avcodec_get_supported_config(c, nullptr, AVCodecConfig::AV_CODEC_CONFIG_SAMPLE_RATE, 0, (const void **) &supported_samplerates, nullptr);
+                if (ret >= 0 && supported_samplerates)
                 {
-                    c->sample_rate = codec->supported_samplerates[0];
-                    for (auto i = 0; codec->supported_samplerates[i]; i++)
+                    c->sample_rate = supported_samplerates[0];
+                    for (auto i = 0; supported_samplerates[i]; i++)
                     {
-                        if (codec->supported_samplerates[i] == 44100)
+                        if (supported_samplerates[i] == 44100)
                             c->sample_rate = 44100;
                     }
                 }
                 c->ch_layout = AV_CHANNEL_LAYOUT_STEREO;
                 auto opt = create_av_opt(m_opts);
-                DEFER({
-                    av_dict_free(&opt);
-                });
-                check_av_err(avcodec_open2(c, codec, &opt), "could not open codec");
+                check_av_err(avcodec_open2(c, codec, &opt.get()), "could not open codec");
 
                 ost.st->time_base = {1, c->sample_rate};
                 ost.t = 0;
@@ -360,7 +350,24 @@ namespace cfgo
                 c->time_base = ost.st->time_base;
 
                 c->gop_size = 12; /* emit one intra frame every twelve frames at most */
-                c->pix_fmt = STREAM_PIX_FMT;
+                const enum AVPixelFormat * pix_fmts = nullptr;
+                ret = avcodec_get_supported_config(c, nullptr, AVCodecConfig::AV_CODEC_CONFIG_PIX_FORMAT, 0, (const void **) &pix_fmts, nullptr);
+                if (ret >= 0 && pix_fmts)
+                {
+                    c->pix_fmt = pix_fmts[0];
+                    for (int i = 0; pix_fmts[i]; i++)
+                    {
+                        if (pix_fmts[i] == STREAM_PIX_FMT)
+                        {
+                            c->pix_fmt = pix_fmts[i];
+                            break;
+                        }
+                    }
+                }
+                else
+                {
+                    c->pix_fmt = STREAM_PIX_FMT;
+                }
                 if (c->codec_id == AV_CODEC_ID_MPEG2VIDEO)
                 {
                     /* just for testing, we also add B-frames */
@@ -374,10 +381,7 @@ namespace cfgo
                     c->mb_decision = 2;
                 }
                 auto opt = create_av_opt(m_opts);
-                DEFER({
-                    av_dict_free(&opt);
-                });
-                check_av_err(avcodec_open2(c, codec, &opt), "could not open codec");
+                check_av_err(avcodec_open2(c, codec, &opt.get()), "could not open codec");
                 ost.frame = alloc_video_frame(c->pix_fmt, c->width, c->height);
                 if (c->pix_fmt != STREAM_PIX_FMT)
                 {
@@ -428,10 +432,7 @@ namespace cfgo
             if (!m_head)
             {
                 auto opt = create_av_opt(m_opts);
-                DEFER({
-                    av_dict_free(&opt);
-                });
-                check_av_err(avformat_write_header(m_fmt_ctx, &opt), "could not write header, ");
+                check_av_err(avformat_write_header(m_fmt_ctx, &opt.get()), "could not write header, ");
                 m_head = true;
             }
         }

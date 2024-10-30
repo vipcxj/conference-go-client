@@ -12,7 +12,7 @@ void exit_handler(int)
     g_exit = 1;
 }
 
-uint8_t getPayloadType(uint8_t * buf, int buf_size)
+uint8_t getPayloadType(cfgo::video::muxer_t::buffer_t buf, int buf_size)
 {
     if (buf_size < 2)
     {
@@ -35,9 +35,9 @@ int main()
     CFGO_INFO("{}", device_list);
 
     auto ofmt = av_guess_format("rtp", nullptr, nullptr);
-    cfgo::video::muxer_t::opt_t opt = {{"payload_type", "99"}, {"ssrc", "12345"}};
+    cfgo::video::opt_t opt = {{"payload_type", "99"}, {"ssrc", "12345"}};
     cfgo::video::muxer_t muxer("", ofmt, opt);
-    muxer.add_callback([](uint8_t * buf, int buf_size) {
+    muxer.add_callback([](cfgo::video::muxer_t::buffer_t buf, int buf_size) {
         auto pt = getPayloadType(buf, buf_size);
         if (isRtcp(pt))
         {

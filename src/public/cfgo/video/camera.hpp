@@ -28,6 +28,62 @@ namespace cfgo
         {
             std::vector<DeviceInfo> devices;
             int default_device = -1;
+
+            DeviceInfo * select(std::size_t i = -1)
+            {
+                if (i < 0)
+                {
+                    i = default_device;
+                }
+                
+                if (i >= 0)
+                {
+                    if (i < devices.size())
+                    {
+                        return &devices.at(i);
+                    }
+                    else
+                    {
+                        return nullptr;
+                    }
+                }
+                else if (!devices.empty())
+                {
+                    return &devices.at(0);
+                }
+                else
+                {
+                    return nullptr;
+                }
+            }
+
+            const DeviceInfo * select(std::size_t i = -1) const
+            {
+                if (i < 0)
+                {
+                    i = default_device;
+                }
+                
+                if (i >= 0)
+                {
+                    if (i < devices.size())
+                    {
+                        return &devices.at(i);
+                    }
+                    else
+                    {
+                        return nullptr;
+                    }
+                }
+                else if (!devices.empty())
+                {
+                    return &devices.at(0);
+                }
+                else
+                {
+                    return nullptr;
+                }
+            }
         };
 
         std::ostream & operator << (std::ostream & os, const DeviceInfoList & list);

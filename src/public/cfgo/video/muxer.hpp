@@ -7,6 +7,7 @@
 #include <unordered_map>
 #include <functional>
 #include "cfgo/alias.hpp"
+#include "cfgo/video/opt.hpp"
 
 extern "C" {
     #include "libavcodec/avcodec.h"
@@ -64,7 +65,6 @@ namespace cfgo
         #else
             using buffer_t = const uint8_t *;
         #endif
-        using opt_t = std::unordered_map<std::string, std::string>;
         private:
             std::string m_url;
             const AVOutputFormat * m_o_fmt;
@@ -88,7 +88,7 @@ namespace cfgo
             AVFrame * get_frame(int stream_id);
             AVFormatContext * get_format_context();
             bool write_frame(int stream_id, AVFrame * frame);
-            int add_callback(std::function<void(uint8_t *buf, int buf_size)> cb);
+            int add_callback(std::function<void(buffer_t buf, int buf_size)> cb);
             void remove_callback(int cb_id);
         };
         

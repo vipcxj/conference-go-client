@@ -1,9 +1,11 @@
 #include "cfgo/video/camera.hpp"
 #include "cfgo/video/err.hpp"
+#include "cfgo/video/opt.hpp"
 #include "cfgo/defer.hpp"
 #include "cfgo/str_helper.hpp"
 #include <filesystem>
 #include <regex>
+#include <cstring>
 
 extern "C" {
     #include "libavformat/avformat.h"
@@ -38,26 +40,51 @@ namespace cfgo
             }
             return os;
         }
+
+        // void init_fmt_ctx_priv_data(AVFormatContext * s)
+        // {
+        //     /* Allocate private data. */
+        //     if (ffifmt(s->iformat)->priv_data_size > 0) {
+        //         if (!(s->priv_data = av_mallocz(ffifmt(s->iformat)->priv_data_size))) {
+        //             ret = AVERROR(ENOMEM);
+        //             goto fail;
+        //         }
+        //         if (s->iformat->priv_class) {
+        //             *(const AVClass **) s->priv_data = s->iformat->priv_class;
+        //             av_opt_set_defaults(s->priv_data);
+        //             if ((ret = av_opt_set_dict(s->priv_data, &tmp)) < 0)
+        //                 goto fail;
+        //         }
+        //     }
+        // }
+
+        static int is_v4l2_dev(const char *name)
+        {
+            return !strncmp(name, "video", 5) ||
+                !strncmp(name, "radio", 5) ||
+                !strncmp(name, "vbi", 3) ||
+                !strncmp(name, "v4l-subdev", 10);
+        }
+
+        static std::vector<std::string> list_possible_v4l2_devices()
+        {
+            namespace fs = std::filesystem;
+            std::vector<std::string> ret;
+            fs::directory_iterator devs("/dev");
+            for (auto iter = fs::begin(devs); iter != fs::end(devs); ++ iter)
+            {
+                if (is_v4l2_dev(iter->path().filename().c_str()))
+                {
+                    ret.push_back(iter->path().string());
+                }
+            }
+            return ret;
+        }
         
         device_info_list_t list_devices()
         {
-            avdevice_register_all();
-            AVFormatContext * av_ctx = nullptr;
             AVDeviceInfoList * devices = nullptr;
-
-#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
-            check_av_err(avformat_alloc_output_context2(&av_ctx, nullptr, "dshow", nullptr), "could not allocate dshow format context, ");
-#elif __APPLE__
-            return {};
-#elif __ANDROID__
-            return {};
-#elif __linux__
-            auto ifmt = av_find_input_format("v4l2");
-            if (!ifmt)
-            {
-                throw cpptrace::runtime_error("could not find v4l2 input format");
-            }
-            av_ctx = avformat_alloc_context();
+            auto av_ctx = avformat_alloc_context();
             if (!av_ctx)
             {
                 throw cpptrace::runtime_error("could not allocate the format context");
@@ -65,7 +92,47 @@ namespace cfgo
             DEFER({
                 avformat_free_context(av_ctx);
             });
-            check_av_err(avformat_open_input(&av_ctx, "dumy", ifmt, nullptr), "could not allocate video4linux2 format context, ");
+
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
+            auto ifmt = av_find_input_format("dshow");
+            if (!ifmt)
+            {
+                throw cpptrace::runtime_error("could not find input format dshow");
+            }
+            return {};
+#elif __APPLE__
+            auto ifmt = av_find_input_format("avfoundation");
+            if (!ifmt)
+            {
+                throw cpptrace::runtime_error("could not find input format avfoundation");
+            }
+            return {};
+#elif __ANDROID__
+            auto ifmt = av_find_input_format("android_camera");
+            if (!ifmt)
+            {
+                throw cpptrace::runtime_error("could not find input format android_camera, this api require android level >= 24 (Android 7.0)");
+            }
+            return {};
+#elif __linux__
+            auto ifmt = av_find_input_format("v4l2");
+            if (!ifmt)
+            {
+                throw cpptrace::runtime_error("could not find input format v4l2");
+            }
+            int err;
+            for (auto & possible_device : list_possible_v4l2_devices())
+            {
+                err = avformat_open_input(&av_ctx, possible_device.c_str(), ifmt, nullptr);
+                if (err >= 0)
+                {
+                    break;
+                }
+            }
+            check_av_err(err, "could not open v4l2 input device, ");
+            DEFER({
+                avformat_close_input(&av_ctx);
+            });
 #else
             return {};            
 #endif

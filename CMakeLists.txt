@@ -111,6 +111,8 @@ set(MY_VIDEO_PUBLIC_HEADERS
     "${H_PUBLIC_PATH}/video/ffmpeg_cv.hpp"
     "${H_PUBLIC_PATH}/video/h264_profile_level_id.hpp"
     "${H_PUBLIC_PATH}/video/muxer.hpp"
+    "${H_PUBLIC_PATH}/video/opt.hpp"
+    "${H_PUBLIC_PATH}/video/types.hpp"
 )
 set(H_PRIVATE "${SRC_PATH}/private")
 set(H_PRIVATE_PATH "${H_PRIVATE}/cfgo")
@@ -185,6 +187,7 @@ set(MY_VIDEO_PUBLIC_SOURCES
     "${SRC_PATH}/video/ffmpeg_cv.cpp"
     "${SRC_PATH}/video/h264_profile_level_id.cpp"
     "${SRC_PATH}/video/muxer.cpp"
+    "${SRC_PATH}/video/opt.cpp"
 )
 set(MY_TEST_PATH "${SRC_PATH}/test")
 
