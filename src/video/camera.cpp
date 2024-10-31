@@ -73,7 +73,7 @@ namespace cfgo
             fs::directory_iterator devs("/dev");
             for (auto iter = fs::begin(devs); iter != fs::end(devs); ++ iter)
             {
-                if (is_v4l2_dev(iter->path().filename().c_str()))
+                if (is_v4l2_dev(iter->path().filename().string().c_str()))
                 {
                     ret.push_back(iter->path().string());
                 }

@@ -209,7 +209,7 @@ namespace cfgo
 
             bool start(int payload_type)
             {
-                if (CameraSink::start(payload_type))
+                if (BaseSink::start(payload_type))
                 {
                     std::thread t([weak_self = weak_from_this(), device_id = m_device]() {
                         try
