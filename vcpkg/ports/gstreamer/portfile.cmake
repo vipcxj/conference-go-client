@@ -208,6 +208,7 @@ vcpkg_configure_meson(
         -Dgst-plugins-ugly:sidplay=disabled
         # gst-plugins-bad
         -Dgst-plugins-bad:avtp=disabled
+        -Dgst-plugins-bad:analyticsoverlay=disabled # cause link error
         -Dgst-plugins-bad:androidmedia=auto
         -Dgst-plugins-bad:applemedia=auto
         -Dgst-plugins-bad:asio-sdk-path=${PLUGIN_BAD_ASIO_SDK_PATH}

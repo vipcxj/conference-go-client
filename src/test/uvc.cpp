@@ -5,6 +5,11 @@
 #include "cfgo/video/camera.hpp"
 #include <csignal>
 
+extern "C"
+{
+    #include "libavdevice/avdevice.h"
+}
+
 static volatile sig_atomic_t g_exit = 0;
 
 void exit_handler(int)
@@ -30,6 +35,8 @@ bool isRtcp(uint8_t pt)
 int main()
 {
     signal (SIGINT, exit_handler);
+
+    avdevice_register_all();
     
     auto device_list = cfgo::video::list_devices();
     CFGO_INFO("{}", device_list);
