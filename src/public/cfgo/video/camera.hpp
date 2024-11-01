@@ -20,6 +20,8 @@ namespace cfgo
             std::string name;
             std::string description;
             std::vector<AVMediaType> media_types;
+
+            bool support_media_type(AVMediaType media_type) const noexcept;
         };
 
         std::ostream & operator << (std::ostream & os, const DeviceInfo & info);
@@ -28,8 +30,12 @@ namespace cfgo
         {
             std::vector<DeviceInfo> devices;
             int default_device = -1;
+            const AVInputFormat * ifmt;
+            const AVOutputFormat * ofmt;
 
-            DeviceInfo * select(std::size_t i = -1)
+            DeviceInfoList(const AVInputFormat * ifmt, const AVOutputFormat * ofmt): ifmt(ifmt), ofmt(ofmt) {}
+
+            DeviceInfo * select(AVMediaType media_type, std::size_t i = -1)
             {
                 if (i < 0)
                 {
@@ -91,7 +97,15 @@ namespace cfgo
         using device_info_t = DeviceInfo;
         using device_info_list_t = DeviceInfoList;
 
-        device_info_list_t list_devices();
+        enum class DevType
+        {
+            INPUT = 0,
+            OUTPUT = 1
+        };
+
+        using dev_type_t = DevType; 
+
+        device_info_list_t list_devices(dev_type_t dev_type = dev_type_t::INPUT);
         
     } // namespace video
     

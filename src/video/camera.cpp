@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <regex>
 #include <cstring>
+#include <algorithm>
 
 extern "C" {
     #include "libavformat/avformat.h"
@@ -16,6 +17,11 @@ namespace cfgo
 {
     namespace video
     {
+
+        bool DeviceInfo::support_media_type(AVMediaType media_type) const noexcept
+        {
+            return media_types.empty() || std::find(media_types.begin(), media_types.end(), media_type) != media_types.end();
+        }
 
         std::ostream & operator << (std::ostream & os, const DeviceInfo & info)
         {
@@ -28,6 +34,14 @@ namespace cfgo
         std::ostream & operator << (std::ostream & os, const DeviceInfoList & list)
         {
             os << std::endl;
+            if (list.ifmt)
+            {
+                os << "AVInputFormat: " << list.ifmt->name << std::endl;
+            }
+            if (list.ofmt)
+            {
+                os << "AVOutputFormat: " << list.ofmt->name << std::endl;
+            }
             auto i = 0;
             for (auto & info : list.devices)
             {
@@ -41,106 +55,45 @@ namespace cfgo
             return os;
         }
 
-        // void init_fmt_ctx_priv_data(AVFormatContext * s)
+        static int is_v4l2_audio_dev(const char *name)
+        {
+            return !strncmp(name, "/dev/radio", 10);
+        }
+
+        static int is_v4l2_video_dev(const char *name)
+        {
+            return !strncmp(name, "/dev/video", 10) ||
+                !strncmp(name, "/dev/vbi", 8);
+        }
+
+        // static int is_v4l2_dev(const char *name)
         // {
-        //     /* Allocate private data. */
-        //     if (ffifmt(s->iformat)->priv_data_size > 0) {
-        //         if (!(s->priv_data = av_mallocz(ffifmt(s->iformat)->priv_data_size))) {
-        //             ret = AVERROR(ENOMEM);
-        //             goto fail;
-        //         }
-        //         if (s->iformat->priv_class) {
-        //             *(const AVClass **) s->priv_data = s->iformat->priv_class;
-        //             av_opt_set_defaults(s->priv_data);
-        //             if ((ret = av_opt_set_dict(s->priv_data, &tmp)) < 0)
-        //                 goto fail;
-        //         }
-        //     }
+        //     return !strncmp(name, "video", 5) ||
+        //         !strncmp(name, "radio", 5) ||
+        //         !strncmp(name, "vbi", 3) ||
+        //         !strncmp(name, "v4l-subdev", 10);
         // }
 
-        static int is_v4l2_dev(const char *name)
-        {
-            return !strncmp(name, "video", 5) ||
-                !strncmp(name, "radio", 5) ||
-                !strncmp(name, "vbi", 3) ||
-                !strncmp(name, "v4l-subdev", 10);
-        }
+        // static std::vector<std::string> list_possible_v4l2_devices()
+        // {
+        //     namespace fs = std::filesystem;
+        //     std::vector<std::string> ret;
+        //     fs::directory_iterator devs("/dev");
+        //     for (auto iter = fs::begin(devs); iter != fs::end(devs); ++ iter)
+        //     {
+        //         if (is_v4l2_dev(iter->path().filename().string().c_str()))
+        //         {
+        //             ret.push_back(iter->path().string());
+        //         }
+        //     }
+        //     return ret;
+        // }
 
-        static std::vector<std::string> list_possible_v4l2_devices()
-        {
-            namespace fs = std::filesystem;
-            std::vector<std::string> ret;
-            fs::directory_iterator devs("/dev");
-            for (auto iter = fs::begin(devs); iter != fs::end(devs); ++ iter)
-            {
-                if (is_v4l2_dev(iter->path().filename().string().c_str()))
-                {
-                    ret.push_back(iter->path().string());
-                }
-            }
-            return ret;
-        }
-        
-        device_info_list_t list_devices()
-        {
-            AVDeviceInfoList * devices = nullptr;
-            auto av_ctx = avformat_alloc_context();
-            if (!av_ctx)
-            {
-                throw cpptrace::runtime_error("could not allocate the format context");
-            }
-            DEFER({
-                avformat_free_context(av_ctx);
-            });
+        constexpr const char* POSSIBLE_I_DEV[] = {"dshow", "avfoundation", "android_camera", "v4l2"};
 
-#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
-            auto ifmt = av_find_input_format("dshow");
-            if (!ifmt)
-            {
-                throw cpptrace::runtime_error("could not find input format dshow");
-            }
-            return {};
-#elif __APPLE__
-            auto ifmt = av_find_input_format("avfoundation");
-            if (!ifmt)
-            {
-                throw cpptrace::runtime_error("could not find input format avfoundation");
-            }
-            return {};
-#elif __ANDROID__
-            auto ifmt = av_find_input_format("android_camera");
-            if (!ifmt)
-            {
-                throw cpptrace::runtime_error("could not find input format android_camera, this api require android level >= 24 (Android 7.0)");
-            }
-            return {};
-#elif __linux__
-            auto ifmt = av_find_input_format("v4l2");
-            if (!ifmt)
-            {
-                throw cpptrace::runtime_error("could not find input format v4l2");
-            }
-            int err;
-            for (auto & possible_device : list_possible_v4l2_devices())
-            {
-                err = avformat_open_input(&av_ctx, possible_device.c_str(), ifmt, nullptr);
-                if (err >= 0)
-                {
-                    break;
-                }
-            }
-            check_av_err(err, "could not open v4l2 input device, ");
-            DEFER({
-                avformat_close_input(&av_ctx);
-            });
-#else
-            return {};            
-#endif
-            check_av_err(avdevice_list_devices(av_ctx, &devices), "could not list devices, ");
-            DEFER({
-                avdevice_free_list_devices(&devices);
-            });
-            device_info_list_t dev_list {};
+        device_info_list_t to_devices(AVDeviceInfoList * devices, const AVInputFormat * ifmt, const AVOutputFormat * ofmt)
+        {
+            device_info_list_t dev_list { ifmt, ofmt };
             AVDeviceInfo * av_info;
             for (int i = 0; i < devices->nb_devices; i++)
             {
@@ -150,9 +103,100 @@ namespace cfgo
                 {
                     info.media_types.push_back(av_info->media_types[j]);
                 }
+                if (info.media_types.empty())
+                {
+                    if ((ifmt && !strcmp(ifmt->name, "v4l2")) || (ofmt && !strcmp(ofmt->name, "v4l2")))
+                    {
+                        if (is_v4l2_audio_dev(av_info->device_name))
+                        {
+                            info.media_types.push_back(AVMediaType::AVMEDIA_TYPE_AUDIO);
+                        }
+                        if (is_v4l2_video_dev(av_info->device_name))
+                        {
+                            info.media_types.push_back(AVMediaType::AVMEDIA_TYPE_VIDEO);
+                        }
+                    }
+                }
+                
                 dev_list.devices.push_back(std::move(info));
             }
             return std::move(dev_list);
+        }
+        
+        device_info_list_t list_devices(dev_type_t dev_type)
+        {
+            AVDeviceInfoList * devices = nullptr;
+            int index;
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
+            index = 0; // "dshow"
+#elif __APPLE__
+            index = 1; // "avfoundation"
+#elif __ANDROID__
+            index = 2; // "android_camera"
+#elif __linux__
+            index = 3; // "v4l2"
+#else
+            index = 0;           
+#endif
+            switch (dev_type)
+            {
+            case dev_type_t::INPUT:
+            {
+                auto ifmt = av_find_input_format(POSSIBLE_I_DEV[index]);
+                if (!ifmt)
+                {
+                    for (int i = 0; i < sizeof(POSSIBLE_I_DEV) / size_t(POSSIBLE_I_DEV[0]); i++)
+                    {
+                        if (i != index)
+                        {
+                            ifmt = av_find_input_format(POSSIBLE_I_DEV[i]);
+                            if (!ifmt)
+                            {
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (!ifmt)
+                {
+                    return { nullptr, nullptr };
+                }
+                check_av_err(avdevice_list_input_sources(ifmt, nullptr, nullptr, &devices), "could not list input devices, ");
+                DEFER({
+                    avdevice_free_list_devices(&devices);
+                });
+                return to_devices(devices, ifmt, nullptr);
+            }
+            case dev_type_t::OUTPUT:
+            {
+                auto ofmt = av_guess_format(POSSIBLE_I_DEV[index], nullptr, nullptr);
+                if (!ofmt)
+                {
+                    for (int i = 0; i < sizeof(POSSIBLE_I_DEV) / size_t(POSSIBLE_I_DEV[0]); i++)
+                    {
+                        if (i != index)
+                        {
+                            ofmt = av_guess_format(POSSIBLE_I_DEV[i], nullptr, nullptr);
+                            if (!ofmt)
+                            {
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (!ofmt)
+                {
+                    return { nullptr, nullptr};
+                }
+                check_av_err(avdevice_list_output_sinks(ofmt, nullptr, nullptr, &devices), "could not list output devices, ");
+                DEFER({
+                    avdevice_free_list_devices(&devices);
+                });
+                return to_devices(devices, nullptr, ofmt);
+            }
+            default:
+                throw cpptrace::invalid_argument(fmt::format("invalid device type {}", (int) dev_type));
+            }
         }
     } // namespace video
     
