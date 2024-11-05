@@ -4,6 +4,7 @@
 #include <string>
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
 #include "cfgo/config/configuration.h"
 #include "cfgo/asio.hpp"
 #include "cfgo/alias.hpp"
@@ -25,6 +26,9 @@ namespace cfgo
         struct Track;
         struct Client;
     } // namespace impl
+
+    using RtcTrackPtr = std::shared_ptr<rtc::Track>;
+    using RtcTrackWPtr = std::weak_ptr<rtc::Track>;
     
     struct Track : ImplBy<impl::Track>
     {
@@ -234,6 +238,16 @@ namespace cfgo
 
         friend class impl::Client;
     };
+
+    class SSRCGenerator
+    {
+        std::unordered_set<uint32_t> generated;
+    public:
+        uint32_t generate();
+    };
+
+    RtcTrackPtr make_video_rtc_track(SSRCGenerator & ssrc_generator);
+    RtcTrackPtr make_audio_rtc_track(SSRCGenerator & ssrc_generator);
     
 } // namespace name
 

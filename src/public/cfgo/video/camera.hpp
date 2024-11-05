@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <string>
+#include <string_view>
 #include <ostream>
 
 extern "C" {
@@ -35,7 +36,7 @@ namespace cfgo
 
             DeviceInfoList(const AVInputFormat * ifmt, const AVOutputFormat * ofmt): ifmt(ifmt), ofmt(ofmt) {}
 
-            DeviceInfo * select(AVMediaType media_type, std::size_t i = -1)
+            const DeviceInfo * select(int i = -1, AVMediaType media_type = AVMEDIA_TYPE_UNKNOWN) const
             {
                 if (i < 0)
                 {
@@ -46,7 +47,25 @@ namespace cfgo
                 {
                     if (i < devices.size())
                     {
-                        return &devices.at(i);
+                        if (media_type == AVMEDIA_TYPE_UNKNOWN)
+                        {
+                            return &devices.at(i);
+                        }
+                        else
+                        {
+                            int j = 0;
+                            for (auto & device : devices)
+                            {
+                                if (device.support_media_type(media_type))
+                                {
+                                    if (j ++ == i)
+                                    {
+                                        return &device;
+                                    }
+                                }
+                            }
+                            return nullptr;
+                        }
                     }
                     else
                     {
@@ -63,32 +82,19 @@ namespace cfgo
                 }
             }
 
-            const DeviceInfo * select(std::size_t i = -1) const
+            const DeviceInfo * select(std::string_view name, AVMediaType media_type = AVMEDIA_TYPE_UNKNOWN) const
             {
-                if (i < 0)
+                for (auto & device : devices)
                 {
-                    i = default_device;
-                }
-                
-                if (i >= 0)
-                {
-                    if (i < devices.size())
+                    if (media_type == AVMEDIA_TYPE_UNKNOWN || device.support_media_type(media_type))
                     {
-                        return &devices.at(i);
-                    }
-                    else
-                    {
-                        return nullptr;
+                        if (device.name == name)
+                        {
+                            return &device;
+                        }
                     }
                 }
-                else if (!devices.empty())
-                {
-                    return &devices.at(0);
-                }
-                else
-                {
-                    return nullptr;
-                }
+                return nullptr;
             }
         };
 
