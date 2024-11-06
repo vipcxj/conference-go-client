@@ -7,6 +7,7 @@
 #include "cfgo/video/err.hpp"
 #include "cfgo/video/cppfix.hpp"
 #include <csignal>
+#include <thread>
 
 extern "C"
 {
@@ -94,7 +95,11 @@ int main()
     
     do
     {
+        auto start = std::chrono::high_resolution_clock::now();
         cfgo::video::check_av_err(av_read_frame(fmt_ctx, pkt), "could not read pkt from input device, ");
+        auto used = std::chrono::high_resolution_clock::now() - start;
+        CFGO_INFO("read pkt cost {} ms", std::chrono::duration_cast<std::chrono::milliseconds>(used).count());
+        std::this_thread::sleep_for(std::chrono::milliseconds {30});
         log_packet(fmt_ctx, pkt, "in");
         av_packet_unref(pkt);
         if (g_exit)

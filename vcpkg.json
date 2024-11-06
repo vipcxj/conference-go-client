@@ -21,7 +21,7 @@
     "libuvc",
     {
       "name": "opencv",
-      "features": ["ffmpeg"]
+      "features": []
     },
     {
       "name": "ffmpeg",

@@ -117,7 +117,39 @@ namespace cfgo
                         }
                     }
                 }
-                
+                if ((ifmt && !strcmp(ifmt->name, "dshow")) || (ofmt && !strcmp(ofmt->name, "dshow")))
+                {
+                    std::string name = "";
+                    for (auto & media_type : info.media_types)
+                    {
+                        switch (media_type)
+                        {
+                        case AVMEDIA_TYPE_VIDEO:
+                            if (name.empty())
+                            {
+                                name = "video=" + info.name;
+                            }
+                            else
+                            {
+                                name += ":video=" + info.name;
+                            }
+                            break;
+                        case AVMEDIA_TYPE_AUDIO:
+                            if (name.empty())
+                            {
+                                name = "audio=" + info.name;
+                            }
+                            else
+                            {
+                                name += ":audio=" + info.name;
+                            }
+                            break;                  
+                        default:
+                            break;
+                        }
+                    }
+                    info.name = name;
+                }
                 dev_list.devices.push_back(std::move(info));
             }
             return std::move(dev_list);

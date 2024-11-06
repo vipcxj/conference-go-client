@@ -69,7 +69,7 @@ namespace cfgo
             mutex m_mux;
         public:
             MediaStream(/* args */);
-            ~MediaStream();
+            ~MediaStream() {};
 
             auto acquire_receiver(const media_codec_t & codec) -> media_receiver_ptr_t;
         };
