@@ -62,35 +62,20 @@ namespace cfgo
         using media_receiver_t = MediaReceiver;
         using media_receiver_ptr_t = std::shared_ptr<media_receiver_t>;
 
-        class MediaStream
+        enum class MediaSourceMode
         {
-        private:
-            std::unordered_map<media_codec_t, media_receiver_ptr_t> m_receivers;
-            mutex m_mux;
-        public:
-            MediaStream(/* args */);
-            ~MediaStream() {};
-
-            auto acquire_receiver(const media_codec_t & codec) -> media_receiver_ptr_t;
+            AUTO = 0,
+            PUSH = 1,
+            PULL = 2
         };
 
-        using media_stream_t = MediaStream;
+        using media_source_mode_t = MediaSourceMode;
 
         class MediaSource
         {
-        private:
-            AVFormatContext * m_fmt_ctx = nullptr;
-            media_source_type_t m_source_type;
-            std::string m_url_or_name;
-            std::vector<media_stream_t> m_streams;
         public:
-            MediaSource(media_source_type_t source_type, const std::string & url_or_name);
-            ~MediaSource();
-            auto loop(close_chan closer) -> asio::awaitable<void>;
-            auto streams() const -> const std::vector<media_stream_t> &
-            {
-                return m_streams;
-            }
+            virtual ~MediaSource() = 0;
+            virtual auto acquire_receiver(int stream_id, const media_codec_t & codec) -> media_receiver_ptr_t = 0;
         };
 
         using media_source_t = MediaSource;

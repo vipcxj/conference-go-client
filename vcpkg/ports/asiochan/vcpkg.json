@@ -1,6 +1,6 @@
 {
   "name": "asiochan",
-  "version": "0.4.9",
+  "version": "0.5.0",
   "description": "Go-like channels for ASIO C++20 coroutines",
   "homepage": "https://github.com/vipcxj/asiochan",
   "dependencies": [
