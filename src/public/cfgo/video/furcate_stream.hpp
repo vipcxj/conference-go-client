@@ -22,42 +22,104 @@ namespace cfgo
             FurcateBranch(const FurcateBranch &) = delete;
             FurcateBranch & operator= (const FurcateBranch &) = delete;
             
-            std::optional<T> receive_sync(asiochan::interrupter_t & interrupter)
+            std::optional<T> receive_sync()
             {
-                std::lock_guard g{m_stream->m_mutex};
-                if (!m_stream->m_current)
+                do
                 {
-                    m_stream->m_current = m_stream->m_ch.read_sync(interrupter);
-                    m_index = ++m_stream->m_index;
-                    if (!m_stream->m_current)
+                    std::optional<T> current;
+                    uint64_t index;
+                    do
                     {
-                        return std::nullopt;
+                        auto lock = std::unique_lock {m_stream->m_mutex};
+                        if (!m_stream->m_current)
+                        {
+                            current = m_stream->m_ch.try_read();
+                            if (current)
+                            {
+                                m_stream->m_current = current;
+                                index = m_stream->m_index;
+                                break;
+                            }
+                            else
+                            {
+                                m_stream->m_cv.wait(lock);
+                            }
+                        }
+                        else
+                        {
+                            current = m_stream->m_current;
+                            index = m_stream->m_index;
+                            break;
+                        }
+                    } while (true);
+                    std::lock_guard g{m_stream->m_mutex};
+                    if (index == m_stream->m_index)
+                    {
+                        if (++m_stream->m_nsend == m_stream->m_branches)
+                        {
+                            auto data = std::move(*m_stream->m_current);
+                            m_stream->m_current.reset();
+                            m_stream->m_nsend = 0;
+                            m_stream->m_index ++;
+                            return std::move(data);
+                        }
+                        else
+                        {
+                            return m_stream->m_current;
+                        }
                     }
-                }
-                ++m_stream->m_nsend;
-                if (++m_stream->m_nsend == m_stream->m_ntarget)
-                {
-                    auto data = std::move(*m_stream->m_current);
-                    m_stream->m_current.reset();
-                    m_stream->m_nsend = 0;
-                    return std::move(data);
-                }
-                else
-                {
-                    return m_stream->m_current;
-                }
+                } while (true);
             }
             auto receive_async(close_chan closer) -> asio::awaitable<T>
             {
                 do
                 {
-                    auto receiver = m_stream->m_data_notifier.make_notfiy_receiver();
-                    if (!co_await chan_read<void>(*receiver, closer))
+                    std::optional<T> current;
+                    uint64_t index;
+                    do
                     {
-                        co_return false;
+                        auto receiver = m_stream->m_data_notifier.make_notfiy_receiver();
+                        {
+                            std::lock_guard g{m_stream->m_mutex};
+                            if (!m_stream->m_current)
+                            {
+                                current = m_stream->m_ch.try_read();
+                                if (current)
+                                {
+                                    m_stream->m_current = current;
+                                    index = m_stream->m_index;
+                                    break;
+                                }
+                            }
+                            else
+                            {
+                                current = m_stream->m_current;
+                                index = m_stream->m_index;
+                                break;
+                            }
+                        }
+                        if (!co_await chan_read<void>(*receiver, closer))
+                        {
+                            co_return std::nullopt;
+                        }
+                    } while (true);
+                    std::lock_guard g{m_stream->m_mutex};
+                    if (index == m_stream->m_index)
+                    {
+                        if (++m_stream->m_nsend == m_stream->m_branches)
+                        {
+                            auto data = std::move(*m_stream->m_current);
+                            m_stream->m_current.reset();
+                            m_stream->m_nsend = 0;
+                            m_stream->m_index ++;
+                            return std::move(data);
+                        }
+                        else
+                        {
+                            return m_stream->m_current;
+                        }
                     }
                 } while (true);
-                
             }
 
             friend class FurcateStream<T, BuffSize>;
@@ -70,13 +132,12 @@ namespace cfgo
             smart_list<FurcateBranch> m_branches;
             asiochan::channel<T, BuffSize> m_ch;
             std::optional<T> m_current;
-            uint64_t m_index = 0;
+            uint64_t m_index = 1;
             int m_nsend = 0;
-            int m_ntarget = 0;
             int m_nbranch = 0;
             state_notifier m_data_notifier;
             std::mutex m_mutex;
-            std::optional<std::condition_variable> m_cv;
+            std::condition_variable m_cv;
 
         public:
             FurcateStream(/* args */);
@@ -85,19 +146,31 @@ namespace cfgo
             bool send_sync(T data, asiochan::interrupter_t & interrupter)
             {
                 auto res = m_ch.write_sync(interrupter, std::move(data));
-                m_data_notifier.notify();
+                if (res)
+                {
+                    m_data_notifier.notify();
+                    m_cv.notify_all();
+                }
                 return res;
             }
 
-            auto send_async(T data, close_chan closer) -> asio::awaitable<void>
+            auto send_async(T data, close_chan closer) -> asio::awaitable<bool>
             {
-                co_await chan_write_or_throw(m_ch, std::move(data), std::move(closer));
+                if (co_await chan_write<T>(m_ch, std::move(data), std::move(closer)))
+                {
+                    m_data_notifier.notify();
+                    m_cv.notify_all();
+                    return true;
+                }
+                else
+                {
+                    return false;
+                }
             }
             smart_node<FurcateBranch<T, BuffSize>>::ptr create_branch()
             {
                 std::lock_guard g(m_mutex);
                 ++m_nbranch;
-                ++m_ntarget;
                 return m_branches.add(FurcateBranch<T, BuffSize> {this});
             }
 
@@ -107,7 +180,7 @@ namespace cfgo
                 --m_nbranch;
                 if (branch->m_index == m_index)
                 {
-                    --m_ntarget;
+                    --m_nsend;
                 }
                 m_branches.remove(branch);
             }
