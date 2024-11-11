@@ -101,6 +101,34 @@ namespace cfgo
             }
         }
 
+        /**
+         * f bool(const T &), return false if break the loop
+         */
+        template<typename F>
+        requires requires(F f, const T & e) {
+            { f(e) } -> std::same_as<bool>;
+        }
+        void for_each(F f) const
+        {
+            std::vector<node_t::ptr> nodes {};
+            {
+                std::lock_guard lk(m_mux);
+                auto node = m_head;
+                while (node)
+                {
+                    nodes.push_back(node);
+                    node = node->m_next;
+                }
+            }
+            for (auto & node : nodes)
+            {
+                if (!f(node->value()))
+                {
+                    return;
+                }
+            }
+        }
+
         private:
             node_t::ptr m_head;
             mutex m_mux;
