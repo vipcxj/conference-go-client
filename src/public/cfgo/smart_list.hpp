@@ -3,6 +3,7 @@
 
 #include <utility>
 #include <memory>
+#include <vector>
 
 #include "cfgo/alias.hpp"
 #include "cfgo/allocate_tracer.hpp"
@@ -19,18 +20,21 @@ namespace cfgo
         using wptr = std::weak_ptr<smart_node<T>>;
 
         smart_node(T && data): m_data(std::forward<T>(data)) {}
+        template<typename... Args>
+        smart_node(const std::in_place_t &, Args && ... args): m_data(std::forward<Args>(args)...) {}
         smart_node(const smart_node &) = delete;
         smart_node(smart_node &&) = delete;
         smart_node & operator = (const smart_node &) = delete;
         smart_node & operator = (smart_node &&) = delete;
+        T & value()
+        {
+            return m_data;
+        }
         const T & value() const
         {
             return m_data;
         }
-        auto read() const
-        {
-            return m_data.read();
-        }
+
     private:
         T m_data;
         ptr m_next {};
@@ -56,6 +60,21 @@ namespace cfgo
             m_head = node;
             return node;
         }
+
+        template<typename... Args>
+        node_t::ptr emplace(Args && ... args)
+        {
+            auto node = allocate_tracers::make_shared<node_t>(std::in_place, std::forward<Args>(args)...);
+            std::lock_guard lk(m_mux);
+            if (m_head)
+            {
+                m_head->m_prev = node;
+                node->m_next = m_head;
+            }
+            m_head = node;
+            return node;
+        }
+
         void remove(node_t::ptr & ptr)
         {
             std::lock_guard lk(m_mux);
@@ -105,12 +124,42 @@ namespace cfgo
          * f bool(const T &), return false if break the loop
          */
         template<typename F>
+        requires requires(F f, T & e) {
+            { f(e) } -> std::same_as<bool>;
+        }
+        void for_each(F f)
+        {
+            using node_ptr_t = node_t::ptr;
+            std::vector<node_ptr_t> nodes {};
+            {
+                std::lock_guard lk(m_mux);
+                auto node = m_head;
+                while (node)
+                {
+                    nodes.push_back(node);
+                    node = node->m_next;
+                }
+            }
+            for (auto & node : nodes)
+            {
+                if (!f(node->value()))
+                {
+                    return;
+                }
+            }
+        }
+
+        /**
+         * f bool(const T &), return false if break the loop
+         */
+        template<typename F>
         requires requires(F f, const T & e) {
             { f(e) } -> std::same_as<bool>;
         }
         void for_each(F f) const
         {
-            std::vector<node_t::ptr> nodes {};
+            using node_ptr_t = node_t::ptr;
+            std::vector<node_ptr_t> nodes {};
             {
                 std::lock_guard lk(m_mux);
                 auto node = m_head;

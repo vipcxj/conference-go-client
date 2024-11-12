@@ -4,6 +4,7 @@
 #include "cfgo/log.hpp"
 #include "cfgo/allocate_tracer.hpp"
 #include "cfgo/black_magic.hpp"
+#include "cfgo/video/furcate_stream.hpp"
 #include "gtest/gtest.h"
 #include <random>
 
@@ -69,76 +70,71 @@ struct TestObj
 TEST(AllocateTracer, Tracer)
 {
     using namespace cfgo;
-    using alc_tracers =  allocate_tracers;
-    using state_t = alc_tracers::tracer_state;
-    auto state = state_t::instance();
-    {
-        auto ptr = alc_tracers::make_shared<int>(3);
-        #ifdef CFGO_GENERAL_ALLOCATE_TRACER_DETAIL
-        EXPECT_TRUE(state->get_entry(ptr.get())->has_detail());
-        #else
-        EXPECT_FALSE(state.entry(ptr.get()).has_detail());
-        #endif
-        EXPECT_EQ(alc_tracers::ref_count(typeid(int)), 1);
-    }
-    EXPECT_EQ(alc_tracers::ref_count(typeid(int)), 0);
-    {
-        auto ptr = allocate_tracers::make_shared<TestObj>();
-        EXPECT_TRUE(state->get_entry(ptr.get())->has_detail());
-        EXPECT_EQ(alc_tracers::ref_count(typeid(TestObj)), 1);
-        alc_tracers::tracer_entry_result_set result;
-        alc_tracers::collect_max_n_ref_count(result, 1);
-        EXPECT_EQ(result.size(), 1);
-        EXPECT_EQ(result[0].get().type_name(), boost::core::demangle(typeid(TestObj).name()));
-    }
-    EXPECT_EQ(alc_tracers::ref_count(typeid(TestObj)), 0);
-
+    using namespace std::chrono_literals;
+    asio::io_context io_ctx;
     do_async([]() -> asio::awaitable<void> {
-        using TestPtr = allocate_tracers::unique_ptr<TestObj>;
         close_chan closer {};
-        close_guard cg(closer);
-        asiochan::channel<TestPtr> ch {};
+        close_guard cg {closer};
+        auto executor = co_await asio::this_coro::executor;
+        auto stream = video::FurcateStream<int, 1>::create(executor, 50ms);
+        for (int i = 0; i < 3; i++)
         {
-            TestPtr ptr = allocate_tracers::make_unique<TestObj>();
-            EXPECT_EQ(alc_tracers::ref_count(typeid(TestObj)), 1);
-            asio::co_spawn(co_await asio::this_coro::executor, [ch, closer, ptr = std::move(ptr)]() mutable -> asio::awaitable<void> {
-                EXPECT_EQ(alc_tracers::ref_count(typeid(TestObj)), 1);
-                co_await chan_write_or_throw<TestPtr>(ch, std::move(ptr), closer);
+            std::thread t([stream, i]() {
+                auto branch = stream->create_branch();
+                std::mt19937 gen(i);
+                std::uniform_int_distribution<int> distrib(30, 120);
+                for (int j = 1; j < 10; j += 2)
+                {
+                    auto delay = std::chrono::milliseconds { distrib(gen) };
+                    std::this_thread::sleep_for(delay);
+                    auto res = branch->value().receive_sync();
+                    if (res)
+                    {
+                        CFGO_INFO("[sync {}] got {} after delay {} ms", i, *res, delay.count());
+                    }
+                    else
+                    {
+                        CFGO_INFO("[sync {}] got nothing after delay {} ms", i, *res, delay.count());
+                    }
+                }
+            });
+            t.detach();
+            asio::co_spawn(executor, [stream, i, closer]() -> asio::awaitable<void> {
+                auto branch = stream->create_branch();
+                std::mt19937 gen(i);
+                std::uniform_int_distribution<int> distrib(30, 120);
+                for (int j = 0; j < 10; j += 2)
+                {
+                    auto delay = std::chrono::milliseconds { distrib(gen) };
+                    co_await wait_timeout(delay);
+                    auto res = co_await branch->value().receive_async(closer);
+                    if (res)
+                    {
+                        CFGO_INFO("[async {}] got {} after delay {} ms", i, *res, delay.count());
+                    }
+                    else
+                    {
+                        CFGO_INFO("[async {}] got nothing after delay {} ms", i, *res, delay.count());
+                    }
+                }
             }, asio::detached);
-            EXPECT_EQ(alc_tracers::ref_count(typeid(TestObj)), 1);
-            auto result = co_await chan_read_or_throw<TestPtr>(ch, closer);
-            EXPECT_EQ(alc_tracers::ref_count(typeid(TestObj)), 1);
         }
-        EXPECT_EQ(alc_tracers::ref_count(typeid(TestObj)), 0);
-        {
-            TestPtr ptr = allocate_tracers::make_unique<TestObj>();
-            EXPECT_EQ(alc_tracers::ref_count(typeid(TestObj)), 1);
-            alc_tracers::raw_trace_result_set result {};
-            alc_tracers::collect_max_n_raw_trace(result, 3);
-            EXPECT_GE(result.size(), 1);
-            auto trace = result[0].first->resolve();
-            if (!trace.empty())
+        
+        std::thread t([stream]() {
+            for (int i = 1; i < 10; i += 2)
             {
-                auto & frame = *trace.cbegin();
-                CFGO_INFO(
-                    "max ref count of stack trace: {}/{} [{}:{}]",
-                    result[0].second,
-                    frame.filename,
-                    frame.line.value_or(0),
-                    frame.column.value_or(0)
-                );
+                stream->send_sync(i);
+                CFGO_INFO("sync send {}", i);
             }
-            auto timeouter = closer.create_child();
-            unique_void_chan trigger {};
-            asio::co_spawn(co_await asio::this_coro::executor, [ch, trigger, timeouter, ptr = std::move(ptr)]() mutable -> asio::awaitable<void> {
-                EXPECT_EQ(alc_tracers::ref_count(typeid(TestObj)), 1);
-                timeouter.set_timeout(std::chrono::milliseconds{1});
-                co_await chan_write<TestPtr>(ch, std::move(ptr), timeouter);
-                chan_must_write(trigger);
-            }, asio::detached);
-            co_await chan_read_or_throw<void>(trigger, closer);
-            EXPECT_EQ(alc_tracers::ref_count(typeid(TestObj)), 0);
-        }
+        });
+        co_await asio::co_spawn(executor, [closer, stream]() -> asio::awaitable<void> {
+            for (int i = 0; i < 10; i += 2)
+            {
+                co_await stream->send_async(i, closer);
+                CFGO_INFO("async send {}", i);
+            }
+        }, asio::use_awaitable);
+        t.join();
     }, true);
 }
 

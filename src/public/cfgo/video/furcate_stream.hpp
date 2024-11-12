@@ -3,6 +3,7 @@
 
 #include "cfgo/async.hpp"
 #include "cfgo/smart_list.hpp"
+#include "cfgo/defer.hpp"
 
 namespace cfgo
 {
@@ -14,11 +15,16 @@ namespace cfgo
         template<typename T, asiochan::channel_buff_size BuffSize>
         class FurcateBranch
         {
-        private:
-            FurcateStream<T, BuffSize> * m_stream;
-            uint64_t m_index = 0;
         public:
-            FurcateBranch(FurcateStream<T, BuffSize> * stream): m_stream(stream) {}
+            using stream_t = FurcateStream<T, BuffSize>;
+            using stream_ptr_t = std::shared_ptr<stream_t>;
+            using stream_wptr_t = std::weak_ptr<stream_t>;
+        private:
+            stream_wptr_t m_stream;
+            uint64_t m_index = 0;
+            bool m_closed = false;
+        public:
+            FurcateBranch(stream_wptr_t stream): m_stream(std::move(stream)) {}
             FurcateBranch(const FurcateBranch &) = delete;
             FurcateBranch & operator= (const FurcateBranch &) = delete;
             
@@ -30,47 +36,79 @@ namespace cfgo
                     uint64_t index;
                     do
                     {
-                        auto lock = std::unique_lock {m_stream->m_mutex};
-                        if (!m_stream->m_current)
+                        if (auto stream = m_stream.lock())
                         {
-                            current = m_stream->m_ch.try_read();
-                            if (current)
+                            auto lock = std::unique_lock {stream->m_mutex};
+                            if (m_closed)
                             {
-                                m_stream->m_current = current;
-                                index = m_stream->m_index;
+                                return std::nullopt;
+                            }
+                            if (!stream->m_current)
+                            {
+                                current = stream->m_ch.try_read();
+                                if (current)
+                                {
+                                    stream->m_current = current;
+                                    index = stream->m_index;
+                                    assert(index > m_index);
+                                    break;
+                                }
+                                else
+                                {
+                                    CFGO_INFO("waiting cv...");
+                                    stream->m_cv.wait(lock);
+                                    CFGO_INFO("cv wake up");
+                                }
+                            }
+                            else if (stream->m_index > m_index)
+                            {
+                                current = stream->m_current;
+                                index = stream->m_index;
                                 break;
                             }
                             else
                             {
-                                m_stream->m_cv.wait(lock);
+                                CFGO_INFO("waiting cv...");
+                                stream->m_cv.wait(lock);
+                                CFGO_INFO("cv wake up");
                             }
                         }
                         else
                         {
-                            current = m_stream->m_current;
-                            index = m_stream->m_index;
-                            break;
+                            return std::nullopt;
                         }
                     } while (true);
-                    std::lock_guard g{m_stream->m_mutex};
-                    if (index == m_stream->m_index)
+                    if (auto stream = m_stream.lock())
                     {
-                        if (++m_stream->m_nsend == m_stream->m_branches)
+                        std::lock_guard g{stream->m_mutex};
+                        if (m_closed)
                         {
-                            auto data = std::move(*m_stream->m_current);
-                            m_stream->m_current.reset();
-                            m_stream->m_nsend = 0;
-                            m_stream->m_index ++;
-                            return std::move(data);
+                            return std::nullopt;
                         }
-                        else
+                        if (index == stream->m_index && index > m_index)
                         {
-                            return m_stream->m_current;
+                            m_index = index;
+                            if (++stream->m_nsend == stream->m_nbranch)
+                            {
+                                auto data = stream->m_current;
+                                stream->m_current.reset();
+                                stream->m_nsend = 0;
+                                stream->m_index ++;
+                                return std::move(data);
+                            }
+                            else
+                            {
+                                return stream->m_current;
+                            }
                         }
+                    }
+                    else
+                    {
+                        return std::nullopt;
                     }
                 } while (true);
             }
-            auto receive_async(close_chan closer) -> asio::awaitable<T>
+            auto receive_async(close_chan closer) -> asio::awaitable<std::optional<T>>
             {
                 do
                 {
@@ -78,46 +116,73 @@ namespace cfgo
                     uint64_t index;
                     do
                     {
-                        auto receiver = m_stream->m_data_notifier.make_notfiy_receiver();
+                        if (auto stream = m_stream.lock())
                         {
-                            std::lock_guard g{m_stream->m_mutex};
-                            if (!m_stream->m_current)
+                            auto receiver = stream->m_data_notifier.make_notfiy_receiver();
                             {
-                                current = m_stream->m_ch.try_read();
-                                if (current)
+                                std::lock_guard g{stream->m_mutex};
+                                if (m_closed)
                                 {
-                                    m_stream->m_current = current;
-                                    index = m_stream->m_index;
+                                    co_return std::nullopt;
+                                }
+                                if (!stream->m_current)
+                                {
+                                    current = stream->m_ch.try_read();
+                                    if (current)
+                                    {
+                                        stream->m_current = current;
+                                        index = stream->m_index;
+                                        assert(index > m_index);
+                                        break;
+                                    }
+                                }
+                                else if (stream->m_index > m_index)
+                                {
+                                    current = stream->m_current;
+                                    index = stream->m_index;
                                     break;
                                 }
                             }
-                            else
+                            CFGO_INFO("waiting receiver...");
+                            if (!co_await chan_read<void>(*receiver, closer))
                             {
-                                current = m_stream->m_current;
-                                index = m_stream->m_index;
-                                break;
+                                CFGO_INFO("receiver not waited.");
+                                co_return std::nullopt;
                             }
+                            CFGO_INFO("receiver waited.");
                         }
-                        if (!co_await chan_read<void>(*receiver, closer))
+                        else
                         {
                             co_return std::nullopt;
                         }
                     } while (true);
-                    std::lock_guard g{m_stream->m_mutex};
-                    if (index == m_stream->m_index)
+                    if (auto stream = m_stream.lock())
                     {
-                        if (++m_stream->m_nsend == m_stream->m_branches)
+                        std::lock_guard g{stream->m_mutex};
+                        if (m_closed)
                         {
-                            auto data = std::move(*m_stream->m_current);
-                            m_stream->m_current.reset();
-                            m_stream->m_nsend = 0;
-                            m_stream->m_index ++;
-                            return std::move(data);
+                            co_return std::nullopt;
                         }
-                        else
+                        if (index == stream->m_index && index > m_index)
                         {
-                            return m_stream->m_current;
+                            m_index = index;
+                            if (++stream->m_nsend == stream->m_nbranch)
+                            {
+                                auto data = stream->m_current;
+                                stream->m_current.reset();
+                                stream->m_nsend = 0;
+                                stream->m_index ++;
+                                co_return std::move(data);
+                            }
+                            else
+                            {
+                                co_return stream->m_current;
+                            }
                         }
+                    }
+                    else
+                    {
+                        co_return std::nullopt;
                     }
                 } while (true);
             }
@@ -126,10 +191,12 @@ namespace cfgo
         };
 
         template<typename T, asiochan::channel_buff_size BuffSize>
-        class FurcateStream
+        class FurcateStream : public std::enable_shared_from_this<FurcateStream<T, BuffSize>>
         {
+        public:
+            using branch_t = FurcateBranch<T, BuffSize>;
         private:
-            smart_list<FurcateBranch> m_branches;
+            smart_list<branch_t> m_branches;
             asiochan::channel<T, BuffSize> m_ch;
             std::optional<T> m_current;
             uint64_t m_index = 1;
@@ -138,43 +205,111 @@ namespace cfgo
             state_notifier m_data_notifier;
             std::mutex m_mutex;
             std::condition_variable m_cv;
+            asio::any_io_executor m_executor;
+            std::chrono::high_resolution_clock::duration m_timeout;
+            
+
+            auto create_timer() -> std::shared_ptr<asio::steady_timer>
+            {
+                auto timer = std::make_shared<asio::steady_timer>(m_executor);
+                timer->expires_after(m_timeout);
+                timer->async_wait([index = m_index, weak_self = this->weak_from_this()](const std::error_code & ec) {
+                    if (!ec)
+                    {
+                        CFGO_INFO("timer expired");
+                        if (auto self = weak_self.lock())
+                        {
+                            std::lock_guard g(self->m_mutex);
+                            if (self->m_index == index)
+                            {
+                                CFGO_INFO("read new");
+                                self->m_current = self->m_ch.try_read();
+                                self->m_nsend = 0;
+                                self->m_index ++;
+                            }
+                        }
+                    }
+                });
+                return timer;
+            }
+
+            FurcateStream(asio::any_io_executor executor, duration_t timeout): m_executor(std::move(executor)), m_timeout(timeout) {}
 
         public:
-            FurcateStream(/* args */);
-            ~FurcateStream();
+            ~FurcateStream()
+            {
+                CFGO_INFO("destruct");
+                std::lock_guard g(m_mutex);
+                m_branches.for_each([](branch_t & branch) {
+                    branch.m_closed = true;
+                    return true;
+                });
+                m_data_notifier.notify();
+                m_cv.notify_all();
+            }
+
+            static std::shared_ptr<FurcateStream<T, BuffSize>> create(asio::any_io_executor executor, duration_t timeout)
+            {
+                return std::shared_ptr<FurcateStream<T, BuffSize>> {new FurcateStream(std::move(executor), timeout)};
+            }
 
             bool send_sync(T data, asiochan::interrupter_t & interrupter)
             {
+                auto timer = create_timer();
+                DEFER({
+                    timer->cancel();
+                    CFGO_INFO("timer canceled");
+                });
+                CFGO_INFO("sync sending");
                 auto res = m_ch.write_sync(interrupter, std::move(data));
                 if (res)
                 {
+                    CFGO_INFO("sync sended");
                     m_data_notifier.notify();
                     m_cv.notify_all();
+                }
+                else
+                {
+                    CFGO_INFO("sync not sended");
                 }
                 return res;
             }
 
+            bool send_sync(T data)
+            {
+                asiochan::interrupter_t interrupter {};
+                return send_sync(std::move(data), interrupter);
+            }
+
             auto send_async(T data, close_chan closer) -> asio::awaitable<bool>
             {
+                auto timer = create_timer();
+                DEFER({
+                    timer->cancel();
+                    CFGO_INFO("timer canceled");
+                });
+                CFGO_INFO("async sending");
                 if (co_await chan_write<T>(m_ch, std::move(data), std::move(closer)))
                 {
+                    CFGO_INFO("async sended");
                     m_data_notifier.notify();
                     m_cv.notify_all();
-                    return true;
+                    co_return true;
                 }
                 else
                 {
-                    return false;
+                    CFGO_INFO("async not sended");
+                    co_return false;
                 }
             }
-            smart_node<FurcateBranch<T, BuffSize>>::ptr create_branch()
+            smart_node<branch_t>::ptr create_branch()
             {
                 std::lock_guard g(m_mutex);
                 ++m_nbranch;
-                return m_branches.add(FurcateBranch<T, BuffSize> {this});
+                return m_branches.emplace(this->weak_from_this());
             }
 
-            void remove_branch(smart_node<FurcateBranch<T, BuffSize>>::ptr & branch)
+            void remove_branch(smart_node<branch_t>::ptr & branch)
             {
                 std::lock_guard g(m_mutex);
                 --m_nbranch;
@@ -182,6 +317,9 @@ namespace cfgo
                 {
                     --m_nsend;
                 }
+                branch->m_closed = true;
+                m_data_notifier.notify();
+                m_cv.notify_all();
                 m_branches.remove(branch);
             }
 
