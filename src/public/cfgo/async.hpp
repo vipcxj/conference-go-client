@@ -60,12 +60,20 @@ namespace cfgo
 
     class WeakCloseSignal;
 
+    template<typename T>
+    concept VoidFunction = std::is_same_v<std::invoke_result_t<T>, void>;
+
     class CloseSignal
     {
     private:
         std::shared_ptr<detail::CloseSignalState> m_state;
         CloseSignal(const std::shared_ptr<detail::CloseSignalState> & state);
         CloseSignal(std::shared_ptr<detail::CloseSignalState> && state);
+
+        void after_close_1(const asio::any_io_executor & executor, std::function<void()> cb, CloseSignal closer = nullptr) const;
+        void after_close_2(const asio::any_io_executor & executor, std::function<asio::awaitable<void>()> cb, CloseSignal closer = nullptr) const;
+        [[nodiscard]] auto after_close_1(std::function<void()> cb, CloseSignal closer = nullptr) const -> asio::awaitable<void>;
+        [[nodiscard]] auto after_close_2(std::function<asio::awaitable<void>()> cb, CloseSignal closer = nullptr) const -> asio::awaitable<void>;
     public:
         using Waiter = smart_node<unique_void_chan>;
         using WaiterPtr = Waiter::ptr;
@@ -126,7 +134,22 @@ namespace cfgo
         [[nodiscard]] const char * get_close_reason() const noexcept;
         [[nodiscard]] std::source_location get_close_source_location() const noexcept;
         [[nodiscard]] auto depend_on(close_chan closer, std::string reason = "", std::source_location src_loc = std::source_location::current()) const -> asio::awaitable<void>;
-        [[nodiscard]] auto after_close(std::function<asio::awaitable<void>()> cb) const -> asio::awaitable<void>;
+        void after_close(const asio::any_io_executor & executor, VoidFunction auto cb, CloseSignal closer = nullptr) const
+        {
+            after_close_1(executor, std::move(cb), std::move(closer));
+        }
+        void after_close(const asio::any_io_executor & executor, std::function<asio::awaitable<void>()> cb, CloseSignal closer = nullptr) const
+        {
+            after_close_2(executor, std::move(cb), std::move(closer));
+        }
+        [[nodiscard]] auto after_close(VoidFunction auto cb, CloseSignal closer = nullptr) const -> asio::awaitable<void>
+        {
+            return after_close_1(std::move(cb), std::move(closer));
+        }
+        [[nodiscard]] auto after_close(std::function<asio::awaitable<void>()> cb, CloseSignal closer = nullptr) const -> asio::awaitable<void>
+        {
+            return after_close_2(std::move(cb), std::move(closer));
+        }
 
         friend class detail::CloseSignalState;
         friend class WeakCloseSignal;

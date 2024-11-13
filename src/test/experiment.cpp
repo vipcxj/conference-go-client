@@ -4,7 +4,7 @@
 #include "cfgo/log.hpp"
 #include "cfgo/allocate_tracer.hpp"
 #include "cfgo/black_magic.hpp"
-#include "cfgo/video/furcate_stream.hpp"
+#include "cfgo/furcate_stream.hpp"
 #include "gtest/gtest.h"
 #include <random>
 
@@ -74,27 +74,29 @@ TEST(AllocateTracer, Tracer)
     asio::io_context io_ctx;
     do_async([]() -> asio::awaitable<void> {
         close_chan closer {};
+        closer.set_timeout(1s, "timeout after 1s");
         close_guard cg {closer};
         auto executor = co_await asio::this_coro::executor;
-        auto stream = video::FurcateStream<int, 1>::create(executor, 50ms);
+        auto stream = FurcateStream<int, 1>::create(executor, 50ms);
         for (int i = 0; i < 3; i++)
         {
-            std::thread t([stream, i]() {
+            std::thread t([stream, i, closer]() {
                 auto branch = stream->create_branch();
                 std::mt19937 gen(i);
                 std::uniform_int_distribution<int> distrib(30, 120);
                 for (int j = 1; j < 10; j += 2)
                 {
+                    CFGO_INFO("[sync {}]({}) reading...", i, j);
                     auto delay = std::chrono::milliseconds { distrib(gen) };
                     std::this_thread::sleep_for(delay);
-                    auto res = branch->value().receive_sync();
+                    auto res = branch->value().receive_sync(closer);
                     if (res)
                     {
-                        CFGO_INFO("[sync {}] got {} after delay {} ms", i, *res, delay.count());
+                        CFGO_INFO("[sync {}]({}) got {} after delay {} ms", i, j, *res, delay.count());
                     }
                     else
                     {
-                        CFGO_INFO("[sync {}] got nothing after delay {} ms", i, *res, delay.count());
+                        CFGO_INFO("[sync {}]({}) got nothing after delay {} ms", i, j, *res, delay.count());
                     }
                 }
             });
@@ -105,33 +107,36 @@ TEST(AllocateTracer, Tracer)
                 std::uniform_int_distribution<int> distrib(30, 120);
                 for (int j = 0; j < 10; j += 2)
                 {
+                    CFGO_INFO("[async {}]({}) reading...", i, j);
                     auto delay = std::chrono::milliseconds { distrib(gen) };
                     co_await wait_timeout(delay);
                     auto res = co_await branch->value().receive_async(closer);
                     if (res)
                     {
-                        CFGO_INFO("[async {}] got {} after delay {} ms", i, *res, delay.count());
+                        CFGO_INFO("[async {}]({}) got {} after delay {} ms", i, j, *res, delay.count());
                     }
                     else
                     {
-                        CFGO_INFO("[async {}] got nothing after delay {} ms", i, *res, delay.count());
+                        CFGO_INFO("[async {}]({}) got nothing after delay {} ms", i, j, *res, delay.count());
                     }
                 }
             }, asio::detached);
         }
         
-        std::thread t([stream]() {
+        std::thread t([closer, stream]() {
             for (int i = 1; i < 10; i += 2)
             {
-                stream->send_sync(i);
-                CFGO_INFO("sync send {}", i);
+                CFGO_INFO("sync sending {}", i);
+                stream->send_sync(i, closer);
+                CFGO_INFO("sync sended {}", i);
             }
         });
         co_await asio::co_spawn(executor, [closer, stream]() -> asio::awaitable<void> {
             for (int i = 0; i < 10; i += 2)
             {
+                CFGO_INFO("async sending {}", i);
                 co_await stream->send_async(i, closer);
-                CFGO_INFO("async send {}", i);
+                CFGO_INFO("async sended {}", i);
             }
         }, asio::use_awaitable);
         t.join();

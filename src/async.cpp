@@ -317,18 +317,62 @@ namespace cfgo
                 }), asio::detached);
             }
 
-            auto after_close(std::function<asio::awaitable<void>()> cb) -> asio::awaitable<void>
+            void after_close_1(const asio::any_io_executor & executor, std::function<void()> cb, close_chan closer)
+            {
+                if (m_closed)
+                {
+                    cb();
+                    return;
+                }
+                if (!closer.is_closed())
+                {
+                    asio::co_spawn(executor, fix_async_lambda([self = this->shared_from_this(), cb = std::move(cb), closer = std::move(closer)]() -> asio::awaitable<void> {
+                        if (auto waiter = self->get_waiter())
+                        {
+                            if (co_await chan_read<void>(*waiter, closer))
+                            {
+                                cb();
+                            }
+                        }
+                    }), asio::detached);
+                }
+            }
+
+            void after_close_2(const asio::any_io_executor & executor, std::function<asio::awaitable<void>()> cb, close_chan closer)
+            {
+                if (m_closed)
+                {
+                    asio::co_spawn(executor, [cb = std::move(cb)]() -> asio::awaitable<void> {
+                        co_await cb();
+                    }, asio::detached);
+                    return;
+                }
+                if (!closer.is_closed())
+                {
+                    asio::co_spawn(executor, fix_async_lambda([self = this->shared_from_this(), cb = std::move(cb), closer = std::move(closer)]() -> asio::awaitable<void> {
+                        if (auto waiter = self->get_waiter())
+                        {
+                            if (co_await chan_read<void>(*waiter, closer))
+                            {
+                                co_await cb();
+                            }
+                        }
+                    }), asio::detached);
+                }
+            }
+
+            auto after_close_1(std::function<void()> cb, close_chan closer) -> asio::awaitable<void>
             {
                 auto self = shared_from_this();
                 auto executor = co_await asio::this_coro::executor;
-                asio::co_spawn(executor, fix_async_lambda([self = std::move(self), cb = std::move(cb)]() -> asio::awaitable<void> {
-                    auto waiter = self->get_waiter();
-                    if (waiter)
-                    {
-                        co_await waiter->read();
-                        co_await cb();
-                    }
-                }), asio::detached);
+                after_close_1(executor, std::move(cb), std::move(closer));
+            }
+
+            auto after_close_2(std::function<asio::awaitable<void>()> cb, close_chan closer) -> asio::awaitable<void>
+            {
+                auto self = shared_from_this();
+                auto executor = co_await asio::this_coro::executor;
+                after_close_2(executor, std::move(cb), std::move(closer));
             }
         };
 
@@ -446,7 +490,7 @@ namespace cfgo
             {
                 return {};
             }
-            return { m_waiters, m_waiters.add(unique_void_chan {}) };
+            return { m_waiters, m_waiters.emplace() };
         }
 
         void CloseSignalState::_close_self(bool is_timeout, std::string reason, std::source_location src_loc)
@@ -889,11 +933,36 @@ namespace cfgo
         }
     }
 
-    auto CloseSignal::after_close(std::function<asio::awaitable<void>()> cb) const -> asio::awaitable<void>
+    void CloseSignal::after_close_1(const asio::any_io_executor & executor, std::function<void()> cb, CloseSignal closer) const
     {
         if (m_state)
         {
-            co_await m_state->after_close(std::move(cb));
+            m_state->after_close_1(executor, std::move(cb), std::move(closer));
+        }
+    }
+
+    void CloseSignal::after_close_2(const asio::any_io_executor & executor, std::function<asio::awaitable<void>()> cb, CloseSignal closer) const
+    {
+        if (m_state)
+        {
+            m_state->after_close_2(executor, std::move(cb), std::move(closer));
+        }
+    }
+
+    auto CloseSignal::after_close_1(std::function<void()> cb, close_chan closer) const -> asio::awaitable<void>
+    {
+        if (m_state)
+        {
+            co_await m_state->after_close_1(std::move(cb), std::move(closer));
+        }
+        co_return;
+    }
+
+    auto CloseSignal::after_close_2(std::function<asio::awaitable<void>()> cb, close_chan closer) const -> asio::awaitable<void>
+    {
+        if (m_state)
+        {
+            co_await m_state->after_close_2(std::move(cb), std::move(closer));
         }
         co_return;
     }
