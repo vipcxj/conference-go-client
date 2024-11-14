@@ -14,10 +14,12 @@ namespace cfgo
     class smart_list;
 
     template<typename T>
-    class smart_node {
+    class smart_node : public std::enable_shared_from_this<smart_node<T>> {
     public:
         using ptr = std::shared_ptr<smart_node<T>>;
         using wptr = std::weak_ptr<smart_node<T>>;
+        using value_ptr = std::shared_ptr<T>;
+        using value_wptr = std::weak_ptr<T>;
 
         smart_node(T && data): m_data(std::forward<T>(data)) {}
         template<typename... Args>
@@ -33,6 +35,10 @@ namespace cfgo
         const T & value() const
         {
             return m_data;
+        }
+        auto value_ptr() -> value_ptr
+        {
+            return value_ptr { shared_from_this(), &m_data };
         }
 
     private:

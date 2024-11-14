@@ -192,6 +192,8 @@ namespace cfgo
 
             struct MediaSubStream
             {
+                using ptr_t = std::shared_ptr<MediaSubStream>;
+                using weak_ptr_t = std::weak_ptr<MediaSubStream>;
                 using branch_node_t = frame_furcate_stream_t::branch_node_t;
                 MediaStream * m_stream;                
                 media_codec_t m_media_codec;
@@ -262,8 +264,8 @@ namespace cfgo
                         m_fmt_ctx->pb = m_io;
                     }
                     setup_stream(cleaner);
-                    asio::co_spawn(m_strand, [weak_src = m_stream->m_source->weak_from_this(), this]() -> asio::awaitable<void> {
-                        return loop(std::move(weak_src), this);
+                    asio::co_spawn(m_strand, [weak_self = ptr_t { m_stream->m_source->shared_from_this(), this }]() -> asio::awaitable<void> {
+                        return loop(std::move(weak_self));
                     }, asio::detached);
                     cleaner.success();
                 }
@@ -466,15 +468,15 @@ namespace cfgo
                     }, asio::detached);
                 }
 
-                static auto loop(std::weak_ptr<MediaSource> weak_src, MediaSubStream * self) -> asio::awaitable<void>
+                static auto loop(weak_ptr_t weak_self) -> asio::awaitable<void>
                 {
                     try
                     {
                         do
                         {
-                            if (auto src = weak_src.lock())
+                            if (auto self = weak_self.lock())
                             {
-                                auto opt_frame = co_await self->m_branch->value().receive_async(src->m_closer);
+                                auto opt_frame = co_await self->m_branch->value().receive_async(self->m_stream->m_source->m_closer);
                                 if (!opt_frame)
                                 {
                                     break;
@@ -539,20 +541,20 @@ namespace cfgo
                                 } while (true);
                             }
                         } while (true);
-                        if (auto src = weak_src.lock())
+                        if (auto self = weak_self.lock())
                         {
                             self->m_err_ch.write(nullptr);
                         }
                     }
                     catch(const CancelError &) {
-                        if (auto src = weak_src.lock())
+                        if (auto self = weak_self.lock())
                         {
                             self->m_err_ch.write(nullptr);
                         }
                     }
                     catch(...)
                     {
-                        if (auto src = weak_src.lock())
+                        if (auto self = weak_self.lock())
                         {
                             self->m_err_ch.write(std::current_exception());
                         }
@@ -564,6 +566,8 @@ namespace cfgo
 
             struct MediaStream
             {
+                using ptr_t = std::shared_ptr<MediaStream>;
+                using weak_ptr_t = std::weak_ptr<MediaStream>;
                 MediaSource * m_source;
                 AVStream * m_stream;
                 av_frame_pool_t m_frame_pool;
@@ -607,10 +611,11 @@ namespace cfgo
                     {
                         raw_frame = allocate_frame(m_stream);
                     }
-                    return av_frame_ptr_t(raw_frame, [src = m_source->weak_from_this(), this](AVFrame *& ptr) {
-                        if (auto source = src.lock())
+                    weak_ptr_t weak_self = ptr_t { m_source->shared_from_this(), this };
+                    return av_frame_ptr_t(raw_frame, [weak_self](AVFrame *& ptr) {
+                        if (auto self = weak_self.lock())
                         {
-                            if (!m_frame_pool.return_back(ptr))
+                            if (!self->m_frame_pool.return_back(ptr))
                             {
                                 av_frame_free(&ptr);
                             }
