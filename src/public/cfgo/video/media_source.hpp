@@ -18,6 +18,8 @@ namespace cfgo
         {
             AVCodecID codec_id;
             std::string profile;
+            const AVOutputFormat * ofmt;
+            int fps;
 
             bool operator==(const MediaCodec &) const = default;
         };
@@ -32,7 +34,10 @@ struct std::hash<cfgo::video::MediaCodec>
     std::size_t operator()(const cfgo::video::MediaCodec & k) const
     {
         using std::hash;
-        return (hash<int>()(static_cast<int>(k.codec_id)) ^ (hash<std::string>()(k.profile) << 1)) >> 1;
+        return ((((hash<int>()(static_cast<int>(k.codec_id)) 
+            ^ (hash<std::string>()(k.profile) << 1)) >> 1) 
+            ^ (hash<std::uintptr_t>()(reinterpret_cast<std::uintptr_t>(k.ofmt)) << 1)) >> 1
+            ^ (hash<int>()(k.fps) << 1)) >> 1;
     }
 };
 
@@ -50,6 +55,7 @@ namespace cfgo
         using media_source_type_t = MediaSourceType;
 
         using av_frame_ptr_t = std::shared_ptr<AVFrame>;
+        using av_pkt_ptr_t = std::shared_ptr<AVPacket>;
 
         class MediaReceiver
         {
@@ -60,6 +66,7 @@ namespace cfgo
         };
 
         using media_receiver_t = MediaReceiver;
+        using media_receiver_wptr_t = std::weak_ptr<media_receiver_t>;
         using media_receiver_ptr_t = std::shared_ptr<media_receiver_t>;
 
         enum class MediaSourceMode
@@ -75,12 +82,22 @@ namespace cfgo
         {
         public:
             virtual ~MediaSource() = 0;
+            virtual unsigned int nb_streams() = 0;
             virtual auto acquire_receiver(int stream_id, const media_codec_t & codec) -> media_receiver_ptr_t = 0;
         };
+
+#if FF_API_AVIO_WRITE_NONCONST
+        using raw_buffer_el_t = uint8_t;
+#else
+        using raw_buffer_el_t = const uint8_t;
+#endif
+        using raw_buffer_t = raw_buffer_el_t *;
 
         using media_source_t = MediaSource;
         using media_source_ptr_t = std::shared_ptr<media_source_t>;
         using media_source_wptr_t = std::weak_ptr<media_source_t>;
+        using media_packet_t = std::vector<raw_buffer_el_t>;
+        using media_packet_ptr_t = std::shared_ptr<media_packet_t>;
         
     } // namespace video
     

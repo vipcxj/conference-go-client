@@ -213,7 +213,9 @@ namespace cfgo
     class FurcateStream : public std::enable_shared_from_this<FurcateStream<T, BuffSize>>
     {
     public:
+        using ptr_t = std::shared_ptr<FurcateStream<T, BuffSize>>;
         using branch_t = FurcateBranch<T, BuffSize>;
+        using branch_node_t = smart_node<branch_t>::ptr;
     private:
         smart_list<branch_t> m_branches;
         asiochan::channel<T, BuffSize> m_ch;
@@ -317,14 +319,14 @@ namespace cfgo
                 co_return false;
             }
         }
-        smart_node<branch_t>::ptr create_branch()
+        branch_node_t create_branch()
         {
             std::lock_guard g(m_mutex);
             ++m_nbranch;
             return m_branches.emplace(this->weak_from_this());
         }
 
-        void remove_branch(smart_node<branch_t>::ptr & branch)
+        void remove_branch(branch_node_t & branch)
         {
             std::lock_guard g(m_mutex);
             --m_nbranch;
@@ -340,6 +342,8 @@ namespace cfgo
 
         friend class FurcateBranch<T, BuffSize>;
     };
+    template<typename T, asiochan::channel_buff_size BuffSize>
+    using furcate_stream_t = FurcateStream<T, BuffSize>;
     
 } // namespace cfgo
 
