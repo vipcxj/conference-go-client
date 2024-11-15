@@ -9,6 +9,7 @@ extern "C" {
 #include <memory>
 #include <unordered_map>
 #include "cfgo/async.hpp"
+#include "cfgo/smart_list.hpp"
 
 namespace cfgo
 {
@@ -55,14 +56,19 @@ namespace cfgo
         using media_source_type_t = MediaSourceType;
 
         using av_frame_ptr_t = std::shared_ptr<AVFrame>;
-        using av_pkt_ptr_t = std::shared_ptr<AVPacket>;
+#if FF_API_AVIO_WRITE_NONCONST
+        using raw_buffer_el_t = uint8_t;
+#else
+        using raw_buffer_el_t = const uint8_t;
+#endif
+        using raw_buffer_t = raw_buffer_el_t *;
+        using media_packet_t = std::vector<std::decay_t<raw_buffer_el_t>>;
+        using media_packet_ptr_t = std::shared_ptr<media_packet_t>;
 
         class MediaReceiver
         {
-        private:
-
         public:
-            auto request_frame() -> asio::awaitable<av_frame_ptr_t>;
+            virtual auto request_pkt(close_chan closer) -> asio::awaitable<media_packet_ptr_t> = 0;
         };
 
         using media_receiver_t = MediaReceiver;
@@ -81,24 +87,16 @@ namespace cfgo
         class MediaSource
         {
         public:
-            virtual ~MediaSource() = 0;
+            virtual ~MediaSource() {};
             virtual unsigned int nb_streams() = 0;
             virtual auto acquire_receiver(int stream_id, const media_codec_t & codec) -> media_receiver_ptr_t = 0;
         };
 
-#if FF_API_AVIO_WRITE_NONCONST
-        using raw_buffer_el_t = uint8_t;
-#else
-        using raw_buffer_el_t = const uint8_t;
-#endif
-        using raw_buffer_t = raw_buffer_el_t *;
-
         using media_source_t = MediaSource;
         using media_source_ptr_t = std::shared_ptr<media_source_t>;
         using media_source_wptr_t = std::weak_ptr<media_source_t>;
-        using media_packet_t = std::vector<raw_buffer_el_t>;
-        using media_packet_ptr_t = std::shared_ptr<media_packet_t>;
-        
+
+        media_source_ptr_t make_media_source(asio::any_io_executor executor, MediaSourceType source_type, const std::string & url_or_name, media_source_mode_t mode = media_source_mode_t::AUTO, close_chan closer = nullptr);
     } // namespace video
     
 } // namespace cfgo

@@ -18,8 +18,8 @@ namespace cfgo
     public:
         using ptr = std::shared_ptr<smart_node<T>>;
         using wptr = std::weak_ptr<smart_node<T>>;
-        using value_ptr = std::shared_ptr<T>;
-        using value_wptr = std::weak_ptr<T>;
+        using value_ptr_t = std::shared_ptr<T>;
+        using value_wptr_t = std::weak_ptr<T>;
 
         smart_node(T && data): m_data(std::forward<T>(data)) {}
         template<typename... Args>
@@ -28,17 +28,33 @@ namespace cfgo
         smart_node(smart_node &&) = delete;
         smart_node & operator = (const smart_node &) = delete;
         smart_node & operator = (smart_node &&) = delete;
-        T & value()
+        T & value() noexcept
         {
             return m_data;
         }
-        const T & value() const
+        const T & value() const noexcept
         {
             return m_data;
         }
-        auto value_ptr() -> value_ptr
+        auto value_ptr() const noexcept -> value_ptr_t
         {
-            return value_ptr { shared_from_this(), &m_data };
+            return value_ptr_t { this->shared_from_this(), &m_data };
+        }
+        auto operator->() noexcept -> T & requires requires (T & a) { a.operator->(); }
+        {
+            return m_data;
+        }
+        auto operator->() noexcept -> T *
+        {
+            return &m_data;
+        }
+        auto operator->() const noexcept -> const T & requires requires (const T & a) { a.operator->(); }
+        {
+            return m_data;
+        }
+        auto operator->() const noexcept -> T const *
+        {
+            return &m_data;
         }
 
     private:
@@ -52,6 +68,7 @@ namespace cfgo
     class smart_list
     {
     public:
+        using ptr_t = std::shared_ptr<smart_list<T>>;
         using node_t = smart_node<T>;
 
         node_t::ptr add(T && data)
@@ -195,12 +212,12 @@ namespace cfgo
     {
     public:
         using list_t = smart_list<T>;
+        using list_wptr_t = std::weak_ptr<list_t>;
         using node_t = list_t::node_t;
         using node_ptr_t = node_t::ptr;
 
-        unique_smart_node(): m_list(nullptr), m_node(nullptr), m_own(false) {}
-        unique_smart_node(list_t * list, node_ptr_t && node): m_list(list), m_node(std::forward<node_ptr_t>(node)) {}
-        unique_smart_node(list_t & list, node_ptr_t && node): m_list(&list), m_node(std::forward<node_ptr_t>(node)) {}
+        unique_smart_node(): m_list(), m_node(nullptr), m_own(false) {}
+        unique_smart_node(list_wptr_t list, node_ptr_t && node): m_list(std::move(list)), m_node(std::forward<node_ptr_t>(node)) {}
         unique_smart_node(unique_smart_node && other): m_list(other.m_list), m_node(std::move(other.m_node)), m_own(other.m_own)
         {
             other.m_own = false;
@@ -219,24 +236,44 @@ namespace cfgo
         {
             if (m_own)
             {
-                assert(m_list);
-                m_list->remove(m_node);
+                if (auto list = m_list.lock())
+                {
+                    list->remove(m_node);
+                }
             }
         }
-        const T & operator* () const
+        auto operator->() noexcept -> T & requires requires (T & a) { a.operator->(); }
         {
             return m_node->value();
         }
-        const T * operator-> () const
+        auto operator->() noexcept -> T *
         {
             return &m_node->value();
         }
+        auto operator->() const noexcept -> const T & requires requires (const T & a) { a.operator->(); }
+        {
+            return m_node->value();
+        }
+        auto operator->() const noexcept -> T const *
+        {
+            return &m_node->value();
+        }
+
+        T & operator* () noexcept
+        {
+            return m_node->value();
+        }
+        const T & operator* () const noexcept
+        {
+            return m_node->value();
+        }
+
         operator bool() const noexcept
         {
             return m_own && m_node;
         }
     private:
-        list_t * m_list;
+        list_wptr_t m_list;
         node_ptr_t m_node;
         bool m_own = true;
     }; 

@@ -217,6 +217,7 @@ namespace cfgo
             WaiterList m_waiters;
             WaiterList m_stop_waiters;
             WeakPtr m_parent;
+            std::list<WeakPtr> m_depends_on;
             std::list<WeakPtr> m_children;
 
             CloseSignalState(
@@ -267,54 +268,39 @@ namespace cfgo
             #endif
             );
 
+            bool is_closed() noexcept
+            {
+                std::lock_guard g(m_mutex);
+                return m_closed;
+            }
+
+            bool is_timeout() noexcept
+            {
+                std::lock_guard g(m_mutex);
+                return m_is_timeout;
+            }
+
             void remove_me(CloseSignalState * child);
 
-            auto depend_on(close_chan closer, std::string reason, std::source_location src_loc) -> asio::awaitable<void>
+            void depend_on(CloseSignalState::Ptr closer)
             {
-                auto self = shared_from_this();
-                auto executor = co_await asio::this_coro::executor;
-                asio::co_spawn(executor, fix_async_lambda([weak_self = self->weak_from_this(), weak_closer = closer.weak(), reason = std::move(reason), src_loc = std::move(src_loc)]() -> asio::awaitable<void> {
-                    UniqueWaiter waiter;
-                    if (auto self = weak_self.lock())
+                bool need_close = false;
+                {
+                    std::scoped_lock lock{m_mutex, closer->m_mutex};
+                    if (!m_closed && !closer->m_closed)
                     {
-                        waiter = self->get_waiter();
+                        m_depends_on.push_back(closer);
+                        closer->m_children.push_back(weak_from_this());
                     }
-                    if (waiter)
+                    else if (!m_closed)
                     {
-                        if (auto closer = weak_closer.lock())
-                        {
-                            co_await chan_read<void>(*waiter, closer);
-                            if (auto self = weak_self.lock())
-                            {
-                                if (closer.is_closed() && !self->m_closed)
-                                {
-                                    if (reason.empty())
-                                    {
-                                        self->close_no_except(false, closer.get_close_reason(), closer.get_close_source_location());
-                                    }
-                                    else
-                                    {
-                                        self->close_no_except(false, std::move(reason), closer.get_close_source_location());
-                                    }
-                                }
-                            }
-                        }
-                        else
-                        {
-                            if (auto self = weak_self.lock())
-                            {
-                                if (reason.empty())
-                                {
-                                    self->close_no_except(false, "dependent closer released", std::move(src_loc));
-                                }
-                                else
-                                {
-                                    self->close_no_except(false, std::move(reason), std::move(src_loc));
-                                }
-                            }
-                        }
+                        need_close = true;
                     }
-                }), asio::detached);
+                }
+                if (need_close)
+                {
+                    close(closer->m_is_timeout, closer->m_close_reason, closer->m_close_src_loc);
+                }
             }
 
             void after_close_1(const asio::any_io_executor & executor, std::function<void()> cb, close_chan closer)
@@ -481,6 +467,13 @@ namespace cfgo
             {
                 parent->init_timer(executor);
             }
+            for (auto & weak_depend_on : m_depends_on)
+            {
+                if (auto depend_on = weak_depend_on.lock())
+                {
+                    depend_on->init_timer(executor);
+                }
+            }
         }
 
         auto CloseSignalState::get_waiter() -> UniqueWaiter
@@ -490,7 +483,7 @@ namespace cfgo
             {
                 return {};
             }
-            return { m_waiters, m_waiters.emplace() };
+            return { WaiterList::ptr_t { shared_from_this(), &m_waiters }, m_waiters.emplace() };
         }
 
         void CloseSignalState::_close_self(bool is_timeout, std::string reason, std::source_location src_loc)
@@ -529,18 +522,28 @@ namespace cfgo
                 return;
             }
             std::list<WeakPtr> children;
+            std::list<WeakPtr> depends_on;
             std::weak_ptr<CloseSignalState> weak_parent;
             {
                 std::lock_guard lock(m_mutex);
                 _close_self(is_timeout, reason, src_loc);
                 weak_parent = m_parent;
                 m_parent.reset();
+                depends_on = m_depends_on;
+                m_depends_on.clear();
                 children = m_children;
                 m_children.clear();
             }
             if (auto parent = weak_parent.lock())
             {
                 parent->remove_me(this);
+            }
+            for (auto & weak_depend_on : depends_on)
+            {
+                if (auto depend_on = weak_depend_on.lock())
+                {
+                    depend_on->remove_me(this);
+                }
             }
             for (auto & weak_child : children)
             {
@@ -642,7 +645,7 @@ namespace cfgo
             {
                 return {};
             }
-            return { m_stop_waiters, m_stop_waiters.add(unique_void_chan {}) };
+            return { WaiterList::ptr_t { shared_from_this(), &m_stop_waiters }, m_stop_waiters.add(unique_void_chan {}) };
         }
 
         void CloseSignalState::_set_timeout(duration_t dur, std::string reason, std::source_location src_loc)
@@ -809,13 +812,13 @@ namespace cfgo
     bool CloseSignal::is_closed() const noexcept
     {
         // null closer never closed.
-        return m_state ? m_state->m_closed : false;
+        return m_state ? m_state->is_closed() : false;
     }
 
     bool CloseSignal::is_timeout() const noexcept
     {
         // null closer never timeout.
-        return m_state ? m_state->m_is_timeout : false;
+        return m_state ? m_state->is_timeout() : false;
     }
 
     void CloseSignal::close(std::string reason, std::source_location src_loc) const
@@ -921,11 +924,11 @@ namespace cfgo
         return m_state ? m_state->m_close_src_loc : std::source_location {};
     }
 
-    auto CloseSignal::depend_on(close_chan closer, std::string reason, std::source_location src_loc) const -> asio::awaitable<void>
+    void CloseSignal::depend_on(close_chan closer) const
     {
         if (m_state)
         {
-            return m_state->depend_on(std::move(closer), std::move(reason), std::move(src_loc));
+            m_state->depend_on(closer.m_state);
         }
         else
         {
@@ -994,7 +997,7 @@ namespace cfgo
 
     namespace detail
     {
-        struct StateMaybeChangedNotifierState {
+        struct StateMaybeChangedNotifierState : public std::enable_shared_from_this<StateMaybeChangedNotifierState> {
             using list_t = smart_list<unique_void_chan>;
             using node_t = list_t::node_t;
             using unique_node_t = unique_smart_node<unique_void_chan>;
@@ -1008,7 +1011,7 @@ namespace cfgo
             }
 
             auto make_notfiy_receiver() -> unique_node_t {
-                return { m_chs, m_chs.add(unique_void_chan {}) };
+                return { list_t::ptr_t { shared_from_this(), &m_chs }, m_chs.add(unique_void_chan {}) };
             }
         };
     } // namespace detail

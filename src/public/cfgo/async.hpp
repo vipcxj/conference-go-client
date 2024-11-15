@@ -133,7 +133,7 @@ namespace cfgo
         [[nodiscard]] auto get_stop_waiter() const -> UniqueWaiter;
         [[nodiscard]] const char * get_close_reason() const noexcept;
         [[nodiscard]] std::source_location get_close_source_location() const noexcept;
-        [[nodiscard]] auto depend_on(close_chan closer, std::string reason = "", std::source_location src_loc = std::source_location::current()) const -> asio::awaitable<void>;
+        void depend_on(close_chan closer) const;
         void after_close(const asio::any_io_executor & executor, VoidFunction auto cb, CloseSignal closer = nullptr) const
         {
             after_close_1(executor, std::move(cb), std::move(closer));
@@ -301,22 +301,22 @@ namespace cfgo
             return !is_canceled();
         }
 
-        inline auto operator->() -> T & requires requires (T & a) { a.operator->(); }
+        inline auto operator->() noexcept -> T & requires requires (T & a) { a.operator->(); }
         {
             return value();
         }
 
-        inline auto operator->() -> T *
+        inline auto operator->() noexcept -> T *
         {
             return &value();
         }
 
-        inline auto operator->() const -> const T & requires requires (const T & a) { a.operator->(); }
+        inline auto operator->() const noexcept -> const T & requires requires (const T & a) { a.operator->(); }
         {
-            return &value();
+            return value();
         }
 
-        inline auto operator->() const -> T const *
+        inline auto operator->() const noexcept -> T const *
         {
             return &value();
         }

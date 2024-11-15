@@ -135,10 +135,12 @@ namespace cfgo
                 cache_t cache;
                 int head = 0;
                 int count = 0;
-                std::mutex mux;
+                std::unique_ptr<std::mutex> mux;
                 std::function<void(T &)> deleter;
 
-                AVCachePool(size_t size, std::function<void(T &)> deleter): cache(size), deleter(std::move(deleter)) {}
+                AVCachePool(size_t size, std::function<void(T &)> deleter): cache(size), mux(std::make_unique<std::mutex>()), deleter(std::move(deleter)) {}
+                AVCachePool(const AVCachePool &) = delete;
+                AVCachePool(AVCachePool &&) = default;
 
                 ~AVCachePool()
                 {
@@ -154,7 +156,7 @@ namespace cfgo
 
                 auto borrow() -> T
                 {
-                    std::lock_guard g(mux);
+                    std::lock_guard g(*mux);
                     if (!count)
                     {
                         return nullptr;
@@ -167,7 +169,7 @@ namespace cfgo
 
                 bool return_back(T value)
                 {
-                    std::lock_guard g(mux);
+                    std::lock_guard g(*mux);
                     if (count == size)
                     {
                         return false;
@@ -183,9 +185,40 @@ namespace cfgo
             using frame_furcate_stream_t = furcate_stream_t<av_frame_ptr_t, 3>;
             using pkt_furcate_stream_t = furcate_stream_t<media_packet_ptr_t, 3>;
 
-            struct MediaReceiver : public cfgo::video::media_receiver_t, public std::enable_shared_from_this<MediaReceiver>
+            struct MediaReceiver
             {
+                using branch_node_t = pkt_furcate_stream_t::branch_node_t;
+                branch_node_t m_branch;
+                close_chan m_closer;
+                std::function<void()> m_setup;
 
+                MediaReceiver(branch_node_t branch, close_chan closer, std::function<void()> setup): m_branch(std::move(branch)), m_closer(std::move(closer)), m_setup(std::move(setup)) {}
+
+                auto request_pkt(close_chan closer) -> asio::awaitable<media_packet_ptr_t>
+                {
+                    m_setup();
+                    auto child_closer = m_closer.create_child();
+                    child_closer.depend_on(closer);
+                    auto opt_pkt_ptr = co_await (*m_branch)->receive_async(std::move(child_closer));
+                    if (!opt_pkt_ptr)
+                    {
+                        throw CancelError(child_closer);
+                    }
+                    co_return opt_pkt_ptr.value();
+                }
+            };
+
+            struct MediaReceiverWrapper : public media_receiver_t
+            {
+                using branch_node_t = pkt_furcate_stream_t::branch_node_t;
+                using impl_t = unique_smart_node<impl::MediaReceiver>;
+                unique_smart_node<impl::MediaReceiver> m_impl;
+
+                MediaReceiverWrapper(impl_t && impl): m_impl(std::move(impl)) {}
+                auto request_pkt(close_chan closer) -> asio::awaitable<media_packet_ptr_t> override
+                {
+                    return m_impl->request_pkt(std::move(closer));
+                }
             };
 
             struct MediaStream;
@@ -200,6 +233,7 @@ namespace cfgo
                 branch_node_t m_branch;
                 asio::strand<asio::any_io_executor> m_strand;
                 pkt_furcate_stream_t::ptr_t m_channel;
+                smart_list<MediaReceiver> m_receivers;
                 asiochan::unblocked_channel<std::exception_ptr> m_err_ch;
                 
                 AVFormatContext * m_fmt_ctx;
@@ -222,53 +256,10 @@ namespace cfgo
                 */
                 opt_t m_opts;
 
-                MediaSubStream(MediaStream * stream, const media_codec_t & media_codec, av_packet_pool_t::size_t pkt_pool_size)
-                : m_stream(stream), 
-                  m_media_codec(media_codec),
-                  m_branch(m_stream->m_source->channel()->create_branch()),
-                  m_strand(asio::make_strand(stream->m_source->executor())), 
-                  m_channel(pkt_furcate_stream_t::create(m_strand, 50ms))
-                {
-                    DEFERS_WHEN_FAIL(cleaner);
-                    check_av_err(
-                        avformat_alloc_output_context2(&m_fmt_ctx, m_media_codec.ofmt, nullptr, nullptr), 
-                        fmt::format("could not alloc the format context with output format {}, ", m_media_codec.ofmt->name)
-                    );
-                    cleaner.add_defer([this]() {
-                        avformat_free_context(m_fmt_ctx);
-                    });
-                    if (!strcmp(m_fmt_ctx->oformat->name, "rtp"))
-                    {
-                        m_fmt_ctx->packet_size = 1472;
-                    }
-                    {
-                        size_t buffer_size = 4096;
-                        uint8_t * buffer = static_cast<uint8_t *>(av_malloc(buffer_size));
-                        if (!buffer)
-                        {
-                            throw cpptrace::runtime_error("could not allocate the buffer of the avio");
-                        }
-                        m_io = avio_alloc_context(buffer, buffer_size, 1, this, nullptr, &_write_packet_handle, nullptr);
-                        if (!m_io)
-                        {
-                            av_freep(buffer);
-                            throw cpptrace::runtime_error("could not allocate the av io context");
-                        }
-                        else
-                        {
-                            cleaner.add_defer([this]() {
-                                av_freep(m_io->buffer);
-                                avio_context_free(&m_io);
-                            });
-                        }
-                        m_fmt_ctx->pb = m_io;
-                    }
-                    setup_stream(cleaner);
-                    asio::co_spawn(m_strand, [weak_self = ptr_t { m_stream->m_source->shared_from_this(), this }]() -> asio::awaitable<void> {
-                        return loop(std::move(weak_self));
-                    }, asio::detached);
-                    cleaner.success();
-                }
+                MediaSubStream(MediaStream * stream, const media_codec_t & media_codec);
+
+                MediaSubStream(const MediaSubStream &) = delete;
+                MediaSubStream(MediaSubStream &&) = default;
 
                 void setup_stream(defers_when_fail & cleaner)
                 {
@@ -452,114 +443,11 @@ namespace cfgo
                         c->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
                 }
 
-                static int _write_packet_handle(void * opaque, raw_buffer_t buf, int buf_size)
-                {
-                    auto self = static_cast<MediaSubStream *>(opaque);
-                    auto buf_ptr = std::make_shared<media_packet_t>(buf, buf + buf_size);
-                    asio::co_spawn(self->m_strand, [weak_src = self->m_stream->m_source->weak_from_this(), channel = self->m_channel, buf_ptr]() -> asio::awaitable<void> {
-                        if (auto src = weak_src.lock())
-                        {
-                            /* code */
-                        }
-                        else
-                        {
-                            co_await channel->send_async(nullptr);
-                        }
-                    }, asio::detached);
-                }
+                auto create_receiver() -> media_receiver_ptr_t;
 
-                static auto loop(weak_ptr_t weak_self) -> asio::awaitable<void>
-                {
-                    try
-                    {
-                        do
-                        {
-                            if (auto self = weak_self.lock())
-                            {
-                                auto opt_frame = co_await self->m_branch->value().receive_async(self->m_stream->m_source->m_closer);
-                                if (!opt_frame)
-                                {
-                                    break;
-                                }
-                                auto frame = *opt_frame;
-                                if (frame)
-                                {
-                                    check_av_err(av_frame_make_writable(frame.get()), "could not make frame writable, ");
-                                    frame->pts = self->m_next_pts;
-                                    if (self->m_enc_ctx->codec->type == AVMEDIA_TYPE_AUDIO)
-                                    {
-                                        self->m_next_pts += frame->nb_samples;
-                                    }
-                                    else
-                                    {
-                                        ++ self->m_next_pts;
-                                    }
-                                    if (self->m_sws_ctx)
-                                    {
-                                        assert(self->m_tmp_frame);
-                                        sws_scale(
-                                            self->m_sws_ctx, 
-                                            (const uint8_t * const *) self->m_tmp_frame->data, self->m_tmp_frame->linesize, 0, self->m_enc_ctx->height, 
-                                            frame->data, frame->linesize
-                                        );
-                                    }
-                                    else if (self->m_swr_ctx)
-                                    {
-                                        assert(self->m_tmp_frame);
-                                        /* convert samples from native format to destination codec format, using the resampler */
-                                        /* compute destination number of samples */
-                                        auto dst_nb_samples = swr_get_delay(self->m_swr_ctx, self->m_enc_ctx->sample_rate);
-                                        assert(dst_nb_samples == frame->nb_samples);
+                static int _write_packet_handle(void * opaque, raw_buffer_t buf, int buf_size);
 
-                                        /* convert to destination format */
-                                        check_av_err(swr_convert(
-                                            self->m_swr_ctx,
-                                            frame->data, dst_nb_samples,
-                                            (const uint8_t **)frame->data, frame->nb_samples
-                                        ), "could not convert audio frame, ");
-
-                                        frame->pts = av_rescale_q(self->m_samples_count, AVRational {1, self->m_enc_ctx->sample_rate}, self->m_enc_ctx->time_base);
-                                        self->m_samples_count += dst_nb_samples;
-                                    }
-                                }
-                                check_av_err(avcodec_send_frame(self->m_enc_ctx, frame.get()), "could not sending a frame for encoding, ");
-                                do
-                                {
-                                    auto err = avcodec_receive_packet(self->m_enc_ctx, self->m_tmp_pkt);
-                                    if (err == AVERROR(EAGAIN) || err == AVERROR_EOF)
-                                    {
-                                        break;
-                                    }
-                                    check_av_err(err, "error during encoding, ");
-                                    /* rescale output packet timestamp values from codec to stream timebase */
-                                    av_packet_rescale_ts(self->m_tmp_pkt, self->m_enc_ctx->time_base, self->m_av_stream->time_base);
-                                    self->m_tmp_pkt->stream_index = self->m_av_stream->index;
-
-                                    /* Write the compressed frame to the output. */
-                                    check_av_err(av_interleaved_write_frame(self->m_fmt_ctx, self->m_tmp_pkt), "could not write frame to format context, ");
-
-                                } while (true);
-                            }
-                        } while (true);
-                        if (auto self = weak_self.lock())
-                        {
-                            self->m_err_ch.write(nullptr);
-                        }
-                    }
-                    catch(const CancelError &) {
-                        if (auto self = weak_self.lock())
-                        {
-                            self->m_err_ch.write(nullptr);
-                        }
-                    }
-                    catch(...)
-                    {
-                        if (auto self = weak_self.lock())
-                        {
-                            self->m_err_ch.write(std::current_exception());
-                        }
-                    }
-                }
+                static auto loop(weak_ptr_t weak_self) -> asio::awaitable<void>;
             };
 
             class MediaSource;
@@ -571,12 +459,13 @@ namespace cfgo
                 MediaSource * m_source;
                 AVStream * m_stream;
                 av_frame_pool_t m_frame_pool;
-                const AVCodec * m_dec;
-                AVCodecContext * m_dec_ctx;
+                const AVCodec * m_dec = nullptr;
+                AVCodecContext * m_dec_ctx = nullptr;
+                std::unique_ptr<std::mutex> m_sub_mux;
                 std::unordered_map<media_codec_t, MediaSubStream> m_sub_streams;
 
                 MediaStream(MediaSource * source, AVStream * stream, av_frame_pool_t::size_t frame_pool_size)
-                : m_source(source), m_stream(stream), m_frame_pool(frame_pool_size, [](AVFrame *& frame) { av_frame_free(&frame); })
+                : m_source(source), m_stream(stream), m_frame_pool(frame_pool_size, [](AVFrame *& frame) { av_frame_free(&frame); }), m_sub_mux(std::make_unique<std::mutex>())
                 {
                     assert(m_stream);
                     assert(m_stream->codecpar);
@@ -598,63 +487,27 @@ namespace cfgo
                     check_av_err(avcodec_open2(m_dec_ctx, m_dec, nullptr), fmt::format("could not open the codec {}, ", m_dec->name));
                     cleaner.success();
                 }
+                MediaStream(const MediaStream &) = delete;
+                MediaStream(MediaStream &&) = default;
 
                 ~MediaStream()
                 {
                     avcodec_free_context(&m_dec_ctx);
                 }
 
-                auto request_frame() -> av_frame_ptr_t
+                MediaSubStream & sub_stream(const media_codec_t & media_codec)
                 {
-                    auto raw_frame = m_frame_pool.borrow();
-                    if (!raw_frame)
-                    {
-                        raw_frame = allocate_frame(m_stream);
-                    }
-                    weak_ptr_t weak_self = ptr_t { m_source->shared_from_this(), this };
-                    return av_frame_ptr_t(raw_frame, [weak_self](AVFrame *& ptr) {
-                        if (auto self = weak_self.lock())
-                        {
-                            if (!self->m_frame_pool.return_back(ptr))
-                            {
-                                av_frame_free(&ptr);
-                            }
-                        }
-                        else
-                        {
-                            av_frame_free(&ptr);
-                        }
-                    });
+                    std::lock_guard g(*m_sub_mux);
+                    auto [iter, _] = m_sub_streams.try_emplace(media_codec, this, media_codec);
+                    return iter->second;
                 }
 
-                bool decode(const AVPacket * pkt)
-                {
-                    int ret = 0;
-                    check_av_err(avcodec_send_packet(m_dec_ctx, pkt), fmt::format("could not submit a packet for decoding, "));
-                    do
-                    {
-                        auto frame = request_frame();
-                        ret = avcodec_receive_frame(m_dec_ctx, frame.get());
-                        if (ret == AVERROR_EOF || ret == AVERROR(EAGAIN))
-                        {
-                            return ret != AVERROR_EOF;
-                        }
-                        check_av_err(ret, "Decoding failed, ");
+                auto request_frame() -> av_frame_ptr_t;
 
-                        
-                    } while (ret >= 0);
-                    
-                }
+                bool decode(const AVPacket * pkt);
             };
 
             using media_stream_t = MediaStream;
-
-            struct MediaReceiver : public cfgo::video::MediaReceiver, public std::enable_shared_from_this<MediaReceiver>
-            {
-                media_source_wptr_t m_source;
-                int m_stream_idx;
-                media_codec_t m_codec;
-            };
 
             class MediaSource : public cfgo::video::MediaSource, public std::enable_shared_from_this<MediaSource>
             {
@@ -684,32 +537,222 @@ namespace cfgo
                 MediaSource(asio::any_io_executor executor, media_source_type_t source_type, const std::string & url_or_name, media_source_mode_t mode = media_source_mode_t::AUTO, close_chan closer = nullptr);
                 ~MediaSource();
 
-                asio::any_io_executor & executor()
-                {
-                    return m_executor;
-                }
-                const asio::any_io_executor & executor() const
-                {
-                    return m_executor;
-                }
-                channel_ptr_t & channel()
-                {
-                    return m_channel;
-                }
-                const channel_ptr_t & channel() const
-                {
-                    return m_channel;
-                }
-
                 unsigned int nb_streams() override
                 {
                     return m_fmt_ctx->nb_streams;
                 }
                 auto acquire_receiver(int stream_id, const media_codec_t & codec) -> media_receiver_ptr_t override;
 
+                friend struct MediaStream;
                 friend struct MediaSubStream;
             };
             
+            MediaSubStream::MediaSubStream(MediaStream * stream, const media_codec_t & media_codec)
+            : m_stream(stream), 
+                m_media_codec(media_codec),
+                m_branch(m_stream->m_source->m_channel->create_branch()),
+                m_strand(asio::make_strand(stream->m_source->m_executor)), 
+                m_channel(pkt_furcate_stream_t::create(m_strand, 50ms))
+            {
+                DEFERS_WHEN_FAIL(cleaner);
+                check_av_err(
+                    avformat_alloc_output_context2(&m_fmt_ctx, m_media_codec.ofmt, nullptr, nullptr), 
+                    fmt::format("could not alloc the format context with output format {}, ", m_media_codec.ofmt->name)
+                );
+                cleaner.add_defer([this]() {
+                    avformat_free_context(m_fmt_ctx);
+                });
+                if (!strcmp(m_fmt_ctx->oformat->name, "rtp"))
+                {
+                    m_fmt_ctx->packet_size = 1472;
+                }
+                {
+                    size_t buffer_size = 4096;
+                    uint8_t * buffer = static_cast<uint8_t *>(av_malloc(buffer_size));
+                    if (!buffer)
+                    {
+                        throw cpptrace::runtime_error("could not allocate the buffer of the avio");
+                    }
+                    m_io = avio_alloc_context(buffer, buffer_size, 1, this, nullptr, &_write_packet_handle, nullptr);
+                    if (!m_io)
+                    {
+                        av_freep(buffer);
+                        throw cpptrace::runtime_error("could not allocate the av io context");
+                    }
+                    else
+                    {
+                        cleaner.add_defer([this]() {
+                            av_freep(m_io->buffer);
+                            avio_context_free(&m_io);
+                        });
+                    }
+                    m_fmt_ctx->pb = m_io;
+                }
+                setup_stream(cleaner);
+                asio::co_spawn(m_strand, [weak_self = ptr_t { m_stream->m_source->shared_from_this(), this }]() -> asio::awaitable<void> {
+                    return loop(std::move(weak_self));
+                }, asio::detached);
+                cleaner.success();
+            }
+
+            auto MediaSubStream::create_receiver() -> media_receiver_ptr_t
+            {
+                return std::make_shared<MediaReceiverWrapper>(
+                    MediaReceiverWrapper::impl_t {
+                        smart_list<MediaReceiver>::ptr_t { m_stream->m_source->shared_from_this(), &m_receivers }, 
+                        m_receivers.emplace(m_channel->create_branch(), m_stream->m_source->m_closer, [weak_src = m_stream->m_source->weak_from_this()]() {
+                            if (auto src = weak_src.lock())
+                            {
+                                src->setup();
+                            }
+                        })
+                    }
+                );
+            }
+
+            int MediaSubStream::_write_packet_handle(void * opaque, raw_buffer_t buf, int buf_size)
+            {
+                auto self = static_cast<MediaSubStream *>(opaque);
+                auto buf_ptr = std::make_shared<media_packet_t>(buf, buf + buf_size);
+                asio::co_spawn(self->m_strand, [self = ptr_t { self->m_stream->m_source->shared_from_this(), self }, buf_ptr = std::move(buf_ptr)]() -> asio::awaitable<void> {
+                    co_await self->m_channel->send_async(std::move(buf_ptr), self->m_stream->m_source->m_closer);
+                }, asio::detached);
+                return buf_size;
+            }
+
+            auto MediaSubStream::loop(weak_ptr_t weak_self) -> asio::awaitable<void>
+            {
+                try
+                {
+                    do
+                    {
+                        if (auto self = weak_self.lock())
+                        {
+                            auto opt_frame = co_await self->m_branch->value().receive_async(self->m_stream->m_source->m_closer);
+                            if (!opt_frame)
+                            {
+                                break;
+                            }
+                            auto frame = *opt_frame;
+                            if (frame)
+                            {
+                                check_av_err(av_frame_make_writable(frame.get()), "could not make frame writable, ");
+                                frame->pts = self->m_next_pts;
+                                if (self->m_enc_ctx->codec->type == AVMEDIA_TYPE_AUDIO)
+                                {
+                                    self->m_next_pts += frame->nb_samples;
+                                }
+                                else
+                                {
+                                    ++ self->m_next_pts;
+                                }
+                                if (self->m_sws_ctx)
+                                {
+                                    assert(self->m_tmp_frame);
+                                    sws_scale(
+                                        self->m_sws_ctx, 
+                                        (const uint8_t * const *) self->m_tmp_frame->data, self->m_tmp_frame->linesize, 0, self->m_enc_ctx->height, 
+                                        frame->data, frame->linesize
+                                    );
+                                }
+                                else if (self->m_swr_ctx)
+                                {
+                                    assert(self->m_tmp_frame);
+                                    /* convert samples from native format to destination codec format, using the resampler */
+                                    /* compute destination number of samples */
+                                    auto dst_nb_samples = swr_get_delay(self->m_swr_ctx, self->m_enc_ctx->sample_rate);
+                                    assert(dst_nb_samples == frame->nb_samples);
+
+                                    /* convert to destination format */
+                                    check_av_err(swr_convert(
+                                        self->m_swr_ctx,
+                                        frame->data, dst_nb_samples,
+                                        (const uint8_t **)frame->data, frame->nb_samples
+                                    ), "could not convert audio frame, ");
+
+                                    frame->pts = av_rescale_q(self->m_samples_count, AVRational {1, self->m_enc_ctx->sample_rate}, self->m_enc_ctx->time_base);
+                                    self->m_samples_count += dst_nb_samples;
+                                }
+                            }
+                            check_av_err(avcodec_send_frame(self->m_enc_ctx, frame.get()), "could not sending a frame for encoding, ");
+                            do
+                            {
+                                auto err = avcodec_receive_packet(self->m_enc_ctx, self->m_tmp_pkt);
+                                if (err == AVERROR(EAGAIN) || err == AVERROR_EOF)
+                                {
+                                    break;
+                                }
+                                check_av_err(err, "error during encoding, ");
+                                /* rescale output packet timestamp values from codec to stream timebase */
+                                av_packet_rescale_ts(self->m_tmp_pkt, self->m_enc_ctx->time_base, self->m_av_stream->time_base);
+                                self->m_tmp_pkt->stream_index = self->m_av_stream->index;
+
+                                /* Write the compressed frame to the output. */
+                                check_av_err(av_interleaved_write_frame(self->m_fmt_ctx, self->m_tmp_pkt), "could not write frame to format context, ");
+
+                            } while (true);
+                        }
+                    } while (true);
+                    if (auto self = weak_self.lock())
+                    {
+                        self->m_err_ch.write(nullptr);
+                    }
+                }
+                catch(const CancelError &) {
+                    if (auto self = weak_self.lock())
+                    {
+                        self->m_err_ch.write(nullptr);
+                    }
+                }
+                catch(...)
+                {
+                    if (auto self = weak_self.lock())
+                    {
+                        self->m_err_ch.write(std::current_exception());
+                    }
+                }
+                co_return;
+            }
+
+            auto MediaStream::request_frame() -> av_frame_ptr_t
+            {
+                auto raw_frame = m_frame_pool.borrow();
+                if (!raw_frame)
+                {
+                    raw_frame = allocate_frame(m_stream);
+                }
+                weak_ptr_t weak_self = ptr_t { m_source->shared_from_this(), this };
+                return av_frame_ptr_t(raw_frame, [weak_self](AVFrame *& ptr) {
+                    if (auto self = weak_self.lock())
+                    {
+                        if (!self->m_frame_pool.return_back(ptr))
+                        {
+                            av_frame_free(&ptr);
+                        }
+                    }
+                    else
+                    {
+                        av_frame_free(&ptr);
+                    }
+                });
+            }
+
+            bool MediaStream::decode(const AVPacket * pkt)
+            {
+                int ret = 0;
+                check_av_err(avcodec_send_packet(m_dec_ctx, pkt), fmt::format("could not submit a packet for decoding, "));
+                do
+                {
+                    auto frame = request_frame();
+                    ret = avcodec_receive_frame(m_dec_ctx, frame.get());
+                    if (ret == AVERROR_EOF || ret == AVERROR(EAGAIN))
+                    {
+                        return ret != AVERROR_EOF;
+                    }
+                    check_av_err(ret, "Decoding failed, ");
+                    m_source->m_channel->send_sync(frame, m_source->m_closer);
+                } while (true);
+            }
 
             MediaSource::MediaSource(asio::any_io_executor executor, MediaSourceType source_type, const std::string & url_or_name, media_source_mode_t mode, close_chan closer)
             : m_executor(executor), m_source_type(source_type), m_url_or_name(url_or_name), m_mode(mode), m_channel(channel_t::create(m_executor, 50ms)), m_closer(closer.create_child())
@@ -773,12 +816,17 @@ namespace cfgo
                     avformat_close_input(&m_fmt_ctx);
                 });
                 check_av_err(avformat_find_stream_info(m_fmt_ctx, nullptr), "could not retrieve input stream information");
+                for (int i = 0; i < m_fmt_ctx->nb_streams; i++)
+                {
+                    m_streams.emplace_back(this, m_fmt_ctx->streams[i], 10);
+                }
                 cleaner.success();
             }
 
             MediaSource::~MediaSource()
             {
-
+                avformat_close_input(&m_fmt_ctx);
+                m_closer.close();
             }
 
             void MediaSource::setup()
@@ -789,10 +837,6 @@ namespace cfgo
                     return;
                 }
                 m_has_setup = true;
-                for (int i = 0; i < m_fmt_ctx->nb_streams; i++)
-                {
-                    m_streams.emplace_back(weak_from_this(), m_fmt_ctx->streams[i]);
-                }
                 std::thread t([weak_self = weak_from_this()]() {
                     loop(std::move(weak_self));
                 });
@@ -837,9 +881,15 @@ namespace cfgo
 
             auto MediaSource::acquire_receiver(int stream_id, const media_codec_t & codec) -> media_receiver_ptr_t
             {
-
+                assert(stream_id >= 0 && stream_id < m_streams.size());
+                return m_streams[stream_id].sub_stream(codec).create_receiver();
             }
         } // namespace impl
+
+        media_source_ptr_t make_media_source(asio::any_io_executor executor, MediaSourceType source_type, const std::string & url_or_name, media_source_mode_t mode, close_chan closer)
+        {
+            return std::make_shared<impl::MediaSource>(std::move(executor), source_type, url_or_name, mode, std::move(closer));
+        }
         
     } // namespace video
     
