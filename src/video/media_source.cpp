@@ -14,6 +14,7 @@ extern "C" {
 }
 
 #define STREAM_PIX_FMT    AV_PIX_FMT_YUV420P /* default pix_fmt */
+#define STREAM_SAMPLE_FMT AV_SAMPLE_FMT_S16 /* default sample_fmt */
 #define SCALE_FLAGS       SWS_BICUBIC
 
 namespace cfgo
@@ -98,7 +99,7 @@ namespace cfgo
                 return frame;
             }
 
-            AVFrame * allocate_frame(const AVStream * stream)
+            AVFrame * allocate_frame(const AVStream * stream, int fmt)
             {
                 auto par = stream->codecpar;
                 auto codec = avcodec_find_encoder(par->codec_id);
@@ -106,7 +107,7 @@ namespace cfgo
                 {
                 case AVMEDIA_TYPE_VIDEO:
                 {
-                    return alloc_video_frame((AVPixelFormat) par->format, par->width, par->height);
+                    return alloc_video_frame((AVPixelFormat) (fmt != AV_PIX_FMT_NONE ? fmt : par->format), par->width, par->height);
                 }
                 case AVMEDIA_TYPE_AUDIO:
                 {
@@ -119,7 +120,7 @@ namespace cfgo
                     {
                         nb_samples = par->frame_size;
                     }
-                    return alloc_audio_frame((AVSampleFormat) par->format, &par->ch_layout, par->sample_rate, nb_samples);
+                    return alloc_audio_frame((AVSampleFormat) (fmt != AV_SAMPLE_FMT_NONE ? fmt : par->format), &par->ch_layout, par->sample_rate, nb_samples);
                 }
                 default:
                     throw cpptrace::runtime_error(fmt::format("could not allocate frame from stream with media type {}", (int) stream->codecpar->codec_type));
@@ -131,7 +132,6 @@ namespace cfgo
             {
                 using cache_t = std::vector<T>;
                 using size_t = cache_t::size_type;
-                size_t size;
                 cache_t cache;
                 int head = 0;
                 int count = 0;
@@ -144,6 +144,7 @@ namespace cfgo
 
                 ~AVCachePool()
                 {
+                    auto size = cache.size();
                     for (int i = 0; i < count; i++)
                     {
                         auto & value = cache[(head + i) % size];
@@ -162,7 +163,7 @@ namespace cfgo
                         return nullptr;
                     }
                     auto & value = cache[head];
-                    head = (head + 1) % size;
+                    head = (head + 1) % cache.size();
                     --count;
                     return std::move(value);
                 }
@@ -170,11 +171,11 @@ namespace cfgo
                 bool return_back(T value)
                 {
                     std::lock_guard g(*mux);
-                    if (count == size)
+                    if (count == cache.size())
                     {
                         return false;
                     }
-                    cache[(head + count++) % size] = std::move(value);
+                    cache[(head + count++) % cache.size()] = std::move(value);
                     return true;
                 }
             };
@@ -199,7 +200,7 @@ namespace cfgo
                     m_setup();
                     auto child_closer = m_closer.create_child();
                     child_closer.depend_on(closer);
-                    auto opt_pkt_ptr = co_await (*m_branch)->receive_async(std::move(child_closer));
+                    auto opt_pkt_ptr = co_await (*m_branch)->receive_async(child_closer);
                     if (!opt_pkt_ptr)
                     {
                         throw CancelError(child_closer);
@@ -263,8 +264,6 @@ namespace cfgo
 
                 void setup_stream(defers_when_fail & cleaner)
                 {
-                    AVCodecContext *c;
-
                     /* find the encoder */
                     auto codec = avcodec_find_encoder(m_media_codec.codec_id);
                     if (!codec)
@@ -301,42 +300,42 @@ namespace cfgo
                     case AVMEDIA_TYPE_AUDIO:
                     {
                         const enum AVSampleFormat * sample_fmts = nullptr;
-                        auto ret = avcodec_get_supported_config(c, nullptr, AVCodecConfig::AV_CODEC_CONFIG_SAMPLE_FORMAT, 0, (const void **) &sample_fmts, nullptr);
-                        c->sample_fmt = (ret >= 0 && sample_fmts) ? sample_fmts[0] : AV_SAMPLE_FMT_FLTP;
-                        c->bit_rate = 64000;
-                        c->sample_rate = 44100;
+                        auto ret = avcodec_get_supported_config(m_enc_ctx, nullptr, AVCodecConfig::AV_CODEC_CONFIG_SAMPLE_FORMAT, 0, (const void **) &sample_fmts, nullptr);
+                        m_enc_ctx->sample_fmt = (ret >= 0 && sample_fmts) ? sample_fmts[0] : AV_SAMPLE_FMT_FLTP;
+                        m_enc_ctx->bit_rate = 64000;
+                        m_enc_ctx->sample_rate = 44100;
                         const int * supported_samplerates = nullptr;
-                        ret = avcodec_get_supported_config(c, nullptr, AVCodecConfig::AV_CODEC_CONFIG_SAMPLE_RATE, 0, (const void **) &supported_samplerates, nullptr);
+                        ret = avcodec_get_supported_config(m_enc_ctx, nullptr, AVCodecConfig::AV_CODEC_CONFIG_SAMPLE_RATE, 0, (const void **) &supported_samplerates, nullptr);
                         if (ret >= 0 && supported_samplerates)
                         {
-                            c->sample_rate = supported_samplerates[0];
+                            m_enc_ctx->sample_rate = supported_samplerates[0];
                             for (auto i = 0; supported_samplerates[i]; i++)
                             {
                                 if (supported_samplerates[i] == 44100)
-                                    c->sample_rate = 44100;
+                                    m_enc_ctx->sample_rate = 44100;
                             }
                         }
-                        c->ch_layout = AV_CHANNEL_LAYOUT_STEREO;
+                        m_enc_ctx->ch_layout = AV_CHANNEL_LAYOUT_STEREO;
                         auto opt = create_av_opt(m_opts);
-                        check_av_err(avcodec_open2(c, codec, &opt.get()), "could not open codec");
+                        check_av_err(avcodec_open2(m_enc_ctx, codec, &opt.get()), "could not open codec");
 
-                        m_av_stream->time_base = {1, c->sample_rate};
+                        m_av_stream->time_base = {1, m_enc_ctx->sample_rate};
                         m_t = 0;
-                        m_tincr = 2 * M_PI * 110.0 / c->sample_rate;
+                        m_tincr = 2 * M_PI * 110.0 / m_enc_ctx->sample_rate;
                         /* increment frequency by 110 Hz per second */
-                        m_tincr2 = 2 * M_PI * 110.0 / c->sample_rate / c->sample_rate;
+                        m_tincr2 = 2 * M_PI * 110.0 / m_enc_ctx->sample_rate / m_enc_ctx->sample_rate;
                         int nb_samples;
-                        if (c->codec->capabilities & AV_CODEC_CAP_VARIABLE_FRAME_SIZE)
+                        if (m_enc_ctx->codec->capabilities & AV_CODEC_CAP_VARIABLE_FRAME_SIZE)
                         {
                             nb_samples = 10000;
                         }
                         else
                         {
-                            nb_samples = c->frame_size;
+                            nb_samples = m_enc_ctx->frame_size;
                         }
-                        if (c->sample_fmt != AV_SAMPLE_FMT_S16)
+                        if (m_enc_ctx->sample_fmt != AV_SAMPLE_FMT_S16)
                         {
-                            m_tmp_frame = alloc_audio_frame(AV_SAMPLE_FMT_S16, &c->ch_layout, c->sample_rate, nb_samples);
+                            m_tmp_frame = alloc_audio_frame(AV_SAMPLE_FMT_S16, &m_enc_ctx->ch_layout, m_enc_ctx->sample_rate, nb_samples);
                             assert(m_tmp_frame);
                             cleaner.add_defer([this]() {
                                 av_frame_free(&m_tmp_frame);
@@ -350,74 +349,74 @@ namespace cfgo
                                 swr_free(&m_swr_ctx);
                             });
                             /* set options */
-                            av_opt_set_chlayout  (m_swr_ctx, "in_chlayout",       &c->ch_layout,      0);
-                            av_opt_set_int       (m_swr_ctx, "in_sample_rate",     c->sample_rate,    0);
+                            av_opt_set_chlayout  (m_swr_ctx, "in_chlayout",       &m_enc_ctx->ch_layout,      0);
+                            av_opt_set_int       (m_swr_ctx, "in_sample_rate",     m_enc_ctx->sample_rate,    0);
                             av_opt_set_sample_fmt(m_swr_ctx, "in_sample_fmt",      AV_SAMPLE_FMT_S16, 0);
-                            av_opt_set_chlayout  (m_swr_ctx, "out_chlayout",      &c->ch_layout,      0);
-                            av_opt_set_int       (m_swr_ctx, "out_sample_rate",    c->sample_rate,    0);
-                            av_opt_set_sample_fmt(m_swr_ctx, "out_sample_fmt",     c->sample_fmt,     0);
+                            av_opt_set_chlayout  (m_swr_ctx, "out_chlayout",      &m_enc_ctx->ch_layout,      0);
+                            av_opt_set_int       (m_swr_ctx, "out_sample_rate",    m_enc_ctx->sample_rate,    0);
+                            av_opt_set_sample_fmt(m_swr_ctx, "out_sample_fmt",     m_enc_ctx->sample_fmt,     0);
                             check_av_err(swr_init(m_swr_ctx), "failed to initialize the resampling context, ");
                         }
                         break;
                     }
                     case AVMEDIA_TYPE_VIDEO:
                     {
-                        c->codec_id = codec->id;
+                        m_enc_ctx->codec_id = codec->id;
 
-                        c->bit_rate = 400000;
+                        m_enc_ctx->bit_rate = 400000;
                         /* Resolution must be a multiple of two. */
-                        c->width = 352;
-                        c->height = 288;
+                        m_enc_ctx->width = 352;
+                        m_enc_ctx->height = 288;
                         /* timebase: This is the fundamental unit of time (in seconds) in terms
                         * of which frame timestamps are represented. For fixed-fps content,
                         * timebase should be 1/framerate and timestamp increments should be
                         * identical to 1. */
                         m_av_stream->time_base = {1, m_media_codec.fps};
-                        c->time_base = m_av_stream->time_base;
+                        m_enc_ctx->time_base = m_av_stream->time_base;
 
-                        c->gop_size = 12; /* emit one intra frame every twelve frames at most */
+                        m_enc_ctx->gop_size = 12; /* emit one intra frame every twelve frames at most */
                         const enum AVPixelFormat * pix_fmts = nullptr;
-                        auto ret = avcodec_get_supported_config(c, nullptr, AVCodecConfig::AV_CODEC_CONFIG_PIX_FORMAT, 0, (const void **) &pix_fmts, nullptr);
+                        auto ret = avcodec_get_supported_config(m_enc_ctx, nullptr, AVCodecConfig::AV_CODEC_CONFIG_PIX_FORMAT, 0, (const void **) &pix_fmts, nullptr);
                         if (ret >= 0 && pix_fmts)
                         {
-                            c->pix_fmt = pix_fmts[0];
+                            m_enc_ctx->pix_fmt = pix_fmts[0];
                             for (int i = 0; pix_fmts[i]; i++)
                             {
                                 if (pix_fmts[i] == STREAM_PIX_FMT)
                                 {
-                                    c->pix_fmt = pix_fmts[i];
+                                    m_enc_ctx->pix_fmt = pix_fmts[i];
                                     break;
                                 }
                             }
                         }
                         else
                         {
-                            c->pix_fmt = STREAM_PIX_FMT;
+                            m_enc_ctx->pix_fmt = STREAM_PIX_FMT;
                         }
-                        if (c->codec_id == AV_CODEC_ID_MPEG2VIDEO)
+                        if (m_enc_ctx->codec_id == AV_CODEC_ID_MPEG2VIDEO)
                         {
                             /* just for testing, we also add B-frames */
-                            c->max_b_frames = 2;
+                            m_enc_ctx->max_b_frames = 2;
                         }
-                        if (c->codec_id == AV_CODEC_ID_MPEG1VIDEO)
+                        if (m_enc_ctx->codec_id == AV_CODEC_ID_MPEG1VIDEO)
                         {
                             /* Needed to avoid using macroblocks in which some coeffs overflow.
                             * This does not happen with normal video, it just happens here as
                             * the motion of the chroma plane does not match the luma plane. */
-                            c->mb_decision = 2;
+                            m_enc_ctx->mb_decision = 2;
                         }
                         auto opt = create_av_opt(m_opts);
-                        check_av_err(avcodec_open2(c, codec, &opt.get()), "could not open codec");
-                        if (c->pix_fmt != STREAM_PIX_FMT)
+                        check_av_err(avcodec_open2(m_enc_ctx, codec, &opt.get()), "could not open codec");
+                        if (m_enc_ctx->pix_fmt != STREAM_PIX_FMT)
                         {
-                            m_tmp_frame = alloc_video_frame(STREAM_PIX_FMT, c->width, c->height);
+                            m_tmp_frame = alloc_video_frame(STREAM_PIX_FMT, m_enc_ctx->width, m_enc_ctx->height);
                             assert(m_tmp_frame);
                             cleaner.add_defer([this]() {
                                 av_frame_free(&m_tmp_frame);
                             });
                             m_sws_ctx = sws_getContext(
-                                c->width, c->height, STREAM_PIX_FMT,
-                                c->width, c->height, c->pix_fmt,
+                                m_enc_ctx->width, m_enc_ctx->height, STREAM_PIX_FMT,
+                                m_enc_ctx->width, m_enc_ctx->height, m_enc_ctx->pix_fmt,
                                 SCALE_FLAGS, NULL, NULL, NULL
                             );
                             if (!m_sws_ctx)
@@ -436,11 +435,11 @@ namespace cfgo
                     }
 
                     /* copy the stream parameters to the muxer */
-                    check_av_err(avcodec_parameters_from_context(m_av_stream->codecpar, c), "could not copy the stream parameters, ");
+                    check_av_err(avcodec_parameters_from_context(m_av_stream->codecpar, m_enc_ctx), "could not copy the stream parameters, ");
 
                     /* Some formats want stream headers to be separate. */
                     if (m_fmt_ctx->oformat->flags & AVFMT_GLOBALHEADER)
-                        c->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+                        m_enc_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
                 }
 
                 auto create_receiver() -> media_receiver_ptr_t;
@@ -461,6 +460,11 @@ namespace cfgo
                 av_frame_pool_t m_frame_pool;
                 const AVCodec * m_dec = nullptr;
                 AVCodecContext * m_dec_ctx = nullptr;
+                int m_last_width = -1, m_last_height = -1;
+                SwsContext * m_sws_ctx = nullptr;
+                int m_last_sample_rate = -1;
+                int m_samples_count = 0;
+                SwrContext * m_swr_ctx = nullptr;
                 std::unique_ptr<std::mutex> m_sub_mux;
                 std::unordered_map<media_codec_t, MediaSubStream> m_sub_streams;
 
@@ -492,6 +496,9 @@ namespace cfgo
 
                 ~MediaStream()
                 {
+                    sws_freeContext(m_sws_ctx);
+                    m_sws_ctx = nullptr;
+                    swr_free(&m_swr_ctx);
                     avcodec_free_context(&m_dec_ctx);
                 }
 
@@ -502,7 +509,7 @@ namespace cfgo
                     return iter->second;
                 }
 
-                auto request_frame() -> av_frame_ptr_t;
+                auto request_frame(int fmt = -1) -> av_frame_ptr_t;
 
                 bool decode(const AVPacket * pkt);
             };
@@ -708,18 +715,19 @@ namespace cfgo
                 {
                     if (auto self = weak_self.lock())
                     {
+                        CFGO_ERROR("{}", what());
                         self->m_err_ch.write(std::current_exception());
                     }
                 }
                 co_return;
             }
 
-            auto MediaStream::request_frame() -> av_frame_ptr_t
+            auto MediaStream::request_frame(int fmt) -> av_frame_ptr_t
             {
                 auto raw_frame = m_frame_pool.borrow();
                 if (!raw_frame)
                 {
-                    raw_frame = allocate_frame(m_stream);
+                    raw_frame = allocate_frame(m_stream, fmt);
                 }
                 weak_ptr_t weak_self = ptr_t { m_source->shared_from_this(), this };
                 return av_frame_ptr_t(raw_frame, [weak_self](AVFrame *& ptr) {
@@ -750,6 +758,64 @@ namespace cfgo
                         return ret != AVERROR_EOF;
                     }
                     check_av_err(ret, "Decoding failed, ");
+                    if (m_dec_ctx->codec->type == AVMEDIA_TYPE_VIDEO && frame->format != STREAM_PIX_FMT)
+                    {
+                        if (!m_sws_ctx || frame->width != m_last_width || frame->height != m_last_height)
+                        {
+                            sws_freeContext(m_sws_ctx);
+                            m_last_width = frame->width;
+                            m_last_height = frame->height;
+                            m_sws_ctx = sws_getContext(
+                                frame->width, frame->height, (AVPixelFormat) frame->format,
+                                frame->width, frame->height, STREAM_PIX_FMT,
+                                SWS_FAST_BILINEAR, NULL, NULL, NULL
+                            );
+                        }
+                        auto new_frame = request_frame(STREAM_PIX_FMT);
+                        sws_scale(
+                            m_sws_ctx,
+                            frame->data, frame->linesize, 0, frame->height, 
+                            new_frame->data, new_frame->linesize
+                        );
+                        frame = new_frame;
+                    }
+                    else if (m_dec_ctx->codec->type == AVMEDIA_TYPE_AUDIO && frame->format != STREAM_SAMPLE_FMT)
+                    {
+                        if (!m_swr_ctx || m_last_sample_rate != frame->sample_rate)
+                        {
+                            swr_free(&m_swr_ctx);
+                            m_last_sample_rate = frame->sample_rate;
+                            m_swr_ctx = swr_alloc();
+                            if (!m_swr_ctx)
+                            {
+                                throw cpptrace::runtime_error("could not allocate resampler context");
+                            }
+                            av_opt_set_chlayout  (m_swr_ctx, "in_chlayout",       &m_dec_ctx->ch_layout,           0);
+                            av_opt_set_int       (m_swr_ctx, "in_sample_rate",     frame->sample_rate,             0);
+                            av_opt_set_sample_fmt(m_swr_ctx, "in_sample_fmt",      (AVSampleFormat) frame->format, 0);
+                            av_opt_set_chlayout  (m_swr_ctx, "out_chlayout",      &m_dec_ctx->ch_layout,           0);
+                            av_opt_set_int       (m_swr_ctx, "out_sample_rate",    frame->sample_rate,             0);
+                            av_opt_set_sample_fmt(m_swr_ctx, "out_sample_fmt",     STREAM_SAMPLE_FMT,              0);
+                            check_av_err(swr_init(m_swr_ctx), "failed to initialize the resampling context, ");
+                        }
+                        auto new_frame = request_frame(STREAM_SAMPLE_FMT);
+
+                        /* convert samples from native format to destination codec format, using the resampler */
+                        /* compute destination number of samples */
+                        auto dst_nb_samples = swr_get_delay(m_swr_ctx, frame->sample_rate);
+                        assert(dst_nb_samples == frame->nb_samples);
+
+                        /* convert to destination format */
+                        check_av_err(swr_convert(
+                            m_swr_ctx,
+                            new_frame->data, dst_nb_samples,
+                            (const uint8_t **)frame->data, frame->nb_samples
+                        ), "could not convert audio frame, ");
+
+                        new_frame->pts = av_rescale_q(m_samples_count, AVRational {1, m_dec_ctx->sample_rate}, m_dec_ctx->time_base);
+                        m_samples_count += dst_nb_samples;
+                        frame = new_frame;
+                    }
                     m_source->m_channel->send_sync(frame, m_source->m_closer);
                 } while (true);
             }
@@ -873,6 +939,7 @@ namespace cfgo
                 {
                     if (auto self = weak_self.lock())
                     {
+                        CFGO_ERROR("{}", what());
                         self->m_background_err = std::current_exception();
                         self->m_closer.close(what(self->m_background_err));
                     }

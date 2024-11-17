@@ -59,7 +59,7 @@ namespace cfgo
                             current = stream->m_ch.try_read();
                             if (current)
                             {
-                                CFGO_INFO("read succeed");
+                                // CFGO_INFO("read succeed");
                                 stream->m_current = current;
                                 index = stream->m_index;
                                 assert(index > m_index);
@@ -68,9 +68,9 @@ namespace cfgo
                             }
                             else
                             {
-                                CFGO_INFO("waiting cv...");
+                                // CFGO_INFO("waiting cv...");
                                 stream->m_cv.wait(lock);
-                                CFGO_INFO("cv wake up");
+                                // CFGO_INFO("cv wake up");
                             }
                         }
                         else if (stream->m_index > m_index)
@@ -81,9 +81,9 @@ namespace cfgo
                         }
                         else
                         {
-                            CFGO_INFO("waiting cv...");
+                            // CFGO_INFO("waiting cv...");
                             stream->m_cv.wait(lock);
-                            CFGO_INFO("cv wake up");
+                            // CFGO_INFO("cv wake up");
                         }
                     }
                     else
@@ -104,7 +104,7 @@ namespace cfgo
                         m_index = index;
                         if (++stream->m_nsend == stream->m_nbranch)
                         {
-                            CFGO_INFO("reader {}, next", stream->m_nsend);
+                            // CFGO_INFO("reader {}, next", stream->m_nsend);
                             auto data = stream->m_current;
                             stream->m_current.reset();
                             stream->m_nsend = 0;
@@ -145,7 +145,7 @@ namespace cfgo
                                 current = stream->m_ch.try_read();
                                 if (current)
                                 {
-                                    CFGO_INFO("read succeed");
+                                    // CFGO_INFO("read succeed");
                                     stream->m_current = current;
                                     index = stream->m_index;
                                     assert(index > m_index);
@@ -160,13 +160,13 @@ namespace cfgo
                                 break;
                             }
                         }
-                        CFGO_INFO("waiting receiver...");
+                        // CFGO_INFO("waiting receiver...");
                         if (!co_await chan_read<void>(*receiver, closer))
                         {
-                            CFGO_INFO("receiver not waited.");
+                            // CFGO_INFO("receiver not waited.");
                             co_return std::nullopt;
                         }
-                        CFGO_INFO("receiver waited.");
+                        // CFGO_INFO("receiver waited.");
                     }
                     else
                     {
@@ -186,7 +186,7 @@ namespace cfgo
                         m_index = index;
                         if (++stream->m_nsend == stream->m_nbranch)
                         {
-                            CFGO_INFO("reader {}, next", stream->m_nsend);
+                            // CFGO_INFO("reader {}, next", stream->m_nsend);
                             auto data = stream->m_current;
                             stream->m_current.reset();
                             stream->m_nsend = 0;
@@ -241,13 +241,11 @@ namespace cfgo
             m_timer->async_wait([index = m_index, weak_self = this->weak_from_this()](const std::error_code & ec) {
                 if (!ec)
                 {
-                    CFGO_INFO("timer expired");
                     if (auto self = weak_self.lock())
                     {
                         std::lock_guard g(self->m_mutex);
                         if (self->m_index == index)
                         {
-                            CFGO_INFO("read new");
                             self->m_current.reset();
                             self->m_nsend = 0;
                             self->m_index ++;
@@ -274,7 +272,6 @@ namespace cfgo
     public:
         ~FurcateStream()
         {
-            CFGO_INFO("destruct");
             std::lock_guard g(m_mutex);
             m_branches.for_each([](branch_t & branch) {
                 branch.m_closed = true;

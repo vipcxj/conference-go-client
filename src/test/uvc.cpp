@@ -67,8 +67,26 @@ int main()
 
     asio::io_context io_ctx {};
     cfgo::close_chan closer {};
-    cfgo::close_guard {closer};
+    cfgo::close_guard cg {closer};
     auto media_source = make_media_source(io_ctx.get_executor(), media_source_type_t::DEVICE, "", media_source_mode_t::AUTO, closer);
+    auto receiver = media_source->acquire_receiver(0, { .codec_id = AV_CODEC_ID_H264, .ofmt = av_guess_format("rtp", nullptr, nullptr), .fps = 20 });
+    asio::co_spawn(io_ctx.get_executor(), [receiver]() -> asio::awaitable<void> {
+        do
+        {
+            auto pkt = co_await receiver->request_pkt(nullptr);
+            auto pt = getPayloadType(pkt->data(), pkt->size());
+            if (isRtcp(pt))
+            {
+                CFGO_INFO("got rtcp pkt with size {}", pkt->size());
+            }
+            else
+            {
+                CFGO_INFO("got rtp pkt with size {}", pkt->size());
+            }
+            
+        } while (true);
+    }, asio::detached);
+    io_ctx.run();
 
 
     // cfgo::video::check_av_err(avformat_open_input(&fmt_ctx, dev->name.c_str(), device_list.ifmt, nullptr), "could not open input, ");

@@ -284,22 +284,25 @@ namespace cfgo
 
             void depend_on(CloseSignalState::Ptr closer)
             {
-                bool need_close = false;
+                if (closer)
                 {
-                    std::scoped_lock lock{m_mutex, closer->m_mutex};
-                    if (!m_closed && !closer->m_closed)
+                    bool need_close = false;
                     {
-                        m_depends_on.push_back(closer);
-                        closer->m_children.push_back(weak_from_this());
+                        std::scoped_lock lock{m_mutex, closer->m_mutex};
+                        if (!m_closed && !closer->m_closed)
+                        {
+                            m_depends_on.push_back(closer);
+                            closer->m_children.push_back(weak_from_this());
+                        }
+                        else if (!m_closed)
+                        {
+                            need_close = true;
+                        }
                     }
-                    else if (!m_closed)
+                    if (need_close)
                     {
-                        need_close = true;
+                        close(closer->m_is_timeout, closer->m_close_reason, closer->m_close_src_loc);
                     }
-                }
-                if (need_close)
-                {
-                    close(closer->m_is_timeout, closer->m_close_reason, closer->m_close_src_loc);
                 }
             }
 

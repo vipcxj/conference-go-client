@@ -697,10 +697,11 @@ TEST(Closer, DependOnSelf) {
     close_chan closer0 {};
     close_chan closer1 = closer0;
     do_async(fix_async_lambda([closer0, closer1]() -> asio::awaitable<void> {
-        co_await closer1.depend_on(closer0);
+        closer1.depend_on(closer0);
         closer0.close();
         EXPECT_TRUE(closer0.is_closed());
         EXPECT_TRUE(closer1.is_closed());
+        co_return;
     }), true);
 }
 
