@@ -10,35 +10,32 @@ extern "C" {
 #include <unordered_map>
 #include "cfgo/async.hpp"
 #include "cfgo/smart_list.hpp"
+#include "cfgo/video/media_profile.hpp"
 
 namespace cfgo
 {
     namespace video
     {
-        struct MediaCodec
+        struct MediaCodecAndProfile
         {
             AVCodecID codec_id;
-            std::string profile;
-            const AVOutputFormat * ofmt;
-            int fps;
+            media_profile_t profile;
 
-            bool operator==(const MediaCodec &) const = default;
+            bool operator==(const MediaCodecAndProfile &) const = default;
         };
 
-        using media_codec_t = MediaCodec;
+        using media_codec_and_profile_t = MediaCodecAndProfile;
     }
 } // namespace cfgo
 
 template<>
-struct std::hash<cfgo::video::MediaCodec>
+struct std::hash<cfgo::video::MediaCodecAndProfile>
 {
-    std::size_t operator()(const cfgo::video::MediaCodec & k) const
+    std::size_t operator()(const cfgo::video::MediaCodecAndProfile & k) const
     {
         using std::hash;
-        return ((((hash<int>()(static_cast<int>(k.codec_id)) 
-            ^ (hash<std::string>()(k.profile) << 1)) >> 1) 
-            ^ (hash<std::uintptr_t>()(reinterpret_cast<std::uintptr_t>(k.ofmt)) << 1)) >> 1
-            ^ (hash<int>()(k.fps) << 1)) >> 1;
+        return (hash<int>()(static_cast<int>(k.codec_id)) 
+            ^ (hash<cfgo::video::media_profile_t>()(k.profile) << 1)) >> 1;
     }
 };
 
@@ -89,7 +86,7 @@ namespace cfgo
         public:
             virtual ~MediaSource() {};
             virtual unsigned int nb_streams() = 0;
-            virtual auto acquire_receiver(int stream_id, const media_codec_t & codec) -> media_receiver_ptr_t = 0;
+            virtual auto acquire_receiver(int stream_id, const media_codec_and_profile_t & codec) -> media_receiver_ptr_t = 0;
         };
 
         using media_source_t = MediaSource;

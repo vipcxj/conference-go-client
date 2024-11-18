@@ -3,6 +3,7 @@
 
 #include <string>
 #include <sstream>
+#include <vector>
 
 namespace cfgo
 {
@@ -30,6 +31,10 @@ namespace cfgo
         }
         return ss.str();
     }
+
+    std::vector<std::string> str_split(std::string_view s, std::string_view delimiter);
+
+    std::vector<std::string> str_split(const std::string & s, char delimiter);
 
 } // namespace cfgo
 
