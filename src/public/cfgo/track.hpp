@@ -205,8 +205,10 @@ namespace cfgo
          * immediately return a msg or nullptr if no msg available.
         */
         MsgPtr receive_msg(MsgType msg_type) const;
-
-        auto await_send_msg(std::shared_ptr<std::vector<std::byte>> msg_ptr) -> asio::awaitable<void>;
+        /**
+         * send msg, wait until success or not. return wether success or not. if track is closed or the closer is closed, return false as well.
+         */
+        auto await_send_msg(cfgo::Track::MsgSharedPtr msg_ptr, close_chan closer) -> asio::awaitable<bool>;
 
         std::uint64_t get_rtp_drops_bytes() const noexcept;
         std::uint32_t get_rtp_drops_packets() const noexcept;

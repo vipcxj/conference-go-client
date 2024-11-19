@@ -63,6 +63,10 @@ namespace cfgo
     Track::MsgPtr Track::receive_msg(MsgType msg_type) const {
         return impl()->receive_msg(msg_type);
     }
+    auto Track::await_send_msg(cfgo::Track::MsgSharedPtr msg_ptr, close_chan closer) -> asio::awaitable<bool>
+    {
+        return impl()->await_send_msg(std::move(msg_ptr), std::move(closer));
+    }
     void * Track::get_gst_caps(int pt) const
     {
         return impl()->get_gst_caps(pt);
