@@ -367,9 +367,9 @@ namespace cfgo
                     {
                         if (std::holds_alternative<bool>(task_res.value()))
                         {
-                            co_return task_res.value();
+                            co_return std::get<bool>(task_res.value());
                         }
-                        else if (m_closed)
+                        else if (track->isClosed())
                         {
                             co_return false;
                         }
