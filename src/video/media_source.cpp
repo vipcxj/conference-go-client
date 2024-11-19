@@ -186,27 +186,24 @@ namespace cfgo
             using frame_furcate_stream_t = furcate_stream_t<av_frame_ptr_t, 3>;
             using pkt_furcate_stream_t = furcate_stream_t<media_packet_ptr_t, 3>;
 
+            struct MediaSubStream;
+
             struct MediaReceiver
             {
                 using branch_node_t = pkt_furcate_stream_t::branch_node_t;
                 branch_node_t m_branch;
                 close_chan m_closer;
+                std::weak_ptr<MediaSubStream> m_weak_sub_stream;
+                bool m_has_setup = false;
+                
                 std::function<void()> m_setup;
 
-                MediaReceiver(branch_node_t branch, close_chan closer, std::function<void()> setup): m_branch(std::move(branch)), m_closer(std::move(closer)), m_setup(std::move(setup)) {}
+                MediaReceiver(branch_node_t branch, close_chan closer, std::weak_ptr<MediaSubStream> weak_sub_stream)
+                : m_branch(std::move(branch)), m_closer(std::move(closer)), m_weak_sub_stream(std::move(weak_sub_stream))
+                {}
 
-                auto request_pkt(close_chan closer) -> asio::awaitable<media_packet_ptr_t>
-                {
-                    m_setup();
-                    auto child_closer = m_closer.create_child();
-                    child_closer.depend_on(closer);
-                    auto opt_pkt_ptr = co_await (*m_branch)->receive_async(child_closer);
-                    if (!opt_pkt_ptr)
-                    {
-                        throw CancelError(child_closer);
-                    }
-                    co_return opt_pkt_ptr.value();
-                }
+                auto request_pkt(close_chan closer) -> asio::awaitable<media_packet_ptr_t>;
+                void request_key_frame();
             };
 
             struct MediaReceiverWrapper : public media_receiver_t
@@ -230,6 +227,7 @@ namespace cfgo
                 using weak_ptr_t = std::weak_ptr<MediaSubStream>;
                 using branch_node_t = frame_furcate_stream_t::branch_node_t;
                 bool m_has_setup = false;
+                std::atomic_bool m_requesting_key_frame = false;
                 MediaStream * m_stream = nullptr;                
                 media_codec_and_profile_t m_codec_and_profile;
                 branch_node_t m_branch;
@@ -273,7 +271,7 @@ namespace cfgo
                     av_packet_free(&m_tmp_pkt);
                     if (m_io)
                     {
-                        av_freep(m_io->buffer);
+                        av_freep(&m_io->buffer);
                         avio_context_free(&m_io);
                     }
                     avformat_free_context(m_fmt_ctx);
@@ -286,6 +284,8 @@ namespace cfgo
                 static int _write_packet_handle(void * opaque, raw_buffer_t buf, int buf_size);
 
                 static auto loop(weak_ptr_t weak_self) -> asio::awaitable<void>;
+
+                friend struct MediaReceiver;
             };
 
             class MediaSource;
@@ -391,7 +391,36 @@ namespace cfgo
 
                 friend struct MediaStream;
                 friend struct MediaSubStream;
+                friend struct MediaReceiver;
             };
+
+            auto MediaReceiver::request_pkt(close_chan closer) -> asio::awaitable<media_packet_ptr_t>
+            {
+                if (!m_has_setup)
+                {
+                    m_has_setup = true;
+                    if (auto sub_stream = m_weak_sub_stream.lock())
+                    {
+                        sub_stream->m_stream->m_source->setup();
+                    }
+                }
+                auto child_closer = m_closer.create_child();
+                child_closer.depend_on(closer);
+                auto opt_pkt_ptr = co_await (*m_branch)->receive_async(child_closer);
+                if (!opt_pkt_ptr)
+                {
+                    throw CancelError(child_closer);
+                }
+                co_return opt_pkt_ptr.value();
+            }
+
+            void MediaReceiver::request_key_frame()
+            {
+                if (auto sub_stream = m_weak_sub_stream.lock())
+                {
+                    sub_stream->m_requesting_key_frame = true;
+                }
+            }
             
             MediaSubStream::MediaSubStream(MediaStream * stream, const media_codec_and_profile_t & media_codec)
             : m_stream(stream), 
@@ -428,13 +457,13 @@ namespace cfgo
                     m_io = avio_alloc_context(buffer, buffer_size, 1, this, nullptr, &_write_packet_handle, nullptr);
                     if (!m_io)
                     {
-                        av_freep(buffer);
+                        av_freep(&buffer);
                         throw cpptrace::runtime_error("could not allocate the av io context");
                     }
                     else
                     {
                         cleaner.add_defer([this]() {
-                            av_freep(m_io->buffer);
+                            av_freep(&m_io->buffer);
                             avio_context_free(&m_io);
                         });
                     }
@@ -650,12 +679,11 @@ namespace cfgo
                 return std::make_shared<MediaReceiverWrapper>(
                     MediaReceiverWrapper::impl_t {
                         smart_list<MediaReceiver>::ptr_t { m_stream->m_source->shared_from_this(), &m_receivers }, 
-                        m_receivers.emplace(m_channel->create_branch(), m_stream->m_source->m_closer, [weak_src = m_stream->m_source->weak_from_this()]() {
-                            if (auto src = weak_src.lock())
-                            {
-                                src->setup();
-                            }
-                        })
+                        m_receivers.emplace(
+                            m_channel->create_branch(), 
+                            m_stream->m_source->m_closer, 
+                            MediaSubStream::ptr_t { m_stream->m_source->shared_from_this(), this }
+                        )
                     }
                 );
             }
@@ -663,7 +691,8 @@ namespace cfgo
             int MediaSubStream::_write_packet_handle(void * opaque, raw_buffer_t buf, int buf_size)
             {
                 auto self = static_cast<MediaSubStream *>(opaque);
-                auto buf_ptr = std::make_shared<media_packet_t>(buf, buf + buf_size);
+                auto byte_buf = reinterpret_cast<const std::byte *>(buf);
+                auto buf_ptr = std::make_shared<media_packet_t>(byte_buf, byte_buf + buf_size);
                 asio::co_spawn(self->m_strand, [self = ptr_t { self->m_stream->m_source->shared_from_this(), self }, buf_ptr = std::move(buf_ptr)]() -> asio::awaitable<void> {
                     co_await self->m_channel->send_async(std::move(buf_ptr), self->m_stream->m_source->m_closer);
                 }, asio::detached);
@@ -693,7 +722,7 @@ namespace cfgo
                                     assert(self->m_tmp_frame);
                                     sws_scale(
                                         self->m_sws_ctx, 
-                                        (const uint8_t * const *) raw_frame->data, raw_frame->linesize, 0, self->m_enc_ctx->height, 
+                                        (const uint8_t * const *) raw_frame->data, raw_frame->linesize, 0, raw_frame->height, 
                                         self->m_tmp_frame->data, self->m_tmp_frame->linesize
                                     );
                                     raw_frame = self->m_tmp_frame;
@@ -725,6 +754,14 @@ namespace cfgo
                                 else
                                 {
                                     ++ self->m_next_pts;
+                                }
+                                if (self->m_requesting_key_frame.exchange(false))
+                                {
+                                    raw_frame->pict_type = AVPictureType::AV_PICTURE_TYPE_I;
+                                }
+                                else
+                                {
+                                    raw_frame->pict_type = AVPictureType::AV_PICTURE_TYPE_NONE;
                                 }
                             }
                             check_av_err(avcodec_send_frame(self->m_enc_ctx, raw_frame), "could not sending a frame for encoding, ");
@@ -777,6 +814,7 @@ namespace cfgo
                 }
                 weak_ptr_t weak_self = ptr_t { m_source->shared_from_this(), this };
                 return av_frame_ptr_t(raw_frame, [weak_self](AVFrame *& ptr) {
+                    av_frame_unref(ptr);
                     if (auto self = weak_self.lock())
                     {
                         if (!self->m_frame_pool.return_back(ptr))
@@ -804,64 +842,6 @@ namespace cfgo
                         return ret != AVERROR_EOF;
                     }
                     check_av_err(ret, "Decoding failed, ");
-                    // if (m_dec_ctx->codec->type == AVMEDIA_TYPE_VIDEO && frame->format != STREAM_PIX_FMT)
-                    // {
-                    //     if (!m_sws_ctx || frame->width != m_last_width || frame->height != m_last_height)
-                    //     {
-                    //         sws_freeContext(m_sws_ctx);
-                    //         m_last_width = frame->width;
-                    //         m_last_height = frame->height;
-                    //         m_sws_ctx = sws_getContext(
-                    //             frame->width, frame->height, (AVPixelFormat) frame->format,
-                    //             frame->width, frame->height, STREAM_PIX_FMT,
-                    //             SWS_FAST_BILINEAR, NULL, NULL, NULL
-                    //         );
-                    //     }
-                    //     auto new_frame = request_frame(STREAM_PIX_FMT);
-                    //     sws_scale(
-                    //         m_sws_ctx,
-                    //         frame->data, frame->linesize, 0, frame->height, 
-                    //         new_frame->data, new_frame->linesize
-                    //     );
-                    //     frame = new_frame;
-                    // }
-                    // else if (m_dec_ctx->codec->type == AVMEDIA_TYPE_AUDIO && frame->format != STREAM_SAMPLE_FMT)
-                    // {
-                    //     if (!m_swr_ctx || m_last_sample_rate != frame->sample_rate)
-                    //     {
-                    //         swr_free(&m_swr_ctx);
-                    //         m_last_sample_rate = frame->sample_rate;
-                    //         m_swr_ctx = swr_alloc();
-                    //         if (!m_swr_ctx)
-                    //         {
-                    //             throw cpptrace::runtime_error("could not allocate resampler context");
-                    //         }
-                    //         av_opt_set_chlayout  (m_swr_ctx, "in_chlayout",       &m_dec_ctx->ch_layout,           0);
-                    //         av_opt_set_int       (m_swr_ctx, "in_sample_rate",     frame->sample_rate,             0);
-                    //         av_opt_set_sample_fmt(m_swr_ctx, "in_sample_fmt",      (AVSampleFormat) frame->format, 0);
-                    //         av_opt_set_chlayout  (m_swr_ctx, "out_chlayout",      &m_dec_ctx->ch_layout,           0);
-                    //         av_opt_set_int       (m_swr_ctx, "out_sample_rate",    frame->sample_rate,             0);
-                    //         av_opt_set_sample_fmt(m_swr_ctx, "out_sample_fmt",     STREAM_SAMPLE_FMT,              0);
-                    //         check_av_err(swr_init(m_swr_ctx), "failed to initialize the resampling context, ");
-                    //     }
-                    //     auto new_frame = request_frame(STREAM_SAMPLE_FMT);
-
-                    //     /* convert samples from native format to destination codec format, using the resampler */
-                    //     /* compute destination number of samples */
-                    //     auto dst_nb_samples = swr_get_delay(m_swr_ctx, frame->sample_rate);
-                    //     assert(dst_nb_samples == frame->nb_samples);
-
-                    //     /* convert to destination format */
-                    //     check_av_err(swr_convert(
-                    //         m_swr_ctx,
-                    //         new_frame->data, dst_nb_samples,
-                    //         (const uint8_t **)frame->data, frame->nb_samples
-                    //     ), "could not convert audio frame, ");
-
-                    //     new_frame->pts = av_rescale_q(m_samples_count, AVRational {1, m_dec_ctx->sample_rate}, m_dec_ctx->time_base);
-                    //     m_samples_count += dst_nb_samples;
-                    //     frame = new_frame;
-                    // }
                     m_source->m_channel->send_sync(frame, m_source->m_closer);
                 } while (true);
             }
@@ -973,7 +953,9 @@ namespace cfgo
                         {
                             cfgo::video::check_av_err(av_read_frame(self->m_fmt_ctx, pkt), "could not read pkt, ");
                             auto & stream = self->m_streams[pkt->stream_index];
-                            if (!stream.decode(pkt))
+                            bool eof = !stream.decode(pkt);
+                            av_packet_unref(pkt);
+                            if (eof)
                             {
                                 break;
                             }

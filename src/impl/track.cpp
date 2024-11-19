@@ -21,19 +21,12 @@ namespace cfgo
             std::int32_t rtcp_cache_min_segments,
             std::int32_t rtcp_cache_max_segments,
             std::int32_t rtcp_cache_segment_capicity
-        ): 
+        ):
+            m_meta(msg),
             m_logger(Log::instance().create_logger(Log::Category::TRACK, Log::make_logger_name(Log::Category::TRACK, msg.globalId.substr(0, 4)))),
             m_rtp_cache(rtp_cache_segment_capicity, rtp_cache_max_segments, rtp_cache_min_segments), 
             m_rtcp_cache(rtcp_cache_segment_capicity, rtcp_cache_max_segments, rtcp_cache_min_segments)
-        {
-            type = msg.type;
-            pubId = msg.pubId;
-            globalId = msg.globalId;
-            bindId = msg.bindId;
-            rid = msg.rid;
-            streamId = msg.streamId;
-            labels = msg.labels;
-        }
+        {}
 
         Track::~Track()
         {
@@ -63,12 +56,13 @@ namespace cfgo
         #endif
 
         void Track::prepare_track(
+            std::shared_ptr<rtc::Track> rtc_track_ptr
             #ifdef CFGO_SUPPORT_GSTREAMER
-            GstSDPMessage *sdp
+            , GstSDPMessage *sdp
             #endif
         ) {
             #ifdef CFGO_SUPPORT_GSTREAMER
-            auto mid = track->mid();
+            auto mid = rtc_track_ptr->mid();
             if (m_sdp)
             {
                 gst_sdp_message_free(m_sdp);
@@ -79,14 +73,12 @@ namespace cfgo
                 throw cpptrace::runtime_error("unable to copy the sdp message with mid " + mid);
             }
             #endif
-            if (!track)
-            {
-                throw cpptrace::logic_error("Before call receive_msg, a valid rtc::track should be set.");
-            }
-            track->onMessage(std::bind(&Track::on_track_msg, this, std::placeholders::_1), [](auto data) {});
-            track->onOpen(std::bind(&Track::on_track_open, this));
-            track->onClosed(std::bind(&Track::on_track_closed, this));
-            track->onError(std::bind(&Track::on_track_error, this, std::placeholders::_1));
+            assert(rtc_track_ptr);
+            rtc_track_ptr->onMessage(std::bind(&Track::on_track_msg, this, std::placeholders::_1), [](auto data) {});
+            rtc_track_ptr->onOpen(std::bind(&Track::on_track_open, this));
+            rtc_track_ptr->onClosed(std::bind(&Track::on_track_closed, this));
+            rtc_track_ptr->onError(std::bind(&Track::on_track_error, this, std::placeholders::_1));
+            track = std::move(rtc_track_ptr);
             m_inited = true;
         }
 
@@ -329,6 +321,75 @@ namespace cfgo
                 if (!co_await chan_read<void>(*receiver, close_ch))
                 {
                     co_return nullptr;
+                }
+            } while (true);
+        }
+
+        auto Track::await_send_msg(cfgo::Track::MsgSharedPtr msg_ptr, close_chan closer) -> asio::awaitable<bool>
+        {
+            auto self = shared_from_this();
+            if (!co_await await_open_or_close(closer))
+            {
+                co_return false;
+            }
+            do
+            {
+                auto receiver = m_state_notifier.make_notfiy_receiver();
+                if (m_opened && !m_closed)
+                {
+                    std::shared_ptr<TaskQueue> task_queue;
+                    if (m_task_queue)
+                    {
+                        task_queue = m_task_queue;
+                    }
+                    else
+                    {
+                        static auto g_tpool = std::make_shared<ThreadPool>(std::thread::hardware_concurrency());
+                        task_queue = std::static_pointer_cast<TaskQueue>(g_tpool);
+                    }
+                    using send_res_t = std::variant<bool, std::exception_ptr>;
+                    unique_chan<send_res_t> ch_err {};
+                    auto success = task_queue->enqueue([track = self->track, msg_ptr, ch_err]() {
+                        try
+                        {
+                            chan_must_write(ch_err, send_res_t {track->send(*msg_ptr)});
+                        }
+                        catch(...)
+                        {
+                            chan_must_write(ch_err, send_res_t {std::current_exception()});
+                        }
+                    });
+                    if (!success)
+                    {
+                        throw cpptrace::runtime_error("could not enqueue the send task to the task pool");
+                    }
+                    if (auto task_res = co_await chan_read<send_res_t>(ch_err, closer))
+                    {
+                        if (std::holds_alternative<bool>(task_res.value()))
+                        {
+                            co_return task_res.value();
+                        }
+                        else if (m_closed)
+                        {
+                            co_return false;
+                        }
+                        else
+                        {
+                            std::rethrow_exception(std::get<std::exception_ptr>(task_res.value()));
+                        }
+                    }
+                    else
+                    {
+                        co_return false;
+                    }
+                }
+                else if (m_closed)
+                {
+                    co_return false;
+                }
+                if (!co_await chan_read<void>(*receiver, closer))
+                {
+                    co_return false;
                 }
             } while (true);
         }

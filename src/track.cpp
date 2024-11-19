@@ -22,42 +22,21 @@ namespace cfgo
         rtcp_cache_segment_capicity
     ) {}
     void Track::prepare_track(
+        std::shared_ptr<rtc::Track> rtc_track_ptr
         #ifdef CFGO_SUPPORT_GSTREAMER
-        GstSDPMessage *sdp
+        , GstSDPMessage *sdp
         #endif
     ) const {
         impl()->prepare_track(
+            rtc_track_ptr
             #ifdef CFGO_SUPPORT_GSTREAMER
-            sdp
+            , sdp
             #endif
         );
     }
-    const std::string& Track::type() const noexcept {
-        return impl()->type;
-    }
-    const std::string& Track::pub_id() const noexcept {
-        return impl()->pubId;
-    }
-    const std::string& Track::global_id() const noexcept {
-        return impl()->globalId;
-    }
-    const std::string& Track::bind_id() const noexcept {
-        return impl()->bindId;
-    }
-    const std::string& Track::rid() const noexcept {
-        return impl()->rid;
-    }
-    const std::string& Track::stream_id() const noexcept {
-        return impl()->streamId;
-    }
-    std::unordered_map<std::string, std::string> & Track::labels() noexcept {
-        return impl()->labels;
-    }
-    const std::unordered_map<std::string, std::string> & Track::labels() const noexcept {
-        return impl()->labels;
-    }
-    std::shared_ptr<rtc::Track> & Track::track() noexcept {
-        return impl()->track;
+    const msg::Track & Track::meta() const noexcept
+    {
+        return impl()->m_meta;
     }
     const std::shared_ptr<rtc::Track> & Track::track() const noexcept {
         return impl()->track;

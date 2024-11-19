@@ -351,14 +351,14 @@ namespace cfgo
             {
                 auto rtc_track = co_await chan_read_or_throw<TrackPtr>(box->track_ch, closer);
                 auto&& iter = std::partition(uncompleted_tracks.begin(), uncompleted_tracks.end(), [&rtc_track](const cfgo::TrackPtr& t) -> bool {
-                    return t->bind_id() == rtc_track->mid();
+                    return t->meta().bindId == rtc_track->mid();
                 });
                 if (iter != uncompleted_tracks.end())
                 {
-                    (*iter)->track() = rtc_track;
                     (*iter)->prepare_track(
+                        rtc_track
                         #ifdef CFGO_SUPPORT_GSTREAMER
-                        box->m_gst_sdp
+                        , box->m_gst_sdp
                         #endif
                     );
                     uncompleted_tracks.erase(iter, uncompleted_tracks.end());

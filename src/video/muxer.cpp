@@ -127,13 +127,13 @@ namespace cfgo
                     m_io = avio_alloc_context(buffer, buffer_size, 1, this, nullptr, &_write_packet_handle, nullptr);
                     if (!m_io)
                     {
-                        av_freep(buffer);
+                        av_freep(&buffer);
                         throw cpptrace::runtime_error("could not allocate the av io context");
                     }
                     else
                     {
                         cleaner.add_defer([this]() {
-                            av_freep(m_io->buffer);
+                            av_freep(&m_io->buffer);
                             avio_context_free(&m_io);
                         });
                     }

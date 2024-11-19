@@ -167,19 +167,12 @@ namespace cfgo
             std::int32_t rtcp_cache_segment_capicity
         );
         void prepare_track(
+            std::shared_ptr<rtc::Track> rtc_track_ptr
             #ifdef CFGO_SUPPORT_GSTREAMER
-            GstSDPMessage *sdp
+            , GstSDPMessage *sdp
             #endif
         ) const;
-        const std::string& type() const noexcept;
-        const std::string& pub_id() const noexcept;
-        const std::string& global_id() const noexcept;
-        const std::string& bind_id() const noexcept;
-        const std::string& rid() const noexcept;
-        const std::string& stream_id() const noexcept;
-        std::unordered_map<std::string, std::string> & labels() noexcept;
-        const std::unordered_map<std::string, std::string> & labels() const noexcept;
-        std::shared_ptr<rtc::Track> & track() noexcept;
+        const msg::Track & meta() const noexcept;
         const std::shared_ptr<rtc::Track> & track() const noexcept;
         void * get_gst_caps(int pt) const;
         void set_on_data(const OnDataCb & cb) const;
@@ -212,6 +205,8 @@ namespace cfgo
          * immediately return a msg or nullptr if no msg available.
         */
         MsgPtr receive_msg(MsgType msg_type) const;
+
+        auto await_send_msg(std::shared_ptr<std::vector<std::byte>> msg_ptr) -> asio::awaitable<void>;
 
         std::uint64_t get_rtp_drops_bytes() const noexcept;
         std::uint32_t get_rtp_drops_packets() const noexcept;

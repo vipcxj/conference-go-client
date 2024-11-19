@@ -59,7 +59,7 @@ namespace cfgo
         using raw_buffer_el_t = const uint8_t;
 #endif
         using raw_buffer_t = raw_buffer_el_t *;
-        using media_packet_t = std::vector<std::decay_t<raw_buffer_el_t>>;
+        using media_packet_t = std::vector<std::byte>;
         using media_packet_ptr_t = std::shared_ptr<media_packet_t>;
 
         class MediaReceiver

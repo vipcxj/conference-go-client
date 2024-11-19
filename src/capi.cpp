@@ -473,7 +473,7 @@ CFGO_API const char * cfgo_track_get_type(int track_handle)
 {
     return cfgo::c_wrap_ret_str([=]() {
         auto track = cfgo::get_track(track_handle);
-        return track->type().c_str();
+        return track->meta().type.c_str();
     });
 }
 
@@ -481,7 +481,7 @@ CFGO_API const char * cfgo_track_get_pub_id(int track_handle)
 {
     return cfgo::c_wrap_ret_str([=]() {
         auto track = cfgo::get_track(track_handle);
-        return track->pub_id().c_str();
+        return track->meta().pubId.c_str();
     });
 }
 
@@ -489,7 +489,7 @@ CFGO_API const char * cfgo_track_get_global_id(int track_handle)
 {
     return cfgo::c_wrap_ret_str([=]() {
         auto track = cfgo::get_track(track_handle);
-        return track->global_id().c_str();
+        return track->meta().globalId.c_str();
     });
 }
 
@@ -497,7 +497,7 @@ CFGO_API const char * cfgo_track_get_bind_id(int track_handle)
 {
     return cfgo::c_wrap_ret_str([=]() {
         auto track = cfgo::get_track(track_handle);
-        return track->bind_id().c_str();
+        return track->meta().bindId.c_str();
     });
 }
 
@@ -505,7 +505,7 @@ CFGO_API const char * cfgo_track_get_rid(int track_handle)
 {
     return cfgo::c_wrap_ret_str([=]() {
         auto track = cfgo::get_track(track_handle);
-        return track->rid().c_str();
+        return track->meta().rid.c_str();
     });
 }
 
@@ -513,7 +513,7 @@ CFGO_API const char * cfgo_track_get_stream_id(int track_handle)
 {
     return cfgo::c_wrap_ret_str([=]() {
         auto track = cfgo::get_track(track_handle);
-        return track->stream_id().c_str();
+        return track->meta().streamId.c_str();
     });
 }
 
@@ -521,7 +521,23 @@ CFGO_API int cfgo_track_get_label_count(int track_handle)
 {
     return cfgo::c_wrap([=]() {
         auto track = cfgo::get_track(track_handle);
-        return track->labels().size();
+        return track->meta().labels.size();
+    });
+}
+
+CFGO_API const char * cfgo_track_get_key_at(int track_handle, int index)
+{
+    return cfgo::c_wrap_ret_str([=]() {
+        auto track = cfgo::get_track(track_handle);
+        int i = 0;
+        for (auto & [key, value] : track->meta().labels)
+        {
+            if (i++ == index)
+            {
+                return key.c_str();
+            }
+        }
+        return "";
     });
 }
 
@@ -530,7 +546,7 @@ CFGO_API const char * cfgo_track_get_label_at(int track_handle, const char * nam
     return cfgo::c_wrap_ret_str([=]() {
         auto track = cfgo::get_track(track_handle);
         CPPTRACE_WRAP_BLOCK(
-            return track->labels()[name].c_str();
+            return track->meta().labels.at(name).c_str();
         );
     });
 }

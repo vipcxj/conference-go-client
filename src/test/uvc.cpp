@@ -23,13 +23,13 @@ void exit_handler(int)
     g_exit = 1;
 }
 
-uint8_t getPayloadType(cfgo::video::muxer_t::buffer_t buf, int buf_size)
+uint8_t getPayloadType(const std::byte * buf, int buf_size)
 {
     if (buf_size < 2)
     {
         return 0;
     }
-    return buf[1] & 0x7F;
+    return std::to_integer<uint8_t>(buf[1]) & 0x7F;
 }
 
 bool isRtcp(uint8_t pt)
@@ -69,7 +69,7 @@ int main()
     cfgo::close_chan closer {};
     cfgo::close_guard cg {closer};
     auto media_source = make_media_source(io_ctx.get_executor(), media_source_type_t::DEVICE, "", media_source_mode_t::AUTO, closer);
-    for (int i = 0; i < 300; i++)
+    for (int i = 0; i < 1; i++)
     {
         auto receiver = media_source->acquire_receiver(0, { .codec_id = AV_CODEC_ID_H264, .profile = media_profile_t(fmt::format("payload_type={};ssrc=12345", 97 + i % 30)) });
         asio::co_spawn(io_ctx.get_executor(), [receiver]() -> asio::awaitable<void> {

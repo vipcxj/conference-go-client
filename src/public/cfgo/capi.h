@@ -84,6 +84,7 @@ CFGO_API const char * cfgo_track_get_bind_id(int track_handle);
 CFGO_API const char * cfgo_track_get_rid(int track_handle);
 CFGO_API const char * cfgo_track_get_stream_id(int track_handle);
 CFGO_API int cfgo_track_get_label_count(int track_handle);
+CFGO_API const char * cfgo_track_get_key_at(int track_handle, int index);
 CFGO_API const char * cfgo_track_get_label_at(int track_handle, const char * name);
 CFGO_API void * cfgo_track_get_gst_caps(int track_handle, int payload_type);
 CFGO_API const unsigned char * cfgo_track_receive_msg(int track_handle, cfgoMsgType msg_type);

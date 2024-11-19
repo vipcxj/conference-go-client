@@ -13,6 +13,7 @@
 #include "cfgo/async.hpp"
 #include "cfgo/log.hpp"
 #include "cfgo/ring_buffer.hpp"
+#include "cfgo/task_pool.hpp"
 #ifdef CFGO_SUPPORT_GSTREAMER
 #include "gst/sdp/sdp.h"
 #endif
@@ -36,14 +37,9 @@ namespace cfgo
             using OnCloseCb = cfgo::Track::OnCloseCb;
             using Statistics = cfgo::Track::Statistics;
             
-            std::string type;
-            std::string pubId;
-            std::string globalId;
-            std::string bindId;
-            std::string rid;
-            std::string streamId;
-            std::unordered_map<std::string, std::string> labels;
+            msg::Track m_meta;
             std::shared_ptr<rtc::Track> track;
+            std::shared_ptr<TaskQueue> m_task_queue;
 
             bool m_inited {false};
             Logger m_logger;
@@ -79,8 +75,9 @@ namespace cfgo
 
             uint32_t makesure_min_seq();
             void prepare_track(
+                std::shared_ptr<rtc::Track> rtc_track_ptr
                 #ifdef CFGO_SUPPORT_GSTREAMER
-                GstSDPMessage *sdp
+                , GstSDPMessage *sdp
                 #endif
             );
             void on_track_msg(rtc::binary data);
@@ -98,6 +95,8 @@ namespace cfgo
             bool _is_first_msg_received(cfgo::Track::MsgType msg_type) const noexcept;
             auto await_first_msg_received(cfgo::Track::MsgType msg_type, close_chan closer) -> asio::awaitable<bool>;
             auto await_msg(cfgo::Track::MsgType msg_type, close_chan closer) -> asio::awaitable<cfgo::Track::MsgPtr>;
+            auto await_send_msg(cfgo::Track::MsgSharedPtr msg_ptr, close_chan closer) -> asio::awaitable<bool>;
+
             void * get_gst_caps(int pt) const;
             void set_on_data(const OnDataCb & cb);
             void set_on_data(OnDataCb && cb);
