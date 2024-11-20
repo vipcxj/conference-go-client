@@ -1,5 +1,5 @@
-#ifndef _CFGO_TOKEN_HPP_
-#define _CFGO_TOKEN_HPP_
+#ifndef _CFGO_TASK_POOL_HPP_
+#define _CFGO_TASK_POOL_HPP_
 
 #include <thread>
 #include <vector>

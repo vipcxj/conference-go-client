@@ -331,7 +331,8 @@ namespace cfgo
             for (auto && track : sub_res->tracks)
             {
                 sub_ptr->tracks().push_back(allocate_tracers::make_shared<cfgo::Track>(
-                    track, 
+                    track,
+                    nullptr,
                     m_conf.m_track_config.rtp_cache_min_segments,
                     m_conf.m_track_config.rtp_cache_max_segments,
                     m_conf.m_track_config.rtp_cache_segment_capicity,
@@ -380,10 +381,12 @@ namespace cfgo
         auto Webrtc::publish(close_chan closer, cfgo::Publication pub) -> asio::awaitable<void>
         {
             auto self = shared_from_this();
-            auto pub_handle = co_await self->m_signal->publish(closer, std::move(pub));
             auto box = co_await self->access_peer_box(closer);
+            pub.setup(box->peer);
+            auto pub_handle = co_await self->m_signal->publish(closer, pub);
             int sdp_id = self->next_sdp_msg_id();
             co_await self->negotiate(closer, box, sdp_id, true);
+            pub.start();
             co_await self->m_signal->wait_published(closer, std::move(pub_handle));
         }
     } // namespace impl

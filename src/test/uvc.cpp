@@ -1,6 +1,8 @@
 #include "cfgo/log.hpp"
 #include "opencv2/opencv.hpp"
 #include "cfgo/defer.hpp"
+#include "cfgo/token.hpp"
+#include "cfgo/client.hpp"
 #include "cfgo/video/muxer.hpp"
 #include "cfgo/video/ffmpeg_cv.hpp"
 #include "cfgo/video/camera.hpp"
@@ -57,6 +59,8 @@ int main()
     using namespace cfgo::video;
     signal (SIGINT, exit_handler);
 
+    cfgo::Log::instance().set_level(cfgo::Log::Category::WEBSOCKET, cfgo::LogLevel::trace);
+
     avdevice_register_all();
     
     auto device_list = cfgo::video::list_devices();
@@ -65,31 +69,56 @@ int main()
     AVFormatContext * fmt_ctx = nullptr;
     auto dev = device_list.select(AVMediaType::AVMEDIA_TYPE_VIDEO);
 
-    asio::io_context io_ctx {};
-    cfgo::close_chan closer {};
-    cfgo::close_guard cg {closer};
-    auto media_source = make_media_source(io_ctx.get_executor(), media_source_type_t::DEVICE, "", media_source_mode_t::AUTO, closer);
-    for (int i = 0; i < 1; i++)
-    {
-        auto receiver = media_source->acquire_receiver(0, { .codec_id = AV_CODEC_ID_H264, .profile = media_profile_t(fmt::format("payload_type={};ssrc=12345", 97 + i % 30)) });
-        asio::co_spawn(io_ctx.get_executor(), [receiver]() -> asio::awaitable<void> {
-            do
-            {
-                auto pkt = co_await receiver->request_pkt(nullptr);
-                auto pt = getPayloadType(pkt->data(), pkt->size());
-                if (isRtcp(pt))
-                {
-                    CFGO_INFO("got rtcp pkt with pt {} and size {}", pt, pkt->size());
-                }
-                else
-                {
-                    CFGO_INFO("got rtp pkt with pt {} and size {}", pt, pkt->size());
-                }
+    auto io_ctx = std::make_shared<asio::io_context>();
+
+    asio::co_spawn(io_ctx->get_executor(), [io_ctx]() -> asio::awaitable<void> {
+        cfgo::close_chan closer {};
+        cfgo::close_guard cg {closer};
+        auto media_source = make_media_source(io_ctx->get_executor(), media_source_type_t::DEVICE, "", media_source_mode_t::AUTO, closer);
+
+        auto token = co_await cfgo::utils::get_token("localhost", 3100, "10000", "10000", "user10000", "parent", "room0", true);
+        cfgo::Configuration conf {
+            cfgo::SignalConfigure {
+                "ws://localhost:13087/ws", token
+            },
+            rtc::Configuration {},
+            cfgo::TrackConfigure {}
+        };
+        cfgo::Client client(conf, io_ctx, closer);
+        cfgo::Publication pub(media_source, {{"key", "123"}});
+        try
+        {
+            co_await client.publish(pub, closer);
+        }
+        catch(...)
+        {
+            CFGO_ERROR(cfgo::what());
+        }
+    }, asio::detached);
+
+    
+
+    // for (int i = 0; i < 1; i++)
+    // {
+    //     auto receiver = media_source->acquire_receiver(0, { .codec_id = AV_CODEC_ID_H264, .profile = media_profile_t(fmt::format("payload_type={};ssrc=12345", 97 + i % 30)) });
+    //     asio::co_spawn(io_ctx->get_executor(), [receiver]() -> asio::awaitable<void> {
+    //         do
+    //         {
+    //             auto pkt = co_await receiver->request_pkt(nullptr);
+    //             auto pt = getPayloadType(pkt->data(), pkt->size());
+    //             if (isRtcp(pt))
+    //             {
+    //                 CFGO_INFO("got rtcp pkt with pt {} and size {}", pt, pkt->size());
+    //             }
+    //             else
+    //             {
+    //                 CFGO_INFO("got rtp pkt with pt {} and size {}", pt, pkt->size());
+    //             }
                 
-            } while (true);
-        }, asio::detached);
-    }
-    io_ctx.run();
+    //         } while (true);
+    //     }, asio::detached);
+    // }
+    io_ctx->run();
 
 
 

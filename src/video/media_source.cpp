@@ -383,9 +383,13 @@ namespace cfgo
                 MediaSource(asio::any_io_executor executor, media_source_type_t source_type, const std::string & url_or_name, media_source_mode_t mode = media_source_mode_t::AUTO, close_chan closer = nullptr);
                 ~MediaSource();
 
-                unsigned int nb_streams() override
+                unsigned int nb_streams() const override
                 {
                     return m_fmt_ctx->nb_streams;
+                }
+                AVMediaType stream_media_type(int i) const override
+                {
+                    return m_streams.at(i).m_stream->codecpar->codec_type;
                 }
                 auto acquire_receiver(int stream_id, const media_codec_and_profile_t & codec) -> media_receiver_ptr_t override;
 

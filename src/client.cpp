@@ -41,6 +41,11 @@ namespace cfgo
         return impl()->unsubscribe(std::move(sub_id), std::move(closer));
     }
 
+    auto Client::publish(Publication pub, close_chan closer) const -> asio::awaitable<void>
+    {
+        return impl()->publish(std::move(pub), std::move(closer));
+    }
+
     auto Client::strand() const noexcept -> const Strand &
     {
         return impl()->strand();

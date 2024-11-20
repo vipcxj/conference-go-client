@@ -4,7 +4,9 @@
 #include "cfgo/message.hpp"
 #include "cfgo/utils.hpp"
 #include "cfgo/allocate_tracer.hpp"
-#include "cfgo/sink.hpp"
+#include "cfgo/video/media_source.hpp"
+
+#include "rtc/rtc.hpp"
 
 namespace cfgo
 {
@@ -21,10 +23,11 @@ namespace cfgo
     private:
         /* data */
     public:
-        Publication(Labels labels);
-        void add_track(RtcTrackPtr track) const;
-        bool bind(const msg::Track & track) const;
+        Publication(video::media_source_ptr_t media_source, Labels labels);
+        void setup(rtc::PeerConnection & peer) const;
+        bool bind(const msg::Track & meta) const;
         bool ready() const noexcept;
+        void start() const;
         PubMsgPtr create_publish_msg() const;
     };
 

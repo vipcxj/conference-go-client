@@ -85,7 +85,8 @@ namespace cfgo
         {
         public:
             virtual ~MediaSource() {};
-            virtual unsigned int nb_streams() = 0;
+            virtual unsigned int nb_streams() const = 0;
+            virtual AVMediaType stream_media_type(int i) const = 0;
             virtual auto acquire_receiver(int stream_id, const media_codec_and_profile_t & codec) -> media_receiver_ptr_t = 0;
         };
 

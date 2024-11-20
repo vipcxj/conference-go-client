@@ -5,7 +5,8 @@ namespace cfgo
 {
     Track::Track(std::nullptr_t state): ImplBy(std::shared_ptr<impl::Track>(nullptr)) {}
     Track::Track(
-        const msg::Track & msg, 
+        std::optional<msg::Track> meta,
+        std::shared_ptr<rtc::Track> rtc_track_ptr,
         std::int32_t rtp_cache_min_segments,
         std::int32_t rtp_cache_max_segments,
         std::int32_t rtp_cache_segment_capicity,
@@ -13,7 +14,8 @@ namespace cfgo
         std::int32_t rtcp_cache_max_segments,
         std::int32_t rtcp_cache_segment_capicity
     ): ImplBy<impl::Track>(
-        msg,
+        std::move(meta),
+        std::move(rtc_track_ptr),
         rtp_cache_min_segments,
         rtp_cache_max_segments,
         rtp_cache_segment_capicity,
@@ -34,12 +36,20 @@ namespace cfgo
             #endif
         );
     }
+    void Track::prepare_meta(const msg::Track & meta) const
+    {
+        impl()->prepare_meta(meta);
+    }
+    bool Track::has_meta() const noexcept
+    {
+        return impl()->m_meta.has_value();
+    }
     const msg::Track & Track::meta() const noexcept
     {
-        return impl()->m_meta;
+        return impl()->m_meta.value();
     }
     const std::shared_ptr<rtc::Track> & Track::track() const noexcept {
-        return impl()->track;
+        return impl()->m_track;
     }
     bool Track::is_opened() const noexcept{
         return impl()->is_opened();

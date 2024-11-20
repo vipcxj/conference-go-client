@@ -158,7 +158,8 @@ namespace cfgo
         };
         Track(std::nullptr_t);
         Track(
-            const msg::Track & msg, 
+            std::optional<msg::Track> meta,
+            std::shared_ptr<rtc::Track> rtc_track_ptr,
             std::int32_t rtp_cache_min_segments,
             std::int32_t rtp_cache_max_segments,
             std::int32_t rtp_cache_segment_capicity,
@@ -166,12 +167,18 @@ namespace cfgo
             std::int32_t rtcp_cache_max_segments,
             std::int32_t rtcp_cache_segment_capicity
         );
+        operator bool() noexcept
+        {
+            return (bool) impl();
+        }
         void prepare_track(
             std::shared_ptr<rtc::Track> rtc_track_ptr
             #ifdef CFGO_SUPPORT_GSTREAMER
             , GstSDPMessage *sdp
             #endif
         ) const;
+        void prepare_meta(const msg::Track & meta) const;
+        bool has_meta() const noexcept;
         const msg::Track & meta() const noexcept;
         const std::shared_ptr<rtc::Track> & track() const noexcept;
         void * get_gst_caps(int pt) const;

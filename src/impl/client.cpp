@@ -64,5 +64,10 @@ namespace cfgo
         auto Client::unsubscribe(std::string sub_id, close_chan closer) -> asio::awaitable<void> {
             return m_webrtc->unsubscribe(std::move(closer), std::move(sub_id));
         }
+
+        auto Client::publish(cfgo::Publication pub, close_chan closer) const -> asio::awaitable<void>
+        {
+            return m_webrtc->publish(std::move(closer), std::move(pub));
+        }
     }
 }

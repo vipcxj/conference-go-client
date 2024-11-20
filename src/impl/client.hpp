@@ -51,6 +51,7 @@ namespace cfgo {
             [[nodiscard]] auto connect(std::string socket_id, close_chan closer) -> asio::awaitable<void>;
             [[nodiscard]] auto subscribe(Pattern pattern, std::vector<std::string> req_types, close_chan close_chan) -> asio::awaitable<SubPtr>;
             [[nodiscard]] auto unsubscribe(std::string sub_id, close_chan close_chan) -> asio::awaitable<void>;
+            [[nodiscard]] auto publish(cfgo::Publication pub, close_chan closer) const -> asio::awaitable<void>;
 
             const Strand & strand() const noexcept;
             close_chan get_closer() const noexcept;

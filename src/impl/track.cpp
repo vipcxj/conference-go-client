@@ -13,8 +13,29 @@ namespace cfgo
 {
     namespace impl
     {
+        void init_track(Track * self, const std::shared_ptr<rtc::Track> & rtc_track_ptr)
+        {
+            rtc_track_ptr->onMessage(std::bind(&Track::on_track_msg, self, std::placeholders::_1), [](auto data) {});
+            rtc_track_ptr->onOpen(std::bind(&Track::on_track_open, self));
+            rtc_track_ptr->onClosed(std::bind(&Track::on_track_closed, self));
+            rtc_track_ptr->onError(std::bind(&Track::on_track_error, self, std::placeholders::_1));
+        }
+
+        Logger create_track_logger(const std::optional<msg::Track> & meta)
+        {
+            if (meta)
+            {
+                return Log::instance().create_logger(Log::Category::TRACK, Log::make_logger_name(Log::Category::TRACK, meta->globalId.substr(0, 4)));
+            }
+            else
+            {
+                return Log::instance().create_logger(Log::Category::TRACK);
+            }
+        }
+
         Track::Track(
-            const msg::Track & msg, 
+            std::optional<msg::Track> meta,
+            std::shared_ptr<rtc::Track> rtc_track_ptr,
             std::int32_t rtp_cache_min_segments,
             std::int32_t rtp_cache_max_segments,
             std::int32_t rtp_cache_segment_capicity,
@@ -22,11 +43,21 @@ namespace cfgo
             std::int32_t rtcp_cache_max_segments,
             std::int32_t rtcp_cache_segment_capicity
         ):
-            m_meta(msg),
-            m_logger(Log::instance().create_logger(Log::Category::TRACK, Log::make_logger_name(Log::Category::TRACK, msg.globalId.substr(0, 4)))),
+            m_meta(std::move(meta)),
+            m_track(std::move(rtc_track_ptr)),
+            m_logger(create_track_logger(m_meta)),
             m_rtp_cache(rtp_cache_segment_capicity, rtp_cache_max_segments, rtp_cache_min_segments), 
             m_rtcp_cache(rtcp_cache_segment_capicity, rtcp_cache_max_segments, rtcp_cache_min_segments)
-        {}
+        {
+            if (m_meta)
+            {
+                m_logger = create_track_logger(m_meta);
+            }
+            if (m_track)
+            {
+                init_track(this, m_track);
+            }
+        }
 
         Track::~Track()
         {
@@ -61,6 +92,10 @@ namespace cfgo
             , GstSDPMessage *sdp
             #endif
         ) {
+            if (m_track)
+            {
+                throw cpptrace::runtime_error("The track already be prepared");
+            }
             #ifdef CFGO_SUPPORT_GSTREAMER
             auto mid = rtc_track_ptr->mid();
             if (m_sdp)
@@ -74,17 +109,30 @@ namespace cfgo
             }
             #endif
             assert(rtc_track_ptr);
-            rtc_track_ptr->onMessage(std::bind(&Track::on_track_msg, this, std::placeholders::_1), [](auto data) {});
-            rtc_track_ptr->onOpen(std::bind(&Track::on_track_open, this));
-            rtc_track_ptr->onClosed(std::bind(&Track::on_track_closed, this));
-            rtc_track_ptr->onError(std::bind(&Track::on_track_error, this, std::placeholders::_1));
-            track = std::move(rtc_track_ptr);
-            m_inited = true;
+            init_track(this, rtc_track_ptr);
+            m_track = std::move(rtc_track_ptr);
+            if (m_meta)
+            {
+                m_inited = true;
+            }
+        }
+
+        void Track::prepare_meta(const msg::Track & meta)
+        {
+            if (m_meta)
+            {
+                throw cpptrace::runtime_error("The meta already be prepared");
+            }
+            m_meta = meta;
+            if (m_track)
+            {
+                m_inited = true;
+            }
         }
 
         #ifdef CFGO_SUPPORT_GSTREAMER
         const GstSDPMedia * Track::gst_media() const {
-            return get_media_from_sdp(m_sdp, track->mid().c_str());
+            return get_media_from_sdp(m_sdp, m_track->mid().c_str());
         }
         #endif
 
@@ -234,6 +282,22 @@ namespace cfgo
             CFGO_THIS_ERROR("{}", error);
         }
 
+        void Track::_check_receivable(cfgo::Track::MsgType msg_type) const
+        {
+            if (msg_type == cfgo::Track::MsgType::RTP && m_track->direction() != rtc::Description::Direction::RecvOnly && m_track->direction() != rtc::Description::Direction::SendRecv)
+            {
+                throw cpptrace::runtime_error("Only track with direction RecvOnly or SendRecv support receiving msg");
+            }
+        }
+
+        void Track::_check_sendable(const rtc::binary & data) const
+        {
+            if (!rtc::IsRtcp(data) && m_track->direction() != rtc::Description::Direction::SendOnly && m_track->direction() != rtc::Description::Direction::SendRecv)
+            {
+                throw cpptrace::runtime_error("Only track with direction SendOnly or SendRecv support sending rtp msg");
+            }
+        }
+
         auto Track::await_open_or_close(close_chan closer) -> asio::awaitable<bool>
         {
             if (!m_inited)
@@ -279,6 +343,7 @@ namespace cfgo
             {
                 throw cpptrace::logic_error("Before call await_open_or_close, call prepare_track at first.");
             }
+            _check_receivable(msg_type);
             if (_is_first_msg_received(msg_type))
             {
                 co_return true;
@@ -303,6 +368,7 @@ namespace cfgo
             {
                 throw cpptrace::logic_error("Before call await_msg, call prepare_track at first.");
             }
+            _check_receivable(msg_type);
             do
             {
                 auto receiver = m_state_notifier.make_notfiy_receiver();
@@ -327,7 +393,9 @@ namespace cfgo
 
         auto Track::await_send_msg(cfgo::Track::MsgSharedPtr msg_ptr, close_chan closer) -> asio::awaitable<bool>
         {
+            assert(msg_ptr);
             auto self = shared_from_this();
+            _check_sendable(*msg_ptr);
             if (!co_await await_open_or_close(closer))
             {
                 co_return false;
@@ -349,7 +417,7 @@ namespace cfgo
                     }
                     using send_res_t = std::variant<bool, std::exception_ptr>;
                     unique_chan<send_res_t> ch_err {};
-                    auto success = task_queue->enqueue([track = self->track, msg_ptr, ch_err]() {
+                    auto success = task_queue->enqueue([track = self->m_track, msg_ptr, ch_err]() {
                         try
                         {
                             chan_must_write(ch_err, send_res_t {track->send(*msg_ptr)});
@@ -369,7 +437,7 @@ namespace cfgo
                         {
                             co_return std::get<bool>(task_res.value());
                         }
-                        else if (track->isClosed())
+                        else if (m_track->isClosed())
                         {
                             co_return false;
                         }
@@ -399,7 +467,7 @@ namespace cfgo
             {
                 throw cpptrace::logic_error("Before call receive_msg, call prepare_track at first.");
             }
-
+            _check_receivable(msg_type);
             std::lock_guard g(m_lock);
             cfgo::Track::MsgPtr msg_ptr = nullptr;
             if (msg_type == cfgo::Track::MsgType::ALL)
@@ -465,7 +533,7 @@ namespace cfgo
             auto media = gst_media();
             if (!media)
             {
-                throw cpptrace::runtime_error(fmt::format("Unable to extract the sdp media from sdp message with mid {}.", track->mid()));
+                throw cpptrace::runtime_error(fmt::format("Unable to extract the sdp media from sdp message with mid {}.", m_track->mid()));
             }
             
             auto caps = gst_sdp_media_get_caps_from_media(media, pt);

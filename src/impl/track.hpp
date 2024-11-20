@@ -37,8 +37,8 @@ namespace cfgo
             using OnCloseCb = cfgo::Track::OnCloseCb;
             using Statistics = cfgo::Track::Statistics;
             
-            msg::Track m_meta;
-            std::shared_ptr<rtc::Track> track;
+            std::optional<msg::Track> m_meta;
+            std::shared_ptr<rtc::Track> m_track;
             std::shared_ptr<TaskQueue> m_task_queue;
 
             bool m_inited {false};
@@ -63,7 +63,8 @@ namespace cfgo
             #endif
 
             Track(
-                const msg::Track & msg, 
+                std::optional<msg::Track> meta,
+                std::shared_ptr<rtc::Track> rtc_track_ptr,
                 std::int32_t rtp_cache_min_segments,
                 std::int32_t rtp_cache_max_segments,
                 std::int32_t rtp_cache_segment_capicity,
@@ -80,10 +81,13 @@ namespace cfgo
                 , GstSDPMessage *sdp
                 #endif
             );
+            void prepare_meta(const msg::Track & meta);
             void on_track_msg(rtc::binary data);
             void on_track_open();
             void on_track_closed();
             void on_track_error(std::string error);
+            void _check_receivable(cfgo::Track::MsgType msg_type) const;
+            void _check_sendable(const rtc::binary & data) const;
             cfgo::Track::MsgPtr receive_msg(cfgo::Track::MsgType msg_type);
             bool is_opened() const noexcept {
                 return m_opened.load();
