@@ -521,8 +521,8 @@ namespace cfgo
                     const enum AVSampleFormat * sample_fmts = nullptr;
                     auto ret = avcodec_get_supported_config(m_enc_ctx, nullptr, AVCodecConfig::AV_CODEC_CONFIG_SAMPLE_FORMAT, 0, (const void **) &sample_fmts, nullptr);
                     m_enc_ctx->sample_fmt = (ret >= 0 && sample_fmts) ? sample_fmts[0] : AV_SAMPLE_FMT_FLTP;
-                    m_enc_ctx->bit_rate = 64000;
-                    m_enc_ctx->sample_rate = 44100;
+                    m_enc_ctx->bit_rate = m_codec_and_profile.profile.get_profile<int64_t>("bit_rate", m_stream->m_dec_ctx->bit_rate > 0 ? m_stream->m_dec_ctx->bit_rate : 64000);
+                    m_enc_ctx->sample_rate = m_codec_and_profile.profile.get_profile<int>("sample_rate", m_stream->m_dec_ctx->sample_rate > 0 ? m_stream->m_dec_ctx->sample_rate : 48000);
                     const int * supported_samplerates = nullptr;
                     ret = avcodec_get_supported_config(m_enc_ctx, nullptr, AVCodecConfig::AV_CODEC_CONFIG_SAMPLE_RATE, 0, (const void **) &supported_samplerates, nullptr);
                     if (ret >= 0 && supported_samplerates)
@@ -579,27 +579,35 @@ namespace cfgo
                     /* Resolution must be a multiple of two. */
                     m_enc_ctx->width = m_codec_and_profile.profile.get_profile<int>("width", frame->width);
                     m_enc_ctx->height = m_codec_and_profile.profile.get_profile<int>("height", frame->height);
-                    int fps = m_codec_and_profile.profile.get_profile<int>("fps", 0);
-                    if (fps > 0)
+                    auto time_scale = m_codec_and_profile.profile.get_profile<int>("time_scale", 0);
+                    if (time_scale > 0)
                     {
-                        m_av_stream->time_base = {1, fps};
+                        m_av_stream->time_base = {1, time_scale};
                     }
                     else
                     {
-                        if (m_stream->m_dec_ctx->time_base.num > 0)
+                        int fps = m_codec_and_profile.profile.get_profile<int>("fps", 0);
+                        if (fps > 0)
                         {
-                            m_av_stream->time_base = m_stream->m_dec_ctx->time_base;
+                            m_av_stream->time_base = {1, fps};
                         }
                         else
                         {
-                            auto frame_rate = av_guess_frame_rate(m_stream->m_source->m_fmt_ctx, m_stream->m_stream, nullptr);
-                            if (frame_rate.num > 0)
+                            if (m_stream->m_dec_ctx->time_base.num > 0)
                             {
-                                m_av_stream->time_base = {frame_rate.den, frame_rate.num};
+                                m_av_stream->time_base = m_stream->m_dec_ctx->time_base;
                             }
                             else
                             {
-                                m_av_stream->time_base = {1, 20};
+                                auto frame_rate = av_guess_frame_rate(m_stream->m_source->m_fmt_ctx, m_stream->m_stream, nullptr);
+                                if (frame_rate.num > 0)
+                                {
+                                    m_av_stream->time_base = {frame_rate.den, frame_rate.num};
+                                }
+                                else
+                                {
+                                    m_av_stream->time_base = {1, 20};
+                                }
                             }
                         }
                     }
@@ -640,6 +648,19 @@ namespace cfgo
                         * the motion of the chroma plane does not match the luma plane. */
                         m_enc_ctx->mb_decision = 2;
                     }
+                    if (m_enc_ctx->codec_id == AV_CODEC_ID_H264)
+                    {
+                        auto level = m_codec_and_profile.profile.get_profile("h264_level", FF_LEVEL_UNKNOWN);
+                        if (level != FF_LEVEL_UNKNOWN)
+                        {
+                            m_enc_ctx->level = level;
+                        }
+                        auto profile = m_codec_and_profile.profile.get_profile("h264_profile", AV_PROFILE_UNKNOWN);
+                        if (profile != AV_PROFILE_UNKNOWN)
+                        {
+                            m_enc_ctx->profile = profile;
+                        }
+                    }
                     auto opt = create_av_opt(m_opts);
                     check_av_err(avcodec_open2(m_enc_ctx, codec, &opt.get()), "could not open codec");
                     if (m_enc_ctx->pix_fmt != frame->format || m_enc_ctx->width != frame->width || m_enc_ctx->height != frame->height)
@@ -673,6 +694,10 @@ namespace cfgo
                 if (!strcmp(m_fmt_ctx->oformat->name, "rtp"))
                 {
                     m_codec_and_profile.profile.extract_keys({"payload_type", "ssrc"}, opts);
+                    if (m_codec_and_profile.profile.get_profile<int>("packetization-mode", 1) == 0)
+                    {
+                        opts.emplace("rtpflags", "h264_mode0");
+                    }
                 }
                 auto opt = create_av_opt(opts);
                 check_av_err(avformat_write_header(m_fmt_ctx, &opt.get()), "could not write header, ");

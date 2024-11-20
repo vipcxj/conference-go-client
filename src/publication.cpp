@@ -2,6 +2,7 @@
 #include "cfgo/track.hpp"
 #include "cfgo/str_helper.hpp"
 #include "cfgo/video/media_profile.hpp"
+#include "cfgo/video/h264_profile_level_id.hpp"
 #include <unordered_map>
 #include <unordered_set>
 #include <algorithm>
@@ -155,11 +156,39 @@ namespace cfgo
                 profile = str_join(rtp_map->fmtps, ';');
             }
             video::media_codec_and_profile_t codec_and_profile {codec_id, profile};
+            codec_and_profile.profile.remove_profile("level-asymmetry-allowed");
+            if (codec_id == AV_CODEC_ID_H264)
+            {
+                codec_and_profile.profile.consume_profile<std::string>("profile-level-id", [](const std::string & key, const std::string & value, video::media_profile_t * profile) {
+                    auto profile_level_id = video::parse_h264_profile_level_id(value);
+                    if (profile_level_id)
+                    {
+                        profile->set_profile<int>("h264_level", (int) profile_level_id->level);
+                        profile->set_profile<int>("h264_profile", profile_level_id->profile);
+                    }
+                    else
+                    {
+                        throw cpptrace::runtime_error(std::format("invalid profile-level-id: {}", value));
+                    }
+                });
+            }
+            else
+            {
+                codec_and_profile.profile.remove_profile("packetization-mode");
+                codec_and_profile.profile.remove_profile("profile-level-id");
+            }
             codec_and_profile.profile.set_profile("payload_type", pt);
             codec_and_profile.profile.set_profile("ssrc", ssrc);
             if (rtp_map->clockRate > 0)
             {
-                codec_and_profile.profile.set_profile("clock_rate", media.bitrate());
+                if (media.type() == "video")
+                {
+                    codec_and_profile.profile.set_profile("time_scale", rtp_map->clockRate);
+                }
+                else if (media.type() == "audio")
+                {
+                    codec_and_profile.profile.set_profile("sample_rate", rtp_map->clockRate);
+                }
             }
             if (media.bitrate() > 0)
             {
@@ -258,13 +287,7 @@ namespace cfgo
                     if (track)
                     {
                         auto desc = track.track()->description();
-                        auto pts = desc.payloadTypes();
-                        if (pts.empty())
-                        {
-                            throw cpptrace::runtime_error("no media available in track desc");
-                        }
-                        auto pt = pts[0];
-                        auto rtp_map = desc.rtpMap(pt);
+                        auto key = parse_track_media(desc);
                     }
                 }
             }

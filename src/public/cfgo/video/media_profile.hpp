@@ -21,6 +21,89 @@ namespace cfgo
             std::same_as<T, char16_t> ||
             std::same_as<T, char32_t>;
 
+        template<typename T>
+        T pair_to_t(const std::map<std::string, std::string>::const_iterator & value_pair)
+        {
+            if constexpr(std::convertible_to<std::string, T>)
+            {
+                return T{value_pair->second};
+            }
+            else if constexpr(Character<T>)
+            {
+                static_assert(false, "unsupport profile type");
+            }
+            else if constexpr(std::same_as<T, bool>)
+            {
+                if (value_pair->second.empty() || value_pair->second == "true" || value_pair->second == "TRUE" || value_pair->second == "1")
+                {
+                    return true;
+                }
+                else if (value_pair->second == "false" || value_pair->second == "FALSE" || value_pair->second == "0")
+                {
+                    return false;
+                }
+                else
+                {
+                    throw cpptrace::runtime_error(fmt::format("could not convert the profile value {} of key {} to bool type", value_pair->second, value_pair->first));
+                }
+            }
+            else if constexpr(std::is_integral_v<T>)
+            {
+                if constexpr(std::is_unsigned_v<T>)
+                {
+                    auto v = std::stoull(value_pair->second);
+                    if (v > std::numeric_limits<T>::max())
+                    {
+                        throw cpptrace::runtime_error(
+                            fmt::format("numeric overflow when convert the profile value {} of key to some int type"),
+                            value_pair->second,
+                            value_pair->first
+                        );
+                    }
+                    else
+                    {
+                        return static_cast<T>(v);
+                    }
+                }
+                else
+                {
+                    auto v = std::stoll(value_pair->second);
+                    if (v > std::numeric_limits<T>::max() || v < std::numeric_limits<T>::min())
+                    {
+                        throw cpptrace::runtime_error(fmt::format(
+                            "numeric overflow when convert the profile value {} of key {} to some int type",
+                            value_pair->second,
+                            value_pair->first
+                        ));
+                    }
+                    else
+                    {
+                        return static_cast<T>(v);
+                    } 
+                }
+            }
+            else if constexpr(std::is_floating_point_v<T>)
+            {
+                auto v = std::stold(value_pair->second);
+                if (v > std::numeric_limits<T>::max() || v < std::numeric_limits<T>::min())
+                {
+                    throw cpptrace::runtime_error(fmt::format(
+                        "numeric overflow when convert the profile value {} of key to some float type",
+                        value_pair->second,
+                        value_pair->first
+                    ));
+                }
+                else
+                {
+                    return static_cast<T>(v);
+                }
+            }
+            else
+            {
+                static_assert(false, "unsupport profile type");
+            }
+        }
+
         struct MediaProfile
         {
             std::map<std::string, std::string> m_profiles;
@@ -63,88 +146,44 @@ namespace cfgo
                 auto value_pair = m_profiles.find(key);
                 if (value_pair != m_profiles.end())
                 {
-                    if constexpr(std::convertible_to<std::string, T>)
-                    {
-                        return T{value_pair->second};
-                    }
-                    else if constexpr(Character<T>)
-                    {
-                        static_assert("unsupport profile type");
-                    }
-                    else if constexpr(std::same_as<T, bool>)
-                    {
-                        if (value_pair->second.empty() || value_pair->second == "true" || value_pair->second == "TRUE" || value_pair->second == "1")
-                        {
-                            return true;
-                        }
-                        else if (value_pair->second == "false" || value_pair->second == "FALSE" || value_pair->second == "0")
-                        {
-                            return false;
-                        }
-                        else
-                        {
-                            throw cpptrace::runtime_error(fmt::format("could not convert the profile value {} of key {} to bool type", value_pair->second, value_pair->first));
-                        }
-                    }
-                    else if constexpr(std::is_integral_v<T>)
-                    {
-                        if constexpr(std::is_unsigned_v<T>)
-                        {
-                            auto v = std::stoull(value_pair->second);
-                            if (v > std::numeric_limits<T>::max())
-                            {
-                                throw cpptrace::runtime_error(
-                                    fmt::format("numeric overflow when convert the profile value {} of key to some int type"),
-                                    value_pair->second,
-                                    value_pair->first
-                                );
-                            }
-                            else
-                            {
-                                return static_cast<T>(v);
-                            }
-                        }
-                        else
-                        {
-                            auto v = std::stoll(value_pair->second);
-                            if (v > std::numeric_limits<T>::max() || v < std::numeric_limits<T>::min())
-                            {
-                                throw cpptrace::runtime_error(fmt::format(
-                                    "numeric overflow when convert the profile value {} of key {} to some int type",
-                                    value_pair->second,
-                                    value_pair->first
-                                ));
-                            }
-                            else
-                            {
-                                return static_cast<T>(v);
-                            } 
-                        }
-                    }
-                    else if constexpr(std::is_floating_point_v<T>)
-                    {
-                        auto v = std::stold(value_pair->second);
-                        if (v > std::numeric_limits<T>::max() || v < std::numeric_limits<T>::min())
-                        {
-                            throw cpptrace::runtime_error(fmt::format(
-                                "numeric overflow when convert the profile value {} of key to some float type",
-                                value_pair->second,
-                                value_pair->first
-                            ));
-                        }
-                        else
-                        {
-                            return static_cast<T>(v);
-                        }
-                    }
-                    else
-                    {
-                        static_assert("unsupport profile type");
-                    }
+                    return pair_to_t<T>(value_pair);
                 }
                 else
                 {
                     return default_value;
+                }
+            }
+
+            bool remove_profile(const std::string & key)
+            {
+                auto value_pair = m_profiles.find(key);
+                if (value_pair != m_profiles.end())
+                {
+                    m_profiles.erase(value_pair);
+                    return true;
+                }
+                else
+                {
+                    return false;
+                }
+            }
+
+            template<typename T, typename F>
+            requires requires (F && consumer, const std::string & k, const T & t, MediaProfile * self) { consumer(k, t, self); }
+            bool consume_profile(const std::string & key, F && consumer)
+            {
+                auto value_pair = m_profiles.find(key);
+                if (value_pair != m_profiles.end())
+                {
+                    auto key = value_pair->first;
+                    auto value = pair_to_t<T>(value_pair);
+                    m_profiles.erase(value_pair);
+                    consumer(key, value, this);
+                    return true;
+                }
+                else
+                {
+                    return false;
                 }
             }
         };
