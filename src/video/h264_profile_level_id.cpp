@@ -1,4 +1,6 @@
 #include "cfgo/video/h264_profile_level_id.hpp"
+#include "cfgo/fmt.hpp"
+#include "cpptrace/cpptrace.hpp"
 
 #include <charconv>
 #include <cstdlib>
@@ -66,27 +68,96 @@ namespace cfgo
             const int max_macroblocks_per_second;
             const int max_macroblock_frame_size;
             const H264Level level;
+            /**
+             * Max video bit rate (kbit/s) (VCL) for Baseline, Extended and Main Profiles
+             */
+            const int max_bit_rate_for_bmx;
+
+            /**
+             * Max video bit rate (kbit/s) (VCL) for High Profile
+             */
+            constexpr int max_bit_rate_for_high() const noexcept
+            {
+                return max_bit_rate_for_bmx * 1.25;
+            }
+
+            /**
+             * // Max video bit rate (kbit/s) (VCL) for High 10 Profile
+             */
+            constexpr int max_bit_rate_for_h10() const noexcept
+            {
+                return max_bit_rate_for_bmx * 3;
+            }
+
+            /**
+             * Max video bit rate (kbit/s) (VCL) for High 4:2:2 and High 4:4:4 Predictive Profiles
+             */
+            constexpr int max_bit_rate_for_h422_444() const noexcept
+            {
+                return max_bit_rate_for_bmx * 4;
+            }
+
+            int max_bit_rate_for(int profile) const
+            {
+                switch (profile)
+                {
+                case AV_PROFILE_H264_CONSTRAINED_BASELINE:
+                case AV_PROFILE_H264_BASELINE:
+                case AV_PROFILE_H264_MAIN:
+                case AV_PROFILE_H264_EXTENDED:
+                    return max_bit_rate_for_bmx;
+                case AV_PROFILE_H264_HIGH:
+                    return max_bit_rate_for_high();
+                case AV_PROFILE_H264_HIGH_10:
+                case AV_PROFILE_H264_HIGH_10_INTRA:
+                    return max_bit_rate_for_h10();
+                case AV_PROFILE_H264_HIGH_422:
+                case AV_PROFILE_H264_HIGH_444_PREDICTIVE:
+                case AV_PROFILE_H264_HIGH_422_INTRA:
+                case AV_PROFILE_H264_HIGH_444_INTRA:
+                case AV_PROFILE_H264_CAVLC_444:
+                    return max_bit_rate_for_h422_444();
+                default:
+                    throw cpptrace::invalid_argument(fmt::format("unknown profile {}", profile));
+                }
+            }
         };
         // This is from ITU-T H.264 (02/2016) Table A-1 – Level limits.
         static constexpr LevelConstraint kLevelConstraints[] = {
-            {1485, 99, H264Level::kLevel1},
-            {1485, 99, H264Level::kLevel1_b},
-            {3000, 396, H264Level::kLevel1_1},
-            {6000, 396, H264Level::kLevel1_2},
-            {11880, 396, H264Level::kLevel1_3},
-            {11880, 396, H264Level::kLevel2},
-            {19800, 792, H264Level::kLevel2_1},
-            {20250, 1620, H264Level::kLevel2_2},
-            {40500, 1620, H264Level::kLevel3},
-            {108000, 3600, H264Level::kLevel3_1},
-            {216000, 5120, H264Level::kLevel3_2},
-            {245760, 8192, H264Level::kLevel4},
-            {245760, 8192, H264Level::kLevel4_1},
-            {522240, 8704, H264Level::kLevel4_2},
-            {589824, 22080, H264Level::kLevel5},
-            {983040, 36864, H264Level::kLevel5_1},
-            {2073600, 36864, H264Level::kLevel5_2},
+            { 1485,     99,     H264Level::kLevel1,   64     },
+            { 1485,     99,     H264Level::kLevel1_b, 128    },
+            { 3000,     396,    H264Level::kLevel1_1, 192    },
+            { 6000,     396,    H264Level::kLevel1_2, 384    },
+            { 11880,    396,    H264Level::kLevel1_3, 768    },
+            { 11880,    396,    H264Level::kLevel2,   2000   },
+            { 19800,    792,    H264Level::kLevel2_1, 4000   },
+            { 20250,    1620,   H264Level::kLevel2_2, 4000   },
+            { 40500,    1620,   H264Level::kLevel3,   10000  },
+            { 108000,   3600,   H264Level::kLevel3_1, 14000  },
+            { 216000,   5120,   H264Level::kLevel3_2, 20000  },
+            { 245760,   8192,   H264Level::kLevel4,   20000  },
+            { 245760,   8192,   H264Level::kLevel4_1, 50000  },
+            { 522240,   8704,   H264Level::kLevel4_2, 50000  },
+            { 589824,   22080,  H264Level::kLevel5,   135000 },
+            { 983040,   36864,  H264Level::kLevel5_1, 240000 },
+            { 2073600,  36864,  H264Level::kLevel5_2, 240000 },
+            { 4177920,  139264, H264Level::kLevel6,   240000 },
+            { 8355840,  139264, H264Level::kLevel6_1, 480000 },
+            { 16711680, 139264, H264Level::kLevel6_2, 800000 },
         };
+
+        int H264ProfileLevelId::max_bit_rate() const
+        {
+            for (int i = 0; i < sizeof(kLevelConstraints) / sizeof(kLevelConstraints[0]); i++)
+            {
+                const LevelConstraint &level_constraint = kLevelConstraints[i];
+                if (level_constraint.level == level)
+                {
+                    return level_constraint.max_bit_rate_for(profile);
+                }
+            }
+            throw cpptrace::runtime_error("this is impossible");
+        }
 
         std::optional<H264ProfileLevelId> parse_h264_profile_level_id(std::string_view s)
         {
@@ -133,6 +204,9 @@ namespace cfgo
                 case H264Level::kLevel5:
                 case H264Level::kLevel5_1:
                 case H264Level::kLevel5_2:
+                case H264Level::kLevel6:
+                case H264Level::kLevel6_1:
+                case H264Level::kLevel6_2:
                     level = level_casted;
                     break;
                 default:

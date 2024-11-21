@@ -34,7 +34,10 @@ namespace cfgo
             kLevel4_2 = 42,
             kLevel5 = 50,
             kLevel5_1 = 51,
-            kLevel5_2 = 52
+            kLevel5_2 = 52,
+            kLevel6 = 60,
+            kLevel6_1 = 61,
+            kLevel6_2 = 62
         };
 
         struct H264ProfileLevelId
@@ -43,6 +46,8 @@ namespace cfgo
                 : profile(profile), level(level) {}
             int profile;
             H264Level level;
+
+            int max_bit_rate() const;
         };
 
         std::optional<H264ProfileLevelId> parse_h264_profile_level_id(std::string_view str);

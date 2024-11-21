@@ -69,7 +69,6 @@ set(MY_PUBLIC_HEADERS
     "${H_PUBLIC_PATH}/pattern.hpp"
     "${H_PUBLIC_PATH}/ring_buffer.hpp"
     "${H_PUBLIC_PATH}/signal.hpp"
-    "${H_PUBLIC_PATH}/sink.hpp"
     "${H_PUBLIC_PATH}/smart_list.hpp"
     "${H_PUBLIC_PATH}/spd_helper.hpp"
     "${H_PUBLIC_PATH}/str_helper.hpp"
@@ -117,7 +116,6 @@ set(MY_VIDEO_PUBLIC_HEADERS
     "${H_PUBLIC_PATH}/video/media_source.hpp"
     "${H_PUBLIC_PATH}/video/muxer.hpp"
     "${H_PUBLIC_PATH}/video/opt.hpp"
-    "${H_PUBLIC_PATH}/video/types.hpp"
 )
 set(H_PRIVATE "${SRC_PATH}/private")
 set(H_PRIVATE_PATH "${H_PRIVATE}/cfgo")
@@ -154,7 +152,6 @@ set(MY_SOURCES
     "${SRC_PATH}/ring_buffer.cpp"
     "${SRC_PATH}/rtc_helper.cpp"
     "${SRC_PATH}/signal.cpp"
-    "${SRC_PATH}/sink.cpp"
     "${SRC_PATH}/smart_list.cpp"
     "${SRC_PATH}/str_helper.cpp"
     "${SRC_PATH}/subscribation.cpp"

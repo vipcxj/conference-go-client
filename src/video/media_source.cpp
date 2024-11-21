@@ -213,6 +213,7 @@ namespace cfgo
                 unique_smart_node<impl::MediaReceiver> m_impl;
 
                 MediaReceiverWrapper(impl_t && impl): m_impl(std::move(impl)) {}
+                ~MediaReceiverWrapper() = default;
                 auto request_pkt(close_chan closer) -> asio::awaitable<media_packet_ptr_t> override
                 {
                     return m_impl->request_pkt(std::move(closer));
@@ -1041,6 +1042,9 @@ namespace cfgo
                 return m_streams[stream_id].sub_stream(codec).create_receiver();
             }
         } // namespace impl
+
+        MediaReceiver::~MediaReceiver() {}
+        MediaSource::~MediaSource() {}
 
         media_source_ptr_t make_media_source(asio::any_io_executor executor, MediaSourceType source_type, const std::string & url_or_name, media_source_mode_t mode, close_chan closer)
         {

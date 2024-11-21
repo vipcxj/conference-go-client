@@ -1,5 +1,5 @@
-#ifndef _CFGO_IMPL_MESSAGE_HPP_
-#define _CFGO_IMPL_MESSAGE_HPP_
+#ifndef _CFGO_MESSAGE_HPP_
+#define _CFGO_MESSAGE_HPP_
 
 #include "cfgo/pattern.hpp"
 #include <memory>

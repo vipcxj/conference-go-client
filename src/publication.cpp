@@ -13,6 +13,16 @@
 #include "boost/uuid/uuid_io.hpp"
 #include "boost/uuid/uuid_generators.hpp"
 
+template<>
+struct std::hash<const AVCodecID>
+{
+    std::size_t operator()(const AVCodecID & k) const
+    {
+        using std::hash;
+        return hash<int>()(static_cast<int>(k));
+    }
+};
+
 namespace cfgo
 {
     namespace impl

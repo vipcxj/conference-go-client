@@ -21,6 +21,9 @@ namespace cfgo
             std::same_as<T, char16_t> ||
             std::same_as<T, char32_t>;
 
+        template <typename T>
+        concept AlwaysFalse = std::false_type::value;
+
         template<typename T>
         T pair_to_t(const std::map<std::string, std::string>::const_iterator & value_pair)
         {
@@ -30,7 +33,7 @@ namespace cfgo
             }
             else if constexpr(Character<T>)
             {
-                static_assert(false, "unsupport profile type");
+                static_assert(AlwaysFalse<T>, "unsupport profile type");
             }
             else if constexpr(std::same_as<T, bool>)
             {
@@ -100,7 +103,7 @@ namespace cfgo
             }
             else
             {
-                static_assert(false, "unsupport profile type");
+                static_assert(AlwaysFalse<T>, "unsupport profile type ");
             }
         }
 
