@@ -111,10 +111,6 @@ namespace cfgo
             assert(rtc_track_ptr);
             init_track(this, rtc_track_ptr);
             m_track = std::move(rtc_track_ptr);
-            if (m_meta)
-            {
-                m_inited = true;
-            }
         }
 
         void Track::prepare_meta(const msg::Track & meta)
@@ -124,10 +120,6 @@ namespace cfgo
                 throw cpptrace::runtime_error("The meta already be prepared");
             }
             m_meta = meta;
-            if (m_track)
-            {
-                m_inited = true;
-            }
         }
 
         #ifdef CFGO_SUPPORT_GSTREAMER
@@ -300,9 +292,9 @@ namespace cfgo
 
         auto Track::await_open_or_close(close_chan closer) -> asio::awaitable<bool>
         {
-            if (!m_inited)
+            if (!m_track)
             {
-                throw cpptrace::logic_error("Before call await_open_or_close, call prepare_track at first.");
+                throw cpptrace::logic_error("Before call await_open_or_close, make sure the rtc track is set.");
             }
             if (m_opened || m_closed)
             {
@@ -339,9 +331,9 @@ namespace cfgo
 
         auto Track::await_first_msg_received(cfgo::Track::MsgType msg_type, close_chan closer) -> asio::awaitable<bool>
         {
-            if (!m_inited)
+            if (!m_track)
             {
-                throw cpptrace::logic_error("Before call await_open_or_close, call prepare_track at first.");
+                throw cpptrace::logic_error("Before call await_first_msg_received, make sure the rtc track is set.");
             }
             _check_receivable(msg_type);
             if (_is_first_msg_received(msg_type))
@@ -364,9 +356,9 @@ namespace cfgo
 
         auto Track::await_msg(cfgo::Track::MsgType msg_type, close_chan close_ch) -> asio::awaitable<cfgo::Track::MsgPtr>
         {
-            if (!m_inited)
+            if (!m_track)
             {
-                throw cpptrace::logic_error("Before call await_msg, call prepare_track at first.");
+                throw cpptrace::logic_error("Before call await_msg, make sure the rtc track is set.");
             }
             _check_receivable(msg_type);
             do
@@ -463,9 +455,9 @@ namespace cfgo
         }
 
         cfgo::Track::MsgPtr Track::receive_msg(cfgo::Track::MsgType msg_type) {
-            if (!m_inited)
+            if (!m_track)
             {
-                throw cpptrace::logic_error("Before call receive_msg, call prepare_track at first.");
+                throw cpptrace::logic_error("Before call receive_msg,  make sure the rtc track is set.");
             }
             _check_receivable(msg_type);
             std::lock_guard g(m_lock);

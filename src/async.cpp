@@ -284,7 +284,7 @@ namespace cfgo
 
             void depend_on(CloseSignalState::Ptr closer)
             {
-                if (closer)
+                if (closer && this != closer.get())
                 {
                     bool need_close = false;
                     {
@@ -907,12 +907,12 @@ namespace cfgo
         }
     }
 
-    auto CloseSignal::await() const -> asio::awaitable<bool>
+    auto CloseSignal::await(close_chan closer) const -> asio::awaitable<bool>
     {
         co_await init_timer();
         if (auto waiter = get_waiter())
         {
-            co_await waiter->read();
+            co_await chan_read<void>(*waiter, closer);
         }
         co_return !is_timeout();
     }

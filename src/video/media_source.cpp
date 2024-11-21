@@ -217,6 +217,10 @@ namespace cfgo
                 {
                     return m_impl->request_pkt(std::move(closer));
                 }
+                void request_key_frame() override
+                {
+                    m_impl->request_key_frame();
+                }
             };
 
             struct MediaStream;
@@ -240,9 +244,6 @@ namespace cfgo
                 AVStream * m_av_stream = nullptr;
                 AVCodecContext * m_enc_ctx = nullptr;
                 AVIOContext * m_io = nullptr;
-                /* pts of the next frame that will be generated */
-                int64_t m_next_pts = 0;
-                int m_samples_count = 0;
 
                 AVFrame * m_tmp_frame = nullptr;
                 AVPacket * m_tmp_pkt = nullptr;
@@ -277,6 +278,15 @@ namespace cfgo
                     avformat_free_context(m_fmt_ctx);
                 }
 
+                AVFormatContext * src_fmt_ctx() noexcept;
+                const AVFormatContext * src_fmt_ctx() const noexcept;
+
+                AVCodecContext * src_codec_ctx() noexcept;
+                const AVCodecContext * src_codec_ctx() const noexcept;
+
+                AVStream * src_av_stream() noexcept;
+                const AVStream * src_av_stream() const noexcept;
+
                 void setup_stream(const AVFrame * frame);
 
                 auto create_receiver() -> media_receiver_ptr_t;
@@ -302,7 +312,6 @@ namespace cfgo
                 int m_last_width = -1, m_last_height = -1;
                 SwsContext * m_sws_ctx = nullptr;
                 int m_last_sample_rate = -1;
-                int m_samples_count = 0;
                 SwrContext * m_swr_ctx = nullptr;
                 std::unique_ptr<std::mutex> m_sub_mux;
                 std::unordered_map<media_codec_and_profile_t, MediaSubStream> m_sub_streams;
@@ -449,7 +458,7 @@ namespace cfgo
                 });
                 if (!strcmp(m_fmt_ctx->oformat->name, "rtp"))
                 {
-                    m_fmt_ctx->packet_size = 1472;
+                    m_fmt_ctx->packet_size = 1400;
                 }
                 {
                     size_t buffer_size = 4096;
@@ -495,6 +504,36 @@ namespace cfgo
                 cleaner.success();
             }
 
+            AVFormatContext * MediaSubStream::src_fmt_ctx() noexcept
+            {
+                return m_stream->m_source->m_fmt_ctx;
+            }
+
+            const AVFormatContext * MediaSubStream::src_fmt_ctx() const noexcept
+            {
+                return m_stream->m_source->m_fmt_ctx;
+            }
+
+            AVCodecContext * MediaSubStream::src_codec_ctx() noexcept
+            {
+                return m_stream->m_dec_ctx;
+            }
+
+            const AVCodecContext * MediaSubStream::src_codec_ctx() const noexcept
+            {
+                return m_stream->m_dec_ctx;
+            }
+
+            AVStream * MediaSubStream::src_av_stream() noexcept
+            {
+                return m_stream->m_stream;
+            }
+
+            const AVStream * MediaSubStream::src_av_stream() const noexcept
+            {
+                return m_stream->m_stream;
+            }
+
             void MediaSubStream::setup_stream(const AVFrame * frame)
             {
                 if (m_has_setup)
@@ -521,8 +560,8 @@ namespace cfgo
                     const enum AVSampleFormat * sample_fmts = nullptr;
                     auto ret = avcodec_get_supported_config(m_enc_ctx, nullptr, AVCodecConfig::AV_CODEC_CONFIG_SAMPLE_FORMAT, 0, (const void **) &sample_fmts, nullptr);
                     m_enc_ctx->sample_fmt = (ret >= 0 && sample_fmts) ? sample_fmts[0] : AV_SAMPLE_FMT_FLTP;
-                    m_enc_ctx->bit_rate = m_codec_and_profile.profile.get_profile<int64_t>("bit_rate", m_stream->m_dec_ctx->bit_rate > 0 ? m_stream->m_dec_ctx->bit_rate : 64000);
-                    m_enc_ctx->sample_rate = m_codec_and_profile.profile.get_profile<int>("sample_rate", m_stream->m_dec_ctx->sample_rate > 0 ? m_stream->m_dec_ctx->sample_rate : 48000);
+                    m_enc_ctx->bit_rate = m_codec_and_profile.profile.get_profile<int64_t>("bit_rate", src_codec_ctx()->bit_rate > 0 ? src_codec_ctx()->bit_rate : 64000);
+                    m_enc_ctx->sample_rate = m_codec_and_profile.profile.get_profile<int>("sample_rate", src_codec_ctx()->sample_rate > 0 ? src_codec_ctx()->sample_rate : 48000);
                     const int * supported_samplerates = nullptr;
                     ret = avcodec_get_supported_config(m_enc_ctx, nullptr, AVCodecConfig::AV_CODEC_CONFIG_SAMPLE_RATE, 0, (const void **) &supported_samplerates, nullptr);
                     if (ret >= 0 && supported_samplerates)
@@ -575,7 +614,7 @@ namespace cfgo
                 case AVMEDIA_TYPE_VIDEO:
                 {
                     m_enc_ctx->codec_id = codec->id;
-                    m_enc_ctx->bit_rate = m_codec_and_profile.profile.get_profile<int64_t>("bit_rate", m_stream->m_dec_ctx->bit_rate > 0 ? m_stream->m_dec_ctx->bit_rate : 400000);
+                    m_enc_ctx->bit_rate = m_codec_and_profile.profile.get_profile<int64_t>("bit_rate", src_codec_ctx()->bit_rate > 0 ? src_codec_ctx()->bit_rate : 400000);
                     /* Resolution must be a multiple of two. */
                     m_enc_ctx->width = m_codec_and_profile.profile.get_profile<int>("width", frame->width);
                     m_enc_ctx->height = m_codec_and_profile.profile.get_profile<int>("height", frame->height);
@@ -593,13 +632,13 @@ namespace cfgo
                         }
                         else
                         {
-                            if (m_stream->m_dec_ctx->time_base.num > 0)
+                            if (src_codec_ctx()->time_base.num > 0)
                             {
-                                m_av_stream->time_base = m_stream->m_dec_ctx->time_base;
+                                m_av_stream->time_base = src_codec_ctx()->time_base;
                             }
                             else
                             {
-                                auto frame_rate = av_guess_frame_rate(m_stream->m_source->m_fmt_ctx, m_stream->m_stream, nullptr);
+                                auto frame_rate = av_guess_frame_rate(src_fmt_ctx(), src_av_stream(), nullptr);
                                 if (frame_rate.num > 0)
                                 {
                                     m_av_stream->time_base = {frame_rate.den, frame_rate.num};
@@ -745,6 +784,9 @@ namespace cfgo
                             AVFrame * raw_frame = frame.get();
                             if (frame)
                             {
+                                auto src_pts = raw_frame->pts;
+                                auto src_dur = raw_frame->duration;
+                                auto & src_tb = self->src_av_stream()->time_base;
                                 self->setup_stream(raw_frame);
                                 if (self->m_sws_ctx)
                                 {
@@ -770,20 +812,10 @@ namespace cfgo
                                         raw_frame->data, dst_nb_samples,
                                         (const uint8_t **)raw_frame->data, raw_frame->nb_samples
                                     ), "could not convert audio frame, ");
-
-                                    raw_frame->pts = av_rescale_q(self->m_samples_count, AVRational {1, self->m_enc_ctx->sample_rate}, self->m_enc_ctx->time_base);
-                                    self->m_samples_count += dst_nb_samples;
                                 }
                                 check_av_err(av_frame_make_writable(raw_frame), "could not make frame writable, ");
-                                raw_frame->pts = self->m_next_pts;
-                                if (self->m_enc_ctx->codec->type == AVMEDIA_TYPE_AUDIO)
-                                {
-                                    self->m_next_pts += raw_frame->nb_samples;
-                                }
-                                else
-                                {
-                                    ++ self->m_next_pts;
-                                }
+                                raw_frame->pts = av_rescale_q(src_pts, src_tb, self->m_av_stream->time_base);
+                                raw_frame->duration = av_rescale_q(src_dur, src_tb, self->m_av_stream->time_base);
                                 if (self->m_requesting_key_frame.exchange(false))
                                 {
                                     raw_frame->pict_type = AVPictureType::AV_PICTURE_TYPE_I;

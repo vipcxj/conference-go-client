@@ -1098,6 +1098,7 @@ namespace cfgo
             auto res = co_await m_raw_signal->send_msg(closer, m_raw_signal->create_msg("publish", std::move(js_msg), true));
             msg::PublishResultMessage res_msg {};
             nlohmann::from_json(res, res_msg);
+            lazy_pub_id->init(res_msg.id);
             co_return publish_handle { std::move(cb_id), std::move(res_ch), self->m_raw_signal };
         }
 
@@ -1208,7 +1209,7 @@ namespace cfgo
                             }
                             catch(const cfgo::CancelError & e)
                             {
-                                if (e.is_timeout())
+                                if (!closer.is_timeout() && e.is_timeout())
                                 {
                                     timeout = true;
                                 }
@@ -1220,7 +1221,7 @@ namespace cfgo
                             }                          
                             if (timeout || !co_await chan_read<void>(pong_ch, timeout_closer))
                             {
-                                if (timeout_closer.is_timeout())
+                                if (!closer.is_timeout() && timeout_closer.is_timeout())
                                 {
                                     kaCtx.timeout_num ++;
                                     kaCtx.timeout_dur += std::chrono::high_resolution_clock::now() - start_pt;
@@ -1290,7 +1291,7 @@ namespace cfgo
                             }
                             else
                             {
-                                if (timeout_closer.is_timeout())
+                                if (!closer.is_timeout() && timeout_closer.is_timeout())
                                 {
                                     kaCtx.timeout_num ++;
                                     kaCtx.timeout_dur += std::chrono::high_resolution_clock::now() - start_pt;

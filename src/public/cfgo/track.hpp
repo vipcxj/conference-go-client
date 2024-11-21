@@ -171,6 +171,10 @@ namespace cfgo
         {
             return (bool) impl();
         }
+        bool operator==(const Track & rhs) const
+        {
+            return impl() == rhs.impl();
+        }
         void prepare_track(
             std::shared_ptr<rtc::Track> rtc_track_ptr
             #ifdef CFGO_SUPPORT_GSTREAMER
@@ -215,7 +219,7 @@ namespace cfgo
         /**
          * send msg, wait until success or not. return wether success or not. if track is closed or the closer is closed, return false as well.
          */
-        auto await_send_msg(cfgo::Track::MsgSharedPtr msg_ptr, close_chan closer) -> asio::awaitable<bool>;
+        auto await_send_msg(cfgo::Track::MsgSharedPtr msg_ptr, close_chan closer) const -> asio::awaitable<bool>;
 
         std::uint64_t get_rtp_drops_bytes() const noexcept;
         std::uint32_t get_rtp_drops_packets() const noexcept;

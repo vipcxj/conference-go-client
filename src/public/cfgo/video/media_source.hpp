@@ -66,6 +66,7 @@ namespace cfgo
         {
         public:
             virtual auto request_pkt(close_chan closer) -> asio::awaitable<media_packet_ptr_t> = 0;
+            virtual void request_key_frame() = 0;
         };
 
         using media_receiver_t = MediaReceiver;

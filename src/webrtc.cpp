@@ -126,6 +126,7 @@ namespace cfgo
                 box->peer.onStateChange([box, weak_self = self->weak_from_this(), peer_closer](rtc::PeerConnection::State state) {
                     if (auto self = weak_self.lock())
                     {
+                        CFGO_SELF_DEBUG("peer state change to {}", peer_state_to_str(state));
                         if (state == rtc::PeerConnection::State::Closed || state == rtc::PeerConnection::State::Failed)
                         {
                             box->process_peer_closers(std::format("peer state changed to {}", peer_state_to_str(state)));
@@ -386,7 +387,7 @@ namespace cfgo
             auto pub_handle = co_await self->m_signal->publish(closer, pub);
             int sdp_id = self->next_sdp_msg_id();
             co_await self->negotiate(closer, box, sdp_id, true);
-            pub.start();
+            co_await pub.start();
             co_await self->m_signal->wait_published(closer, std::move(pub_handle));
         }
     } // namespace impl

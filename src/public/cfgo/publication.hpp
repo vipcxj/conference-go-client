@@ -19,15 +19,21 @@ namespace cfgo
     
     class Publication : public ImplBy<impl::Publication>
     {
-        
-    private:
-        /* data */
     public:
         Publication(video::media_source_ptr_t media_source, Labels labels);
+        int & width();
+        int width() const;
+        int & height();
+        int height() const;
+        int & fps();
+        int fps() const;
+        int64_t & bit_rate();
+        int64_t bit_rate() const;
         void setup(rtc::PeerConnection & peer) const;
         bool bind(const msg::Track & meta) const;
         bool ready() const noexcept;
-        void start() const;
+        auto start() const -> asio::awaitable<void>;
+        auto wait_closed(close_chan closer) const -> asio::awaitable<void>;
         PubMsgPtr create_publish_msg() const;
     };
 

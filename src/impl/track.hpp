@@ -41,7 +41,6 @@ namespace cfgo
             std::shared_ptr<rtc::Track> m_track;
             std::shared_ptr<TaskQueue> m_task_queue;
 
-            bool m_inited {false};
             Logger m_logger;
             mutex m_lock;
             MsgBuffer m_rtp_cache;

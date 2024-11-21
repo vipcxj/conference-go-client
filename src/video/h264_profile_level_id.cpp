@@ -95,9 +95,9 @@ namespace cfgo
                 return std::nullopt;
             uint32_t profile_level_id_numeric;
 #if __cpp_lib_to_chars >= 202306L
-            if (std::from_chars(s.data(), s.data() + s.size(), profile_level_id_numeric))
+            if (std::from_chars(s.data(), s.data() + s.size(), profile_level_id_numeric, 16))
 #else
-            if (std::from_chars(s.data(), s.data() + s.size(), profile_level_id_numeric).ec == std::errc{})
+            if (std::from_chars(s.data(), s.data() + s.size(), profile_level_id_numeric, 16).ec == std::errc{})
 #endif
             {
                 if (profile_level_id_numeric == 0)

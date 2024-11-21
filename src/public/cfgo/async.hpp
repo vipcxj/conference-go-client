@@ -108,7 +108,7 @@ namespace cfgo
         /**
          * Async wait until closed or timeout. Return false if timeout.
         */
-        [[nodiscard]] auto await() const -> asio::awaitable<bool>;
+        [[nodiscard]] auto await(close_chan closer = nullptr) const -> asio::awaitable<bool>;
         void set_timeout(duration_t dur, std::string reason = CLOSER_DEFAULT_TIMEOUT_REASON, std::source_location src_loc = std::source_location::current()) const;
         duration_t get_timeout() const noexcept;
         [[nodiscard]] CloseSignal create_child(
