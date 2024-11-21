@@ -13,6 +13,9 @@ extern "C" {
 #include "cfgo/smart_list.hpp"
 #include "cfgo/video/media_profile.hpp"
 
+// must using this header to include rtc::binary, or lnk1169 happens on windows.
+#include "rtc/track.hpp"
+
 namespace cfgo
 {
     namespace video
@@ -60,7 +63,9 @@ namespace cfgo
         using raw_buffer_el_t = const uint8_t;
 #endif
         using raw_buffer_t = raw_buffer_el_t *;
-        using media_packet_t = std::vector<std::byte>;
+        // using media_packet_t = std::vector<std::byte>;
+        // using media_packet_ptr_t = std::shared_ptr<media_packet_t>;
+        using media_packet_t = rtc::binary;
         using media_packet_ptr_t = std::shared_ptr<media_packet_t>;
 
         class MediaReceiver

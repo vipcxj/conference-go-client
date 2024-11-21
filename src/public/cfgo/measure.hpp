@@ -12,6 +12,7 @@
 #include <utility>
 
 #include "cfgo/str_helper.hpp"
+#include "cfgo/fmt.hpp"
 
 namespace cfgo
 {
