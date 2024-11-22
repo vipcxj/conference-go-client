@@ -2,6 +2,7 @@
 #include "cfgo/video/camera.hpp"
 #include "cfgo/video/err.hpp"
 #include "cfgo/video/opt.hpp"
+#include "cfgo/video/h264_profile_level_id.hpp"
 #include "cfgo/defer.hpp"
 #include "cfgo/furcate_stream.hpp"
 
@@ -52,6 +53,33 @@ namespace cfgo
         namespace impl
         {
             using namespace std::chrono_literals;
+
+            void normal_resolution_size(int & width, int & height)
+            {
+                width /= 32;
+                width *= 32;
+                height /= 32;
+                height *= 32;
+            }
+
+            void calc_resolution(int src_width, int src_height, int & tgt_width, int & tgt_height)
+            {
+                assert(src_width > 0 && src_height > 0);
+                if (tgt_width == 0 && tgt_height > 0)
+                {
+                    tgt_width = tgt_height / src_height * src_width;
+                }
+                else if (tgt_width > 0 && tgt_height == 0)
+                {
+                    tgt_height = tgt_width / src_width * src_height;
+                }
+                else
+                {
+                    tgt_width = src_width;
+                    tgt_height = src_height;
+                }
+                normal_resolution_size(tgt_width, tgt_height);
+            }
 
             static AVFrame *alloc_audio_frame(
                 enum AVSampleFormat sample_fmt,
@@ -617,8 +645,9 @@ namespace cfgo
                     m_enc_ctx->codec_id = codec->id;
                     m_enc_ctx->bit_rate = m_codec_and_profile.profile.get_profile<int64_t>("bit_rate", src_codec_ctx()->bit_rate > 0 ? src_codec_ctx()->bit_rate : 400000);
                     /* Resolution must be a multiple of two. */
-                    m_enc_ctx->width = m_codec_and_profile.profile.get_profile<int>("width", frame->width);
-                    m_enc_ctx->height = m_codec_and_profile.profile.get_profile<int>("height", frame->height);
+                    m_enc_ctx->width = m_codec_and_profile.profile.get_profile<int>("width", 0);
+                    m_enc_ctx->height = m_codec_and_profile.profile.get_profile<int>("height", 0);
+                    calc_resolution(frame->width, frame->height, m_enc_ctx->width, m_enc_ctx->height);
                     auto time_scale = m_codec_and_profile.profile.get_profile<int>("time_scale", 0);
                     if (time_scale > 0)
                     {
@@ -653,7 +682,7 @@ namespace cfgo
                     }
                     m_enc_ctx->time_base = m_av_stream->time_base;
 
-                    m_enc_ctx->gop_size = m_codec_and_profile.profile.get_profile<int>("gop_size", 12); /* emit one intra frame every twelve frames at most */
+                    m_enc_ctx->gop_size = m_codec_and_profile.profile.get_profile<int>("gop_size", 50); /* emit one intra frame every twelve frames at most */
                     const enum AVPixelFormat * pix_fmts = nullptr;
                     auto ret = avcodec_get_supported_config(m_enc_ctx, nullptr, AVCodecConfig::AV_CODEC_CONFIG_PIX_FORMAT, 0, (const void **) &pix_fmts, nullptr);
                     if (ret >= 0 && pix_fmts)
@@ -694,6 +723,7 @@ namespace cfgo
                         if (level != FF_LEVEL_UNKNOWN)
                         {
                             m_enc_ctx->level = level;
+                            h264_max_resolution((video::H264Level) level, m_enc_ctx->width, m_enc_ctx->height);
                         }
                         auto profile = m_codec_and_profile.profile.get_profile("h264_profile", AV_PROFILE_UNKNOWN);
                         if (profile != AV_PROFILE_UNKNOWN)

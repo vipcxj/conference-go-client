@@ -9,6 +9,7 @@ extern "C"
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace cfgo
 {
@@ -47,11 +48,12 @@ namespace cfgo
             int profile;
             H264Level level;
 
-            int max_bit_rate() const;
+            int64_t max_bit_rate() const noexcept;
         };
 
         std::optional<H264ProfileLevelId> parse_h264_profile_level_id(std::string_view str);
         std::optional<H264Level> h264_supported_level(int max_frame_pixel_count, float max_fps);
+        void h264_max_resolution(H264Level level, int & width, int & height);
         std::optional<std::string> h264_profile_level_id_to_string(const H264ProfileLevelId &profile_level_id);
     } // namespace video
 } // namespace cfgo

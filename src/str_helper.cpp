@@ -32,4 +32,18 @@ namespace cfgo
 
         return result;
     }
+
+    void str_replace_all(std::string & str, std::string_view from, std::string_view to)
+    {
+        if (from.empty())
+        {
+            return;
+        }
+        std::size_t start_pos = 0;
+        while ((start_pos = str.find(from, start_pos)) != std::string::npos)
+        {
+            str.replace(start_pos, from.length(), to);
+            start_pos += to.length();
+        }
+    }
 } // namespace cfgo

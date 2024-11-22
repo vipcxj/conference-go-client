@@ -86,9 +86,9 @@ int main()
         };
         cfgo::Client client(conf, io_ctx, closer);
         cfgo::Publication pub(media_source, {{"key", "123"}});
-        pub.width() = 800;
-        pub.height() = 600;
-        pub.bit_rate() = 108000;
+        // pub.width() = 800;
+        // pub.height() = 600;
+        // pub.bit_rate() = 108000;
         try
         {
             co_await client.publish(pub, closer);

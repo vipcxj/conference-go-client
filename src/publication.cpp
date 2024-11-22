@@ -27,6 +27,33 @@ namespace cfgo
 {
     namespace impl
     {
+        const int g_signaling_media_id_length = 16;
+        const char g_signaling_media_id_valid_char[] =
+            "0123456789"
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+            "abcdefghijklmnopqrstuvwxyz";
+
+        /*
+        * Sets the maximum size for a video fragment. Effective range is
+        * 576-1470, with a lower value equating to more packets created,
+        * but also better network compatability.
+        */
+        static uint16_t MAX_VIDEO_FRAGMENT_SIZE = 1400;
+
+        std::string gen_signaling_media_id(std::mt19937 & gen)
+        {
+            std::string res;
+            res.reserve(g_signaling_media_id_length);
+            std::uniform_int_distribution<uint32_t> distrib(0, sizeof(g_signaling_media_id_valid_char) - 1);
+            for (int i = 0; i < g_signaling_media_id_length; ++i) {
+                res += g_signaling_media_id_valid_char[distrib(gen)];
+            }
+            return res;
+        }
+
+        const char * g_audio_mid = "0";
+        const char * g_video_mid = "1";
+
         struct SupportedCodec {
             int order;
             AVCodecID codec_id;
@@ -47,7 +74,6 @@ namespace cfgo
         const std::unordered_map<std::string, const AVCodecID> g_name_to_codec_id = {
             {"VP8", AV_CODEC_ID_VP8},
             {"H264", AV_CODEC_ID_H264},
-            {"AV1", AV_CODEC_ID_AV1},
             {"VP9", AV_CODEC_ID_VP9},
             {"opus", AV_CODEC_ID_OPUS},
             {"PCMU", AV_CODEC_ID_PCM_MULAW},
@@ -60,9 +86,8 @@ namespace cfgo
             {102, { .order = 3, .codec_id = AV_CODEC_ID_H264, .profile = "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=4d001f" }},
             {104, { .order = 4, .codec_id = AV_CODEC_ID_H264, .profile = "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=64001f" }},
             {106, { .order = 5, .codec_id = AV_CODEC_ID_VP8, .profile = "" }},
-            {108, { .order = 6, .codec_id = AV_CODEC_ID_AV1, .profile = "" }},
-            {110, { .order = 7, .codec_id = AV_CODEC_ID_VP9, .profile = "profile-id=0" }},
-            {112, { .order = 8, .codec_id = AV_CODEC_ID_VP9, .profile = "profile-id=2" }},
+            {108, { .order = 7, .codec_id = AV_CODEC_ID_VP9, .profile = "profile-id=0" }},
+            {110, { .order = 8, .codec_id = AV_CODEC_ID_VP9, .profile = "profile-id=2" }},
         };
         const std::map<int, SupportedCodec> g_supported_audio_codecs = {
             {111, { .order = 1, .codec_id = AV_CODEC_ID_OPUS, .profile = "" }},
@@ -70,9 +95,30 @@ namespace cfgo
             {8,   { .order = 3, .codec_id = AV_CODEC_ID_PCM_ALAW, .profile = "" }},
         };
 
-        rtc::Description::Video create_video(std::string mid, uint32_t ssrc)
+        std::shared_ptr<rtc::RtpPacketizer> get_rtp_packetizer_for(AVCodecID codec, uint32_t ssrc, const std::string & cname, int pt, int clock_rate, int pkg_size)
         {
-            auto video = rtc::Description::Video(std::move(mid));
+            auto rtp_config = std::make_shared<rtc::RtpPacketizationConfig>(ssrc, cname, pt, clock_rate);
+            switch (codec)
+            {
+            case AV_CODEC_ID_H264:
+                return std::make_shared<rtc::H264RtpPacketizer>(rtc::H264RtpPacketizer::Separator::StartSequence, rtp_config, pkg_size);
+            case AV_CODEC_ID_H265:
+                return std::make_shared<rtc::H265RtpPacketizer>(rtc::H265RtpPacketizer::Separator::StartSequence, rtp_config, pkg_size);
+            case AV_CODEC_ID_AV1:
+                return std::make_shared<rtc::AV1RtpPacketizer>(rtc::AV1RtpPacketizer::Packetization::TemporalUnit, rtp_config, pkg_size);
+            case AV_CODEC_ID_OPUS:
+            case AV_CODEC_ID_AAC:
+            case AV_CODEC_ID_PCM_MULAW:
+            case AV_CODEC_ID_PCM_ALAW:
+                return std::make_shared<rtc::RtpPacketizer>(rtp_config);
+            default:
+                return nullptr;
+            }
+        }
+
+        rtc::Description::Video create_video(std::string stream_id, std::string cname, uint32_t ssrc)
+        {
+            auto video = rtc::Description::Video(g_video_mid);
             std::vector<std::pair<int, SupportedCodec>> video_codecs(g_supported_video_codecs.begin(), g_supported_video_codecs.end());
             std::sort(video_codecs.begin(), video_codecs.end(), [] (const auto & lhs, const auto & rhs) {
                 return lhs.second.order < rhs.second.order;
@@ -89,13 +135,14 @@ namespace cfgo
                     video.addVideoCodec(pt, g_codec_id_to_name.at(codec.codec_id), codec.profile);
                 }
             }
-            video.addSSRC(ssrc, boost::uuids::to_string(boost::uuids::random_generator()()));
+            auto track_id = stream_id + "-video";
+            video.addSSRC(ssrc, std::move(cname), std::move(stream_id), std::move(track_id));
             return video;
         }
 
-        rtc::Description::Audio create_audio(std::string mid, uint32_t ssrc)
+        rtc::Description::Audio create_audio(std::string stream_id, std::string cname, uint32_t ssrc)
         {
-            auto audio = rtc::Description::Audio(std::move(mid));
+            auto audio = rtc::Description::Audio(g_audio_mid);
             std::vector<std::pair<int, SupportedCodec>> audio_codecs(g_supported_audio_codecs.begin(), g_supported_audio_codecs.end());
             std::sort(audio_codecs.begin(), audio_codecs.end(), [] (const auto & lhs, const auto & rhs) {
                 return lhs.second.order < rhs.second.order;
@@ -111,15 +158,12 @@ namespace cfgo
                     audio.addAudioCodec(pt, g_codec_id_to_name.at(codec.codec_id), codec.profile);
                 }
             }
-            audio.addSSRC(ssrc, boost::uuids::to_string(boost::uuids::random_generator()()));
+            auto track_id = stream_id + "-audio";
+            audio.addSSRC(ssrc, std::move(cname), std::move(stream_id), std::move(track_id));
             return audio;
         }
 
         struct Publication;
-
-        std::shared_ptr<rtc::Track> create_track(std::weak_ptr<Publication> weak_self, rtc::PeerConnection & peer, const rtc::Description::Media & media);
-
-        video::media_codec_and_profile_t parse_track_media(Publication * pub, const rtc::Description::Media & media);
 
         struct Publication : public std::enable_shared_from_this<Publication>
         {
@@ -137,6 +181,7 @@ namespace cfgo
             int m_height = 0;
             int m_fps = 0;
             int64_t m_bit_rate = 0;
+            bool m_prefer_packetizer = true;
             std::exception_ptr m_err;
 
             uint32_t gen_ssrc()
@@ -188,6 +233,10 @@ namespace cfgo
                 return m_bit_rate;
             }
 
+            std::shared_ptr<rtc::Track> create_track(rtc::PeerConnection & peer, const rtc::Description::Media & media);
+
+            video::media_codec_and_profile_t prepare_track(const RtcTrackPtr & track);
+
             void setup(rtc::PeerConnection & peer)
             {
                 if (m_has_setup)
@@ -198,17 +247,16 @@ namespace cfgo
                 for (int i = 0; i < m_src->nb_streams(); i++)
                 {
                     auto media_type = m_src->stream_media_type(i);
-                    auto mid = boost::uuids::to_string(boost::uuids::random_generator()());
                     cfgo::RtcTrackPtr rtc_track_ptr;
                     if (media_type == AVMediaType::AVMEDIA_TYPE_VIDEO)
                     {
-                        auto desc = create_video(mid, gen_ssrc());
-                        rtc_track_ptr = create_track(weak_from_this(), peer, desc);
+                        auto desc = create_video(gen_signaling_media_id(m_gen), gen_signaling_media_id(m_gen), gen_ssrc());
+                        rtc_track_ptr = peer.addTrack(desc);
                     }
                     else if (media_type == AVMediaType::AVMEDIA_TYPE_AUDIO)
                     {
-                        auto desc = create_audio(mid, gen_ssrc());
-                        rtc_track_ptr = create_track(weak_from_this(), peer, desc);
+                        auto desc = create_audio(gen_signaling_media_id(m_gen), gen_signaling_media_id(m_gen), gen_ssrc());
+                        rtc_track_ptr = peer.addTrack(desc);
                     }
                     if (rtc_track_ptr)
                     {
@@ -275,7 +323,7 @@ namespace cfgo
                     if (track)
                     {
                         auto desc = track.track()->description();
-                        auto key = parse_track_media(self.get(), desc);
+                        auto key = prepare_track(track.track());
                         auto receiver = self->m_src->acquire_receiver(i, key);
                         self->m_receivers.at(i) = receiver;
                         asio::co_spawn(executor, log_error([receiver, track, self]() -> asio::awaitable<void> {
@@ -345,31 +393,9 @@ namespace cfgo
             }
         };
 
-        std::shared_ptr<rtc::Track> create_track(std::weak_ptr<Publication> weak_self, rtc::PeerConnection & peer, const rtc::Description::Media & media)
+        video::media_codec_and_profile_t Publication::prepare_track(const RtcTrackPtr & track)
         {
-            auto track = peer.addTrack(media);
-            RtcTrackWPtr weak_track = track;
-            auto pli_handler = std::make_shared<rtc::PliHandler>([weak_self, weak_track]() {
-                if (auto self = weak_self.lock())
-                {
-                    if (auto track = weak_track.lock())
-                    {
-                        auto receiver = self->find_receiver_by_track(track);
-                        if (receiver)
-                        {
-                            receiver->request_key_frame();
-                        }
-                    }
-                }
-            });
-            auto nack_handler = std::make_shared<rtc::RtcpNackResponder>(32);
-            nack_handler->addToChain(pli_handler);
-            track->setMediaHandler(nack_handler);
-            return track;
-        }
-
-        video::media_codec_and_profile_t parse_track_media(Publication * pub, const rtc::Description::Media & media)
-        {
+            auto media = track->description();
             auto pts = media.payloadTypes();
             if (pts.empty())
             {
@@ -383,6 +409,7 @@ namespace cfgo
                 throw cpptrace::runtime_error("no ssrc available in track desc");
             }
             auto ssrc = ssrcs.at(0);
+            auto cname = media.getCNameForSsrc(ssrc).value();
             auto rtp_map = media.rtpMap(pt);
             auto codec_iter = g_name_to_codec_id.find(rtp_map->format);
             if (codec_iter == g_name_to_codec_id.end())
@@ -403,8 +430,9 @@ namespace cfgo
                     auto profile_level_id = video::parse_h264_profile_level_id(value);
                     if (profile_level_id)
                     {
-                        profile->set_profile<int>("h264_level", (int) profile_level_id->level);
-                        profile->set_profile<int>("h264_profile", profile_level_id->profile);
+                        profile->set_profile("h264_level", (int) profile_level_id->level);
+                        profile->set_profile("h264_profile", profile_level_id->profile);
+                        profile->set_profile("bit_rate", profile_level_id->max_bit_rate());
                     }
                     else
                     {
@@ -412,39 +440,71 @@ namespace cfgo
                     }
                 });
             }
-            if (pub->m_width > 0)
+            if (m_width > 0)
             {
-                codec_and_profile.profile.set_profile("width", pub->m_width);
+                codec_and_profile.profile.set_profile("width", m_width);
             }
-            if (pub->m_height > 0)
+            if (m_height > 0)
             {
-                codec_and_profile.profile.set_profile("height", pub->m_height);
+                codec_and_profile.profile.set_profile("height", m_height);
             }
-            if (pub->m_fps > 0)
+            if (m_fps > 0)
             {
-                codec_and_profile.profile.set_profile("fps", pub->m_fps);
+                codec_and_profile.profile.set_profile("fps", m_fps);
             }
-            if (pub->m_bit_rate > 0)
+            if (m_bit_rate > 0)
             {
-                codec_and_profile.profile.set_profile("bit_rate", pub->m_bit_rate);
+                media.setBitrate(m_bit_rate);
+                codec_and_profile.profile.set_profile("bit_rate", m_bit_rate);
             }
-            
-            codec_and_profile.profile.set_profile("payload_type", pt);
-            codec_and_profile.profile.set_profile("ssrc", static_cast<int32_t>(ssrc));
-            if (rtp_map->clockRate > 0)
-            {
-                if (media.type() == "video")
-                {
-                    codec_and_profile.profile.set_profile("time_scale", rtp_map->clockRate);
-                }
-                else if (media.type() == "audio")
-                {
-                    codec_and_profile.profile.set_profile("sample_rate", rtp_map->clockRate);
-                }
-            }
-            if (media.bitrate() > 0)
+            else if (media.bitrate() > 0)
             {
                 codec_and_profile.profile.set_profile("bit_rate", media.bitrate());
+            }
+
+            RtcTrackWPtr weak_track = track;
+            auto pli_handler = std::make_shared<rtc::PliHandler>([weak_self = weak_from_this(), weak_track]() {
+                if (auto self = weak_self.lock())
+                {
+                    if (auto track = weak_track.lock())
+                    {
+                        auto receiver = self->find_receiver_by_track(track);
+                        if (receiver)
+                        {
+                            receiver->request_key_frame();
+                        }
+                    }
+                }
+            });
+            auto nack_handler = std::make_shared<rtc::RtcpNackResponder>(32);
+            std::shared_ptr<rtc::RtpPacketizer> packetizer = get_rtp_packetizer_for(codec_id, ssrc, cname, pt, rtp_map->clockRate, MAX_VIDEO_FRAGMENT_SIZE);
+            bool use_ffmpet_rtp_muxer = !m_prefer_packetizer || !packetizer;
+            if (use_ffmpet_rtp_muxer)
+            {
+                codec_and_profile.profile.set_profile("ofmt", "rtp");
+                codec_and_profile.profile.set_profile("payload_type", pt);
+                codec_and_profile.profile.set_profile("ssrc", static_cast<int32_t>(ssrc));
+                if (rtp_map->clockRate > 0)
+                {
+                    if (media.type() == "video")
+                    {
+                        codec_and_profile.profile.set_profile("time_scale", rtp_map->clockRate);
+                    }
+                    else if (media.type() == "audio")
+                    {
+                        codec_and_profile.profile.set_profile("sample_rate", rtp_map->clockRate);
+                    }
+                }
+                nack_handler->addToChain(pli_handler);
+                track->setMediaHandler(nack_handler);
+            }
+            else
+            {
+                auto sr_reporter = std::make_shared<rtc::RtcpSrReporter>(packetizer->rtpConfig);
+                packetizer->addToChain(sr_reporter);
+                packetizer->addToChain(pli_handler);
+                packetizer->addToChain(nack_handler);
+                track->setMediaHandler(packetizer);
             }
             return codec_and_profile;
         }

@@ -4,6 +4,8 @@
 
 #include <charconv>
 #include <cstdlib>
+#include <cassert>
+#include <cmath>
 
 namespace cfgo
 {
@@ -71,12 +73,12 @@ namespace cfgo
             /**
              * Max video bit rate (kbit/s) (VCL) for Baseline, Extended and Main Profiles
              */
-            const int max_bit_rate_for_bmx;
+            const int64_t max_bit_rate_for_bmx;
 
             /**
              * Max video bit rate (kbit/s) (VCL) for High Profile
              */
-            constexpr int max_bit_rate_for_high() const noexcept
+            constexpr int64_t max_bit_rate_for_high() const noexcept
             {
                 return max_bit_rate_for_bmx * 1.25;
             }
@@ -84,7 +86,7 @@ namespace cfgo
             /**
              * // Max video bit rate (kbit/s) (VCL) for High 10 Profile
              */
-            constexpr int max_bit_rate_for_h10() const noexcept
+            constexpr int64_t max_bit_rate_for_h10() const noexcept
             {
                 return max_bit_rate_for_bmx * 3;
             }
@@ -92,12 +94,15 @@ namespace cfgo
             /**
              * Max video bit rate (kbit/s) (VCL) for High 4:2:2 and High 4:4:4 Predictive Profiles
              */
-            constexpr int max_bit_rate_for_h422_444() const noexcept
+            constexpr int64_t max_bit_rate_for_h422_444() const noexcept
             {
                 return max_bit_rate_for_bmx * 4;
             }
 
-            int max_bit_rate_for(int profile) const
+            /**
+             * Calc max video bit rate (bit/s)
+             */
+            int64_t max_bit_rate_for(int profile) const
             {
                 switch (profile)
                 {
@@ -105,18 +110,18 @@ namespace cfgo
                 case AV_PROFILE_H264_BASELINE:
                 case AV_PROFILE_H264_MAIN:
                 case AV_PROFILE_H264_EXTENDED:
-                    return max_bit_rate_for_bmx;
+                    return max_bit_rate_for_bmx * 1000;
                 case AV_PROFILE_H264_HIGH:
-                    return max_bit_rate_for_high();
+                    return max_bit_rate_for_high() * 1000;
                 case AV_PROFILE_H264_HIGH_10:
                 case AV_PROFILE_H264_HIGH_10_INTRA:
-                    return max_bit_rate_for_h10();
+                    return max_bit_rate_for_h10() * 1000;
                 case AV_PROFILE_H264_HIGH_422:
                 case AV_PROFILE_H264_HIGH_444_PREDICTIVE:
                 case AV_PROFILE_H264_HIGH_422_INTRA:
                 case AV_PROFILE_H264_HIGH_444_INTRA:
                 case AV_PROFILE_H264_CAVLC_444:
-                    return max_bit_rate_for_h422_444();
+                    return max_bit_rate_for_h422_444() * 1000;
                 default:
                     throw cpptrace::invalid_argument(fmt::format("unknown profile {}", profile));
                 }
@@ -146,17 +151,40 @@ namespace cfgo
             { 16711680, 139264, H264Level::kLevel6_2, 800000 },
         };
 
-        int H264ProfileLevelId::max_bit_rate() const
+        const LevelConstraint & get_level_constraint(H264Level level) noexcept
         {
             for (int i = 0; i < sizeof(kLevelConstraints) / sizeof(kLevelConstraints[0]); i++)
             {
                 const LevelConstraint &level_constraint = kLevelConstraints[i];
                 if (level_constraint.level == level)
                 {
-                    return level_constraint.max_bit_rate_for(profile);
+                    return level_constraint;
                 }
             }
-            throw cpptrace::runtime_error("this is impossible");
+            std::terminate();
+        }
+
+        int64_t H264ProfileLevelId::max_bit_rate() const noexcept
+        {
+            auto & constraints = get_level_constraint(level);
+            return constraints.max_bit_rate_for(profile);
+        }
+
+        void h264_max_resolution(H264Level level, int & width, int & height)
+        {
+            assert(width > 0 && height > 0);
+            auto src_width = width, src_height = height;
+            auto & constraints = get_level_constraint(level);
+            auto unit = std::sqrt(constraints.max_macroblock_frame_size * 16 * 16 * 1.0 / (width * height));
+
+            width =  (int) (width * unit);
+            width = std::min(width, src_width);
+            width /= 32;
+            width *= 32;
+            height = (int) (height * unit);
+            height = std::min(height, src_height);
+            height /= 32;
+            height *= 32;
         }
 
         std::optional<H264ProfileLevelId> parse_h264_profile_level_id(std::string_view s)

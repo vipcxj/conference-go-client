@@ -36,6 +36,8 @@ namespace cfgo
 
     std::vector<std::string> str_split(const std::string & s, char delimiter);
 
+    void str_replace_all(std::string & str, std::string_view from, std::string_view to);
+
 } // namespace cfgo
 
 #endif
