@@ -472,7 +472,7 @@ namespace cfgo
                 m_channel(pkt_furcate_stream_t::create(m_strand, 50ms))
             {
                 DEFERS_WHEN_FAIL(cleaner);
-                auto ofmt_str = media_codec.profile.get_profile<std::string>("ofmt", "rtp");
+                auto ofmt_str = media_codec.profile.get_profile<std::string>("ofmt", "data");
                 auto ofmt = av_guess_format(ofmt_str.c_str(), nullptr, nullptr);
                 if (!ofmt)
                 {

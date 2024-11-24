@@ -20,10 +20,6 @@
     "nlohmann-json",
     "libuvc",
     {
-      "name": "opencv",
-      "features": []
-    },
-    {
       "name": "ffmpeg",
       "features": [
         "swscale", "x264", "x265", "nvcodec",

@@ -110,7 +110,6 @@ set(MY_VIDEO_PUBLIC_HEADERS
     "${H_PUBLIC_PATH}/video/cppfix.hpp"
     "${H_PUBLIC_PATH}/video/encoder.hpp"
     "${H_PUBLIC_PATH}/video/err.hpp"
-    "${H_PUBLIC_PATH}/video/ffmpeg_cv.hpp"
     "${H_PUBLIC_PATH}/video/h264_profile_level_id.hpp"
     "${H_PUBLIC_PATH}/video/media_profile.hpp"
     "${H_PUBLIC_PATH}/video/media_source.hpp"
@@ -188,7 +187,6 @@ set(MY_VIDEO_PUBLIC_SOURCES
     "${SRC_PATH}/video/camera.cpp"
     "${SRC_PATH}/video/encoder.cpp"
     "${SRC_PATH}/video/err.cpp"
-    "${SRC_PATH}/video/ffmpeg_cv.cpp"
     "${SRC_PATH}/video/h264_profile_level_id.cpp"
     "${SRC_PATH}/video/media_profile.cpp"
     "${SRC_PATH}/video/media_source.cpp"
@@ -385,8 +383,6 @@ if(ENABLE_TEST)
     endif()
     find_package(libuvc CONFIG REQUIRED)
     target_link_libraries(test-uvc PRIVATE $<IF:$<TARGET_EXISTS:LibUVC::UVCStatic>,LibUVC::UVCStatic,LibUVC::UVCShared>)
-    find_package(OpenCV CONFIG REQUIRED)
-    target_link_libraries(test-uvc PRIVATE opencv_core opencv_videoio)
     find_package(FFMPEG REQUIRED)
     target_include_directories(test-uvc PRIVATE ${FFMPEG_INCLUDE_DIRS})
     target_link_directories(test-uvc PRIVATE ${FFMPEG_LIBRARY_DIRS})
