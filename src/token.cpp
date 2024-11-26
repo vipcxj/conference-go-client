@@ -11,7 +11,7 @@ namespace cfgo
 {
     namespace utils
     {
-        auto get_token(std::string auth_host, short port, std::string_view key, std::string_view uid, std::string_view uname, std::string_view role, std::string_view room, bool auto_join) -> asio::awaitable<std::string> {
+        auto get_token(std::string auth_host, short port, std::string_view key, std::string_view uid, std::string_view uname, std::string_view role, std::string_view room, bool auto_join, bool no_callbacks) -> asio::awaitable<std::string> {
             namespace beast = boost::beast;
             namespace http = beast::http;
             namespace urls = boost::urls;
@@ -38,6 +38,7 @@ namespace cfgo
             url.params().set("room", room);
             url.params().set("nonce", std::to_string(nonce));
             url.params().set("autojoin", std::to_string(auto_join));
+            url.params().set("nocallbacks", std::to_string(no_callbacks));
             http::request<http::string_body> req {http::verb::get, url, 11};
             req.set(http::field::host, auth_host);
             req.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);

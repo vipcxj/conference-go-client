@@ -18,15 +18,10 @@
     "cpptrace",
     "spdlog",
     "nlohmann-json",
-    "libuvc",
     {
       "name": "ffmpeg",
       "features": [
-        "swscale", "x264", "x265", "nvcodec",
-        {
-          "name": "v4l-utils",
-          "platform": "linux"
-        }
+        "swscale", "x264", "x265", "nvcodec"
       ]
     },
     {

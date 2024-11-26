@@ -56,10 +56,10 @@ namespace cfgo
 
             void normal_resolution_size(int & width, int & height)
             {
-                width /= 32;
-                width *= 32;
-                height /= 32;
-                height *= 32;
+                width /= 8;
+                width *= 8;
+                height /= 8;
+                height *= 8;
             }
 
             void calc_resolution(int src_width, int src_height, int & tgt_width, int & tgt_height)
@@ -527,9 +527,9 @@ namespace cfgo
                 });
 
                 // setup_stream(cleaner);
-                asio::co_spawn(m_strand, [weak_self = ptr_t { m_stream->m_source->shared_from_this(), this }]() -> asio::awaitable<void> {
+                asio::co_spawn(m_strand, log_error([weak_self = ptr_t { m_stream->m_source->shared_from_this(), this }]() -> asio::awaitable<void> {
                     return loop(std::move(weak_self));
-                }, asio::detached);
+                }), asio::detached);
                 cleaner.success();
             }
 
@@ -648,6 +648,30 @@ namespace cfgo
                     m_enc_ctx->width = m_codec_and_profile.profile.get_profile<int>("width", 0);
                     m_enc_ctx->height = m_codec_and_profile.profile.get_profile<int>("height", 0);
                     calc_resolution(frame->width, frame->height, m_enc_ctx->width, m_enc_ctx->height);
+                    int fps = m_codec_and_profile.profile.get_profile<int>("fps", 0);
+                    if (fps > 0)
+                    {
+                        m_enc_ctx->time_base = {1, fps};
+                    }
+                    else
+                    {
+                        if (src_codec_ctx()->time_base.num > 0)
+                        {
+                            m_enc_ctx->time_base = src_codec_ctx()->time_base;
+                        }
+                        else
+                        {
+                            auto frame_rate = av_guess_frame_rate(src_fmt_ctx(), src_av_stream(), nullptr);
+                            if (frame_rate.num > 0)
+                            {
+                                m_enc_ctx->time_base = {frame_rate.den, frame_rate.num};
+                            }
+                            else
+                            {
+                                m_enc_ctx->time_base = {1, 20};
+                            }
+                        }
+                    }
                     auto time_scale = m_codec_and_profile.profile.get_profile<int>("time_scale", 0);
                     if (time_scale > 0)
                     {
@@ -655,32 +679,8 @@ namespace cfgo
                     }
                     else
                     {
-                        int fps = m_codec_and_profile.profile.get_profile<int>("fps", 0);
-                        if (fps > 0)
-                        {
-                            m_av_stream->time_base = {1, fps};
-                        }
-                        else
-                        {
-                            if (src_codec_ctx()->time_base.num > 0)
-                            {
-                                m_av_stream->time_base = src_codec_ctx()->time_base;
-                            }
-                            else
-                            {
-                                auto frame_rate = av_guess_frame_rate(src_fmt_ctx(), src_av_stream(), nullptr);
-                                if (frame_rate.num > 0)
-                                {
-                                    m_av_stream->time_base = {frame_rate.den, frame_rate.num};
-                                }
-                                else
-                                {
-                                    m_av_stream->time_base = {1, 20};
-                                }
-                            }
-                        }
+                        m_av_stream->time_base = m_enc_ctx->time_base;
                     }
-                    m_enc_ctx->time_base = m_av_stream->time_base;
 
                     m_enc_ctx->gop_size = m_codec_and_profile.profile.get_profile<int>("gop_size", 50); /* emit one intra frame every twelve frames at most */
                     const enum AVPixelFormat * pix_fmts = nullptr;
@@ -845,8 +845,8 @@ namespace cfgo
                                     ), "could not convert audio frame, ");
                                 }
                                 check_av_err(av_frame_make_writable(raw_frame), "could not make frame writable, ");
-                                raw_frame->pts = av_rescale_q(src_pts, src_tb, self->m_av_stream->time_base);
-                                raw_frame->duration = av_rescale_q(src_dur, src_tb, self->m_av_stream->time_base);
+                                raw_frame->pts = av_rescale_q(src_pts, src_tb, self->m_enc_ctx->time_base);
+                                raw_frame->duration = av_rescale_q(src_dur, src_tb, self->m_enc_ctx->time_base);
                                 if (self->m_requesting_key_frame.exchange(false))
                                 {
                                     raw_frame->pict_type = AVPictureType::AV_PICTURE_TYPE_I;

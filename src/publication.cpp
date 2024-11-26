@@ -163,6 +163,20 @@ namespace cfgo
             return audio;
         }
 
+        uint32_t get_ssrc(RtcTrackPtr rtc_track)
+        {
+            auto ssrcs = rtc_track->description().getSSRCs();
+            assert(ssrcs.size() == 1);
+            auto ssrc = ssrcs.at(0);
+            return ssrc;
+        }
+
+        std::string get_cname(RtcTrackPtr rtc_track)
+        {
+            auto ssrc = get_ssrc(rtc_track);
+            return rtc_track->description().getCNameForSsrc(ssrc).value();
+        }
+
         struct Publication;
 
         struct Publication : public std::enable_shared_from_this<Publication>
@@ -181,7 +195,7 @@ namespace cfgo
             int m_height = 0;
             int m_fps = 0;
             int64_t m_bit_rate = 0;
-            bool m_prefer_packetizer = true;
+            bool m_prefer_libdatachannel_packetizer = true;
             std::exception_ptr m_err;
 
             uint32_t gen_ssrc()
@@ -200,37 +214,45 @@ namespace cfgo
             : m_src(std::move(media_source)), m_labels(std::move(labels)), m_gen(std::chrono::high_resolution_clock::now().time_since_epoch().count())
             {}
 
-            int & width()
+            int & width() noexcept
             {
                 return m_width;
             }
-            int width() const
+            int width() const noexcept
             {
                 return m_width;
             }
-            int & height()
+            int & height() noexcept
             {
                 return m_height;
             }
-            int height() const
+            int height() const noexcept
             {
                 return m_height;
             }
-            int & fps()
+            int & fps() noexcept
             {
                 return m_fps;
             }
-            int fps() const
+            int fps() const noexcept
             {
                 return m_fps;
             }
-            int64_t & bit_rate()
+            int64_t & bit_rate() noexcept
             {
                 return m_bit_rate;
             }
-            int64_t bit_rate() const
+            int64_t bit_rate() const noexcept
             {
                 return m_bit_rate;
+            }
+            bool & prefer_libdatachannel_packetizer() noexcept
+            {
+                return m_prefer_libdatachannel_packetizer;
+            }
+            bool prefer_libdatachannel_packetizer() const noexcept
+            {
+                return m_prefer_libdatachannel_packetizer;
             }
 
             std::shared_ptr<rtc::Track> create_track(rtc::PeerConnection & peer, const rtc::Description::Media & media);
@@ -248,14 +270,15 @@ namespace cfgo
                 {
                     auto media_type = m_src->stream_media_type(i);
                     cfgo::RtcTrackPtr rtc_track_ptr;
+                    auto sid = gen_signaling_media_id(m_gen);
                     if (media_type == AVMediaType::AVMEDIA_TYPE_VIDEO)
                     {
-                        auto desc = create_video(gen_signaling_media_id(m_gen), gen_signaling_media_id(m_gen), gen_ssrc());
+                        auto desc = create_video(sid, sid, gen_ssrc());
                         rtc_track_ptr = peer.addTrack(desc);
                     }
                     else if (media_type == AVMediaType::AVMEDIA_TYPE_AUDIO)
                     {
-                        auto desc = create_audio(gen_signaling_media_id(m_gen), gen_signaling_media_id(m_gen), gen_ssrc());
+                        auto desc = create_audio(sid, sid, gen_ssrc());
                         rtc_track_ptr = peer.addTrack(desc);
                     }
                     if (rtc_track_ptr)
@@ -340,10 +363,11 @@ namespace cfgo
                                 do
                                 {
                                     auto pkt_ptr = co_await receiver->request_pkt(self->m_closer);
-                                    if (!co_await track.await_send_msg(std::move(pkt_ptr), self->m_closer))
+                                    if (!co_await track.await_send_msg(pkt_ptr, self->m_closer))
                                     {
                                         co_return;
                                     }
+                                    CFGO_INFO("send {} bytes", pkt_ptr->size());
                                 } while (true);
                             }
                             catch(const CancelError & e) {}
@@ -385,6 +409,7 @@ namespace cfgo
                         msg->tracks.push_back(msg::TrackToPublish {
                             .type = track.track()->description().type(),
                             .bindId = track.track()->mid(),
+                            .sid = get_cname(track.track()),
                             .labels = m_labels
                         });
                     }
@@ -478,7 +503,7 @@ namespace cfgo
             });
             auto nack_handler = std::make_shared<rtc::RtcpNackResponder>(32);
             std::shared_ptr<rtc::RtpPacketizer> packetizer = get_rtp_packetizer_for(codec_id, ssrc, cname, pt, rtp_map->clockRate, MAX_VIDEO_FRAGMENT_SIZE);
-            bool use_ffmpet_rtp_muxer = !m_prefer_packetizer || !packetizer;
+            bool use_ffmpet_rtp_muxer = !m_prefer_libdatachannel_packetizer || !packetizer;
             if (use_ffmpet_rtp_muxer)
             {
                 codec_and_profile.profile.set_profile("ofmt", "rtp");
@@ -513,37 +538,45 @@ namespace cfgo
 
     Publication::Publication(video::media_source_ptr_t media_source, Labels labels): ImplBy(std::move(media_source), std::move(labels)) {}
 
-    int & Publication::width()
+    int & Publication::width() noexcept
     {
         return impl()->width();
     }
-    int Publication::width() const
+    int Publication::width() const noexcept
     {
         return impl()->width();
     }
-    int & Publication::height()
+    int & Publication::height() noexcept
     {
         return impl()->height();
     }
-    int Publication::height() const
+    int Publication::height() const noexcept
     {
         return impl()->height();
     }
-    int & Publication::fps()
+    int & Publication::fps() noexcept
     {
         return impl()->fps();
     }
-    int Publication::fps() const
+    int Publication::fps() const noexcept
     {
         return impl()->fps();
     }
-    int64_t & Publication::bit_rate()
+    int64_t & Publication::bit_rate() noexcept
     {
         return impl()->bit_rate();
     }
-    int64_t Publication::bit_rate() const
+    int64_t Publication::bit_rate() const noexcept
     {
         return impl()->bit_rate();
+    }
+    bool & Publication::prefer_libdatachannel_packetizer() noexcept
+    {
+        return impl()->prefer_libdatachannel_packetizer();
+    }
+    bool Publication::prefer_libdatachannel_packetizer() const noexcept
+    {
+        return impl()->prefer_libdatachannel_packetizer();
     }
 
     void Publication::setup(rtc::PeerConnection & peer) const

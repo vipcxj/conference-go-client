@@ -21,14 +21,16 @@ namespace cfgo
     {
     public:
         Publication(video::media_source_ptr_t media_source, Labels labels);
-        int & width();
-        int width() const;
-        int & height();
-        int height() const;
-        int & fps();
-        int fps() const;
-        int64_t & bit_rate();
-        int64_t bit_rate() const;
+        int & width() noexcept;
+        int width() const noexcept;
+        int & height() noexcept;
+        int height() const noexcept;
+        int & fps() noexcept;
+        int fps() const noexcept;
+        int64_t & bit_rate() noexcept;
+        int64_t bit_rate() const noexcept;
+        bool & prefer_libdatachannel_packetizer() noexcept;
+        bool prefer_libdatachannel_packetizer() const noexcept;
         void setup(rtc::PeerConnection & peer) const;
         bool bind(const msg::Track & meta) const;
         bool ready() const noexcept;

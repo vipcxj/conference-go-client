@@ -68,13 +68,14 @@ int main()
     auto dev = device_list.select(AVMediaType::AVMEDIA_TYPE_VIDEO);
 
     auto io_ctx = std::make_shared<asio::io_context>();
+    asio::thread_pool thread_pool {};
+    cfgo::close_chan closer {};
 
-    asio::co_spawn(io_ctx->get_executor(), [io_ctx]() -> asio::awaitable<void> {
-        cfgo::close_chan closer {};
+    asio::co_spawn(io_ctx->get_executor(), [io_ctx, executor = thread_pool.get_executor(), closer]() -> asio::awaitable<void> {
         cfgo::close_guard cg {closer};
-        auto media_source = make_media_source(io_ctx->get_executor(), media_source_type_t::DEVICE, "", media_source_mode_t::AUTO, closer);
+        auto media_source = make_media_source(executor, media_source_type_t::DEVICE, "", media_source_mode_t::AUTO, closer);
 
-        auto token = co_await cfgo::utils::get_token("localhost", 3100, "10000", "10000", "user10000", "parent", "room0", true);
+        auto token = co_await cfgo::utils::get_token("localhost", 3100, "3", "3", "user3", "student", "study-ai::3", true);
         cfgo::Configuration conf {
             cfgo::SignalConfigure {
                 "ws://localhost:13087/ws", token
@@ -84,6 +85,7 @@ int main()
         };
         cfgo::Client client(conf, io_ctx, closer);
         cfgo::Publication pub(media_source, {{"key", "123"}});
+        pub.prefer_libdatachannel_packetizer() = false;
         // pub.width() = 800;
         // pub.height() = 600;
         // pub.bit_rate() = 108000;
@@ -97,7 +99,16 @@ int main()
             CFGO_ERROR(cfgo::what());
         }
     }, asio::detached);
-
+    asio::co_spawn(io_ctx->get_executor(), [closer]() -> asio::awaitable<void> {
+        while (true)
+        {
+            if (g_exit)
+            {
+                closer.close("ctrl-c");
+            }
+            co_await cfgo::wait_timeout(std::chrono::milliseconds {50}, closer);
+        }
+    }, asio::detached);
     
 
     // for (int i = 0; i < 1; i++)

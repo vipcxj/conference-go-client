@@ -99,12 +99,12 @@ set(MY_GST_PLUGIN_PUBLIC_HEADERS
     "${H_PUBLIC_PATH}/gst/helper.h"
     "${H_PUBLIC_PATH}/gst/utils.hpp"
 )
-set(MY_UVC_PUBLIC_HEADERS
-    "${H_PUBLIC_PATH}/uvc/ctl.hpp"
-    "${H_PUBLIC_PATH}/uvc/dev.hpp"
-    "${H_PUBLIC_PATH}/uvc/err.hpp"
-    "${H_PUBLIC_PATH}/uvc/uvc.hpp"
-)
+# set(MY_UVC_PUBLIC_HEADERS
+#     "${H_PUBLIC_PATH}/uvc/ctl.hpp"
+#     "${H_PUBLIC_PATH}/uvc/dev.hpp"
+#     "${H_PUBLIC_PATH}/uvc/err.hpp"
+#     "${H_PUBLIC_PATH}/uvc/uvc.hpp"
+# )
 set(MY_VIDEO_PUBLIC_HEADERS
     "${H_PUBLIC_PATH}/video/camera.hpp"
     "${H_PUBLIC_PATH}/video/cppfix.hpp"
@@ -177,12 +177,12 @@ set(MY_GST_PLUGIN_SOURCES
     "${H_IMPL}/pipeline.cpp"
     "${H_IMPL}/link.cpp"
 )
-set(MY_UVC_PUBLIC_SOURCES
-    "${SRC_PATH}/uvc/ctl.cpp"
-    "${SRC_PATH}/uvc/dev.cpp"
-    "${SRC_PATH}/uvc/err.cpp"
-    "${SRC_PATH}/uvc/uvc.cpp"
-)
+# set(MY_UVC_PUBLIC_SOURCES
+#     "${SRC_PATH}/uvc/ctl.cpp"
+#     "${SRC_PATH}/uvc/dev.cpp"
+#     "${SRC_PATH}/uvc/err.cpp"
+#     "${SRC_PATH}/uvc/uvc.cpp"
+# )
 set(MY_VIDEO_PUBLIC_SOURCES
     "${SRC_PATH}/video/camera.cpp"
     "${SRC_PATH}/video/encoder.cpp"
@@ -215,6 +215,7 @@ find_package(LibDataChannel CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(yamc CONFIG REQUIRED)
 find_package(asiochan CONFIG REQUIRED)
+find_package(FFMPEG REQUIRED)
 
 if(UNIX AND NOT APPLE)
     set(LINUX TRUE)
@@ -276,7 +277,7 @@ endif()
 
 
 message(STATUS "add library cfgoclient")
-add_library(cfgoclient ${MY_SOURCES} ${MY_PUBLIC_HEADERS} ${MY_PRIVATE_HEADERS})
+add_library(cfgoclient ${MY_SOURCES} ${MY_PUBLIC_HEADERS} ${MY_PRIVATE_HEADERS} ${MY_VIDEO_PUBLIC_SOURCES} ${MY_VIDEO_PUBLIC_HEADERS})
 target_compile_definitions(cfgoclient PRIVATE BUILDING_CFGO)
 if(GENERAL_ALLOCATE_TRACER)
     target_compile_definitions(cfgoclient PUBLIC CFGO_GENERAL_ALLOCATE_TRACER)
@@ -324,6 +325,9 @@ endif()
 if(GSTREAMER_SUPPORT)
     link_gstreamer(cfgoclient true)
 endif()
+target_include_directories(cfgoclient PRIVATE ${FFMPEG_INCLUDE_DIRS})
+target_link_directories(cfgoclient PRIVATE ${FFMPEG_LIBRARY_DIRS})
+target_link_libraries(cfgoclient PRIVATE ${FFMPEG_LIBRARIES})
 
 if(GSTREAMER_SUPPORT)
     message(STATUS "add library cfgogst")
@@ -373,7 +377,7 @@ if(ENABLE_TEST)
     target_link_options(test-experiment PRIVATE $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:GNU>>:-fsanitize=address>)
     add_test(NAME test-experiment COMMAND test-experiment)
 
-    add_executable(test-uvc "${MY_TEST_PATH}/uvc.cpp" "${MY_UVC_PUBLIC_SOURCES}" "${MY_UVC_PUBLIC_HEADERS}" "${MY_VIDEO_PUBLIC_SOURCES}" "${MY_VIDEO_PUBLIC_HEADERS}")
+    add_executable(test-uvc "${MY_TEST_PATH}/uvc.cpp")
     fix_win_version_warn(test-uvc)
     target_link_libraries(test-uvc PRIVATE cfgoclient)
     if(TARGET LibDataChannel::LibDataChannel)
@@ -381,12 +385,8 @@ if(ENABLE_TEST)
     else()
         target_link_libraries(test-uvc PRIVATE LibDataChannel::LibDataChannelStatic)
     endif()
-    find_package(libuvc CONFIG REQUIRED)
-    target_link_libraries(test-uvc PRIVATE $<IF:$<TARGET_EXISTS:LibUVC::UVCStatic>,LibUVC::UVCStatic,LibUVC::UVCShared>)
-    find_package(FFMPEG REQUIRED)
-    target_include_directories(test-uvc PRIVATE ${FFMPEG_INCLUDE_DIRS})
-    target_link_directories(test-uvc PRIVATE ${FFMPEG_LIBRARY_DIRS})
-    target_link_libraries(test-uvc PRIVATE ${FFMPEG_LIBRARIES})
+    # find_package(libuvc CONFIG REQUIRED)
+    # target_link_libraries(test-uvc PRIVATE $<IF:$<TARGET_EXISTS:LibUVC::UVCStatic>,LibUVC::UVCStatic,LibUVC::UVCShared>)
     target_compile_options(test-uvc PRIVATE $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:GNU>>:-fsanitize=address>)
     target_link_options(test-uvc PRIVATE $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:GNU>>:-fsanitize=address>)
     add_test(NAME test-uvc COMMAND test-uvc)

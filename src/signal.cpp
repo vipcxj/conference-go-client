@@ -348,6 +348,11 @@ namespace cfgo
                 m_ws.emplace(asio::use_awaitable.as_default_on(
                     Websocket(co_await asio::this_coro::executor)
                 ));
+                // auto timeout_opt = beast::websocket::stream_base::timeout {
+                //     .keep_alive_pings = true,
+                // };
+                // timeout_opt.suggested(beast::role_type::client);
+                // m_ws->set_option(std::move(timeout_opt));
             }
             else if (self->ws_state == 2)
             {
@@ -386,12 +391,19 @@ namespace cfgo
             // Turn off the timeout on the tcp_stream, because
             // the websocket stream has its own timeout system.
             beast::get_lowest_layer(ws).expires_never();
-            // Set suggested timeout settings for the websocket
+            // // Set suggested timeout settings for the websocket
             ws.set_option(
                 websocket::stream_base::timeout::suggested(
                     beast::role_type::client
                 )
             );
+            // ws.set_option(
+            //     websocket::stream_base::timeout {
+            //         .handshake_timeout = std::chrono::seconds(30),
+            //         .idle_timeout = std::chrono::seconds(20),
+            //         .keep_alive_pings = true,
+            //     }
+            // );
             // Set a decorator to change the User-Agent of the handshake
             ws.set_option(websocket::stream_base::decorator(
                 [this](websocket::request_type& req)
@@ -436,13 +448,14 @@ namespace cfgo
                 {
                     co_await self->m_closer.await();
                     std::string reason = self->m_closer.get_close_reason();
+                    auto src_loc = self->m_closer.get_close_source_location();
                     if (reason.empty())
                     {
-                        self->m_logger->debug("The raw signal closed.");
+                        self->m_logger->debug("The raw signal closed at {}:{}:{}.", src_loc.file_name(), src_loc.line(), src_loc.column());
                     }
                     else
                     {
-                        self->m_logger->debug("The raw signal closed, {}.", reason);
+                        self->m_logger->debug("The raw signal closed at {}:{}:{}, {}.", src_loc.file_name(), src_loc.line(), src_loc.column(), reason);
                     }
                     self->process_peer_closers(reason);
                     self->m_ws->next_layer().close();
