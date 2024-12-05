@@ -46,6 +46,7 @@ namespace cfgo
         virtual ~RawSignal() = 0;
         [[nodiscard]]
         virtual auto id() const noexcept -> std::string = 0;
+        virtual asio::ip::port_type port() const = 0;
         [[nodiscard]]
         virtual auto connect(close_chan closer, std::string socket_id = "") -> asio::awaitable<void> = 0;
         [[nodiscard]]

@@ -1,11 +1,11 @@
-#ifndef _SR_EXECUTOR_HPP_
-#define _SR_EXECUTOR_HPP_
+#ifndef _CFGO_EXECUTOR_HPP_
+#define _CFGO_EXECUTOR_HPP_
 
 #include "cfgo/asio.hpp"
 #include "cfgo/move_only_function.hpp"
 #include <concepts>
 
-namespace sr
+namespace cfgo
 {
     class executor_proxy_t
     {
@@ -284,7 +284,7 @@ namespace sr
         executor_proxy_t m_proxy;
     };
     
-} // namespace sr
+} // namespace cfgo
 
 #ifdef STANDALONE_ASIO
 
@@ -305,14 +305,14 @@ namespace boost
 #endif
 
             template <typename Executor>
-            struct equality_comparable<sr::wrappable_executor<Executor>>
+            struct equality_comparable<cfgo::wrappable_executor<Executor>>
             {
                 static constexpr bool is_valid = true;
                 static constexpr bool is_noexcept = true;
             };
 
             template <typename Executor, typename Function>
-            struct execute_member<sr::wrappable_executor<Executor>, Function,
+            struct execute_member<cfgo::wrappable_executor<Executor>, Function,
                 enable_if_t<
                 traits::execute_member<const Executor&, Function>::is_valid
                 >>
@@ -323,7 +323,7 @@ namespace boost
             };
 
             template <typename Executor, typename Property>
-            struct query_member<sr::wrappable_executor<Executor>, Property,
+            struct query_member<cfgo::wrappable_executor<Executor>, Property,
                 enable_if_t<
                 can_query_v<const Executor&, Property>
                 >>
@@ -337,7 +337,7 @@ namespace boost
             };
 
             template <typename Executor, typename Property>
-            struct require_member<sr::wrappable_executor<Executor>, Property,
+            struct require_member<cfgo::wrappable_executor<Executor>, Property,
                 enable_if_t<
                 can_require_v<const Executor&, Property>
                     && !is_convertible<Property, execution::blocking_t::always_t>::value
@@ -346,11 +346,11 @@ namespace boost
                 static constexpr bool is_valid = true;
                 static constexpr bool is_noexcept =
                     is_nothrow_require<Executor, Property>::value;
-                typedef sr::wrappable_executor<decay_t<require_result_t<Executor, Property>>> result_type;
+                typedef cfgo::wrappable_executor<decay_t<require_result_t<Executor, Property>>> result_type;
             };
 
             template <typename Executor, typename Property>
-            struct prefer_member<sr::wrappable_executor<Executor>, Property,
+            struct prefer_member<cfgo::wrappable_executor<Executor>, Property,
                 enable_if_t<
                 can_prefer_v<const Executor&, Property>
                     && !is_convertible<Property, execution::blocking_t::always_t>::value
@@ -359,7 +359,7 @@ namespace boost
                 static constexpr bool is_valid = true;
                 static constexpr bool is_noexcept =
                     is_nothrow_prefer<Executor, Property>::value;
-                typedef sr::wrappable_executor<decay_t<prefer_result_t<Executor, Property>>> result_type;
+                typedef cfgo::wrappable_executor<decay_t<prefer_result_t<Executor, Property>>> result_type;
             };
 
 #ifdef STANDALONE_ASIO

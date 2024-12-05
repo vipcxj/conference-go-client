@@ -275,6 +275,17 @@ namespace cfgo
             auto id() const noexcept -> std::string {
                 return m_id;
             }
+            asio::ip::port_type port() const override
+            {
+                if (m_ws.has_value())
+                {
+                    return beast::get_lowest_layer(m_ws.value()).socket().local_endpoint().port();
+                }
+                else
+                {
+                    return 0;
+                }
+            }
             auto create_msg(const std::string_view & evt, nlohmann::json && payload, bool ack) -> RawSigMsgUPtr override {
                 auto msg_id = m_next_msg_id;
                 m_next_msg_id += 2;

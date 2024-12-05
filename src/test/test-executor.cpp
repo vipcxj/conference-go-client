@@ -6,7 +6,7 @@
 #include <iostream>
 #include <chrono>
 
-void proxy_fun(sr::executor_proxy_t::executor_execute_t fun)
+void proxy_fun(cfgo::executor_proxy_t::executor_execute_t fun)
 {
     using namespace std::chrono;
     std::cout << "before fun" << std::endl;
@@ -26,7 +26,7 @@ auto async_return_int(int v) -> asio::awaitable<int>
 int main()
 {
     asio::io_context io_ctx;
-    sr::wrappable_executor<asio::io_context::executor_type> executor (io_ctx.get_executor(), proxy_fun);
+    cfgo::wrappable_executor<asio::io_context::executor_type> executor (io_ctx.get_executor(), proxy_fun);
     asio::co_spawn(executor, []() -> asio::awaitable<void> {
         std::cout << "1" << std::endl;
         co_await async_return_int(0);
