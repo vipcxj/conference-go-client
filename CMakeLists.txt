@@ -60,6 +60,7 @@ set(MY_PUBLIC_HEADERS
     "${H_PUBLIC_PATH}/fmt_helper.hpp"
     "${H_PUBLIC_PATH}/fmt.hpp"
     "${H_PUBLIC_PATH}/furcate_stream.hpp"
+    "${H_PUBLIC_PATH}/json_fmt.hpp"
     "${H_PUBLIC_PATH}/json.hpp"
     "${H_PUBLIC_PATH}/log.hpp"
     "${H_PUBLIC_PATH}/macros.h"

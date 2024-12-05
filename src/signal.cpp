@@ -8,6 +8,7 @@
 #include "boost/uuid/uuid_generators.hpp"
 #include "boost/url.hpp"
 #include "cfgo/fmt.hpp"
+#include "cfgo/json_fmt.hpp"
 #include "cfgo/async.hpp"
 #include "cfgo/defer.hpp"
 
@@ -545,7 +546,7 @@ namespace cfgo
 
         auto WebsocketRawSignal::send_msg(close_chan closer, RawSigMsgUPtr msg) -> asio::awaitable<nlohmann::json> {
             auto self = shared_from_this();
-            CFGO_SELF_TRACE("sending {} msg with id {} and ack {}", msg->evt(), msg->msg_id(), msg->ack());
+            CFGO_SELF_TRACE("sending {} msg with id {} and ack {}, content: {}", msg->evt(), msg->msg_id(), msg->ack(), msg->payload());
             closer = closer.create_child();
             close_guard cg(closer);
             register_listen_closer(closer);
