@@ -1286,7 +1286,7 @@ namespace cfgo
                                     kaCtx.timeout_dur += std::chrono::high_resolution_clock::now() - start_pt;
                                     if (cb(kaCtx))
                                     {
-                                        closer.close_no_except(timeout_closer.get_close_reason(), timeout_closer.get_close_source_location());
+                                        closer.close_no_except("keep alive timeout");
                                         co_return;
                                     }
                                 }
@@ -1360,7 +1360,7 @@ namespace cfgo
                                     kaCtx.timeout_dur += std::chrono::high_resolution_clock::now() - start_pt;
                                     if (cb(kaCtx))
                                     {
-                                        closer.close_no_except(timeout_closer.get_close_reason(), timeout_closer.get_close_source_location());
+                                        closer.close_no_except("keep alive timeout");
                                         co_return;
                                     }
                                 }
