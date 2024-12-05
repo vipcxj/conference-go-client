@@ -55,6 +55,7 @@ set(MY_PUBLIC_HEADERS
     "${H_PUBLIC_PATH}/coroutine_concepts.hpp"
     "${H_PUBLIC_PATH}/defer.hpp"
     "${H_PUBLIC_PATH}/error.hpp"
+    "${H_PUBLIC_PATH}/executor.hpp"
     "${H_PUBLIC_PATH}/exports.h"
     "${H_PUBLIC_PATH}/fmt_helper.hpp"
     "${H_PUBLIC_PATH}/fmt.hpp"
@@ -369,6 +370,14 @@ if(ENABLE_TEST)
     target_link_options(test-async PRIVATE $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:GNU>>:-fsanitize=address>)
     add_test(NAME test-async COMMAND test-async)
 
+    add_executable(test-executor "${MY_TEST_PATH}/test-executor.cpp")
+    fix_win_version_warn(test-executor)
+    target_link_libraries(test-executor PRIVATE cfgoclient)
+    target_link_libraries(test-executor PRIVATE GTest::gtest GTest::gtest_main GTest::gmock GTest::gmock_main)
+    target_compile_options(test-executor PRIVATE $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:GNU>>:-fsanitize=address>)
+    target_link_options(test-executor PRIVATE $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:GNU>>:-fsanitize=address>)
+    add_test(NAME test-executor COMMAND test-executor)
+
     add_executable(test-experiment "${MY_TEST_PATH}/experiment.cpp")
     fix_win_version_warn(test-experiment)
     target_link_libraries(test-experiment PRIVATE cfgoclient)
@@ -513,6 +522,7 @@ file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_PROJECT_NAME}-config.cmake"
     "find_dependency(Boost CONFIG REQUIRED COMPONENTS url)\n"
     #"find_dependency(sioclient CONFIG REQUIRED)\n"
     "find_dependency(LibDataChannel CONFIG REQUIRED)\n"
+    "find_dependency(FFMPEG REQUIRED)\n"
     "find_dependency(nlohmann_json CONFIG REQUIRED)\n"
     "find_dependency(yamc CONFIG REQUIRED)\n"
     "find_dependency(asiochan CONFIG REQUIRED)\n"

@@ -818,6 +818,7 @@ namespace cfgo
                 m_sdp_cbs.erase(id);
             }
             auto subsrcibe(close_chan closer, SubscribeMsgPtr msg) -> asio::awaitable<SubscribedMsgPtr> override;
+            auto unsubscribe(close_chan closer, std::string sub_id) -> asio::awaitable<void> override;
             auto publish(close_chan closer, cfgo::Publication pub) -> asio::awaitable<publish_handle> override;
             auto wait_published(close_chan closer, publish_handle pub_handle) -> asio::awaitable<void> override;
             auto create_message(std::string_view evt, bool ack, std::string_view room, std::string_view to, std::string && payload) -> cfgo::SignalMsgUPtr override;
@@ -1039,6 +1040,10 @@ namespace cfgo
         auto Signal::subsrcibe(close_chan closer, SubscribeMsgPtr msg) -> asio::awaitable<SubscribedMsgPtr> {
             auto self = shared_from_this();
             co_await self->connect(closer);
+            if (msg->op != msg::SubscribeOp::ADD)
+            {
+                throw cpptrace::invalid_argument("sub op must be ADD");
+            }
             std::shared_ptr<LazyBox<std::string>> lazy_sub_id = LazyBox<std::string>::create();
             std::shared_ptr<LazyBox<SubscribedMsgPtr>> lzay_subed_msg = LazyBox<SubscribedMsgPtr>::create();
             auto cb_id = self->m_raw_signal->on_msg([self, lazy_sub_id, lzay_subed_msg, closer](RawSigMsgPtr msg, RawSigAckerPtr acker) -> asio::awaitable<bool> {
@@ -1064,9 +1069,37 @@ namespace cfgo
             auto res = co_await m_raw_signal->send_msg(closer, m_raw_signal->create_msg("subscribe", std::move(js_msg), true));
             msg::SubscribeResultMessage sub_res_msg {};
             nlohmann::from_json(res, sub_res_msg);
-            lazy_sub_id->init(sub_res_msg.id);
-            auto res_msg = co_await lzay_subed_msg->move(closer);
-            co_return res_msg;
+            std::exception_ptr err = nullptr;
+            try
+            {
+                lazy_sub_id->init(sub_res_msg.id);
+                auto res_msg = co_await lzay_subed_msg->move(closer);
+                co_return res_msg;
+            }
+            catch(...)
+            {
+                err = std::current_exception();
+            }
+            try
+            {
+                co_await self->unsubscribe(self->m_raw_signal->get_closer(), sub_res_msg.id);
+            }
+            catch(const CancelError & e) {}
+            if (err)
+            {
+                std::rethrow_exception(err);
+            }
+        }
+
+        auto Signal::unsubscribe(close_chan closer, std::string sub_id) -> asio::awaitable<void>
+        {
+            msg::SubscribeMessage sub_msg {
+                .op = msg::SubscribeOp::REMOVE,
+                .id = std::move(sub_id),
+            };
+            nlohmann::json js_msg;
+            nlohmann::to_json(js_msg, sub_msg);
+            co_await m_raw_signal->send_msg(closer, m_raw_signal->create_msg("subscribe", std::move(js_msg), true));
         }
 
         auto Signal::publish(close_chan closer, cfgo::Publication pub) -> asio::awaitable<publish_handle>
@@ -1176,9 +1209,7 @@ namespace cfgo
 
         auto Signal::keep_alive(close_chan closer, std::string room, std::string socket_id, bool active, duration_t timeout, KeepAliveCb cb) -> asio::awaitable<void> {
             auto self = shared_from_this();
-            closer = closer.create_child();
-            auto signal_closer = self->m_raw_signal->get_notify_closer();
-            closer.depend_on(signal_closer);
+            closer.depend_on(self->m_raw_signal->get_closer());
             co_await self->connect(closer);
 
             auto executor = co_await asio::this_coro::executor;
@@ -1229,6 +1260,7 @@ namespace cfgo
                                 else
                                 {
                                     assert(timeout_closer.is_closed());
+                                    closer.close_no_except(e.reason(), e.source_location());
                                     co_return;
                                 }
                             }                          
@@ -1240,12 +1272,14 @@ namespace cfgo
                                     kaCtx.timeout_dur += std::chrono::high_resolution_clock::now() - start_pt;
                                     if (cb(kaCtx))
                                     {
+                                        closer.close_no_except(timeout_closer.get_close_reason(), timeout_closer.get_close_source_location());
                                         co_return;
                                     }
                                 }
                                 else
                                 {
                                     assert(timeout_closer.is_closed());
+                                    closer.close_no_except(timeout_closer.get_close_reason(), timeout_closer.get_close_source_location());
                                     co_return;
                                 }
                             }
@@ -1256,6 +1290,7 @@ namespace cfgo
                                 kaCtx.warmup = false;
                                 if (co_await timeout_closer.await())
                                 {
+                                    closer.close_no_except(timeout_closer.get_close_reason(), timeout_closer.get_close_source_location());
                                     co_return;
                                 }
                             }
@@ -1265,6 +1300,7 @@ namespace cfgo
                             kaCtx.err = std::current_exception();
                             if (cb(kaCtx))
                             {
+                                closer.close_no_except(what(kaCtx.err));
                                 co_return;
                             }
                             else
@@ -1310,12 +1346,14 @@ namespace cfgo
                                     kaCtx.timeout_dur += std::chrono::high_resolution_clock::now() - start_pt;
                                     if (cb(kaCtx))
                                     {
+                                        closer.close_no_except(timeout_closer.get_close_reason(), timeout_closer.get_close_source_location());
                                         co_return;
                                     }
                                 }
                                 else
                                 {
                                     assert(timeout_closer.is_closed());
+                                    closer.close_no_except(timeout_closer.get_close_reason(), timeout_closer.get_close_source_location());
                                     co_return;
                                 }
                             }
@@ -1325,6 +1363,7 @@ namespace cfgo
                             kaCtx.err = std::current_exception();
                             if (cb(kaCtx))
                             {
+                                closer.close_no_except(what(kaCtx.err));
                                 co_return;
                             }
                             else
@@ -1338,28 +1377,20 @@ namespace cfgo
         }
     } // namespace impl
 
-    auto make_keep_alive_callback(close_chan closer, int timeout_num, duration_t timeout_dur, int timeout_num_when_warmup, duration_t timeout_dur_when_warmup, bool term_when_err, Logger logger) -> KeepAliveCb {
+    auto make_keep_alive_callback(int timeout_num, duration_t timeout_dur, int timeout_num_when_warmup, duration_t timeout_dur_when_warmup, bool term_when_err) -> KeepAliveCb {
         return [=](const KeepAliveContext & ctx) -> bool {
             if (ctx.err && term_when_err)
             {
-                auto reason = what(ctx.err);
-                if (logger)
-                {
-                    logger->error("Keep alive failed because of err: {}", reason);
-                }
-                closer.close(std::move(reason));
                 return true;
             }
             if (ctx.warmup)
             {
                 if (timeout_num_when_warmup >= 0 && ctx.timeout_num > timeout_num_when_warmup)
                 {
-                    closer.close("Keep alive timeout.");
                     return true;
                 }
                 if (timeout_dur_when_warmup > duration_t{0} && ctx.timeout_dur > timeout_dur_when_warmup)
                 {
-                    closer.close("Keep alive timeout.");
                     return true;
                 }
             }
@@ -1367,12 +1398,10 @@ namespace cfgo
             {
                 if (timeout_num >= 0 && ctx.timeout_num > timeout_num)
                 {
-                    closer.close("Keep alive timeout.");
                     return true;
                 }
                 if (timeout_dur > duration_t{0} && ctx.timeout_dur > timeout_dur)
                 {
-                    closer.close("Keep alive timeout.");
                     return true;
                 }
             }

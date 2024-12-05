@@ -19,14 +19,12 @@ namespace cfgo {
     {
     public:
         using Ptr = std::shared_ptr<Client>;
-        using CtxPtr = std::shared_ptr<asio::execution_context>;
-        using IoCtxPtr = std::shared_ptr<asio::io_context>;
-        using Strand = StandardStrand;
 
     public:
-        Client(const Configuration& config, const Strand & strand, const close_chan & closer = nullptr);
-        Client(const Configuration& config, const IoCtxPtr & io_context, const close_chan & closer = nullptr);
-        const Strand & strand() const noexcept;
+        Client(std::nullptr_t);
+        Client(const Configuration& config, executor_factory_t executor_factory, close_chan closer = nullptr);
+        executor_t executor() const noexcept;
+        const strand_t & strand() const noexcept;
         close_chan get_closer() const noexcept;
         [[nodiscard]] auto connect(std::string socket_id, close_chan closer = nullptr) const -> asio::awaitable<void>;
         [[nodiscard]] auto subscribe(Pattern pattern, std::vector<std::string> req_types, close_chan closer = nullptr) const -> asio::awaitable<SubPtr>;

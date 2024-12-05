@@ -403,7 +403,7 @@ namespace cfgo
                 using receiver_map_t = std::unordered_map<receiver_key_t, media_receiver_ptr_t>;
             private:
                 AVFormatContext * m_fmt_ctx = nullptr;
-                asio::any_io_executor m_executor;
+                executor_factory_t m_executor_factory;
                 media_source_type_t m_source_type;
                 std::string m_url_or_name;
                 media_source_mode_t m_mode;
@@ -418,7 +418,7 @@ namespace cfgo
                 void setup();
                 static void loop(wptr_t weak_self);
             public:
-                MediaSource(asio::any_io_executor executor, media_source_type_t source_type, const std::string & url_or_name, media_source_mode_t mode = media_source_mode_t::AUTO, close_chan closer = nullptr);
+                MediaSource(executor_factory_t executor_factory, media_source_type_t source_type, const std::string & url_or_name, media_source_mode_t mode = media_source_mode_t::AUTO, close_chan closer = nullptr);
                 ~MediaSource();
 
                 unsigned int nb_streams() const override
@@ -448,6 +448,7 @@ namespace cfgo
                 }
                 auto child_closer = m_closer.create_child();
                 child_closer.depend_on(closer);
+                close_guard cg {child_closer};
                 auto opt_pkt_ptr = co_await (*m_branch)->receive_async(child_closer);
                 if (!opt_pkt_ptr)
                 {
@@ -468,8 +469,10 @@ namespace cfgo
             : m_stream(stream), 
                 m_codec_and_profile(media_codec),
                 m_branch(m_stream->m_source->m_channel->create_branch()),
-                m_strand(asio::make_strand(stream->m_source->m_executor)), 
-                m_channel(pkt_furcate_stream_t::create(m_strand, 50ms))
+                m_strand(asio::make_strand(stream->m_source->m_executor_factory())), 
+                m_channel(pkt_furcate_stream_t::create([factory = stream->m_source->m_executor_factory, strand = m_strand]() {
+                    return strand;
+                }, 50ms))
             {
                 DEFERS_WHEN_FAIL(cleaner);
                 auto ofmt_str = media_codec.profile.get_profile<std::string>("ofmt", "data");
@@ -938,8 +941,8 @@ namespace cfgo
                 } while (true);
             }
 
-            MediaSource::MediaSource(asio::any_io_executor executor, MediaSourceType source_type, const std::string & url_or_name, media_source_mode_t mode, close_chan closer)
-            : m_executor(executor), m_source_type(source_type), m_url_or_name(url_or_name), m_mode(mode), m_channel(channel_t::create(m_executor, 50ms)), m_closer(closer.create_child())
+            MediaSource::MediaSource(executor_factory_t executor_factory, MediaSourceType source_type, const std::string & url_or_name, media_source_mode_t mode, close_chan closer)
+            : m_executor_factory(std::move(executor_factory)), m_source_type(source_type), m_url_or_name(url_or_name), m_mode(mode), m_channel(channel_t::create(m_executor_factory, 50ms)), m_closer(closer.create_child())
             {
 
                 const AVInputFormat * ifmt;
@@ -1076,9 +1079,9 @@ namespace cfgo
         MediaReceiver::~MediaReceiver() {}
         MediaSource::~MediaSource() {}
 
-        media_source_ptr_t make_media_source(asio::any_io_executor executor, MediaSourceType source_type, const std::string & url_or_name, media_source_mode_t mode, close_chan closer)
+        media_source_ptr_t make_media_source(executor_factory_t executor_factory, MediaSourceType source_type, const std::string & url_or_name, media_source_mode_t mode, close_chan closer)
         {
-            return std::make_shared<impl::MediaSource>(std::move(executor), source_type, url_or_name, mode, std::move(closer));
+            return std::make_shared<impl::MediaSource>(std::move(executor_factory), source_type, url_or_name, mode, std::move(closer));
         }
         
     } // namespace video

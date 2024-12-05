@@ -21,7 +21,6 @@ namespace cfgo
             class Pipeline : public std::enable_shared_from_this<Pipeline>
             {
             public:
-                using Strand = StandardStrand;
                 using NODE_MAP = std::unordered_map<std::string, GstElement *>;
                 using NODE_HANDLER_MAP = std::unordered_map<std::string, gulong>;
                 using LinkPtr = std::shared_ptr<Link>;

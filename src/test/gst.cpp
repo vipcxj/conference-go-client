@@ -110,7 +110,7 @@ GstBuffer * allocate_buffer(GstElement * element, gpointer user_data)
 
 struct track_data
 {
-    cfgo::StandardStrand strand;
+    cfgo::strand_t strand;
     cfgo::close_chan closer;
 };
 
@@ -181,7 +181,7 @@ void cfgosrc_deep_element_added_callback (
     
 }
 
-auto main_task(cfgo::Client::Strand strand, cfgo::close_chan closer) -> asio::awaitable<void> {
+auto main_task(std::shared_ptr<asio::io_context> io_ctx_ptr, cfgo::close_chan closer) -> asio::awaitable<void> {
     using namespace cfgo;
     auto token = co_await utils::get_token("localhost", 3100, "10000", "10000", "user10000", "parent", "room0", true);
     cfgo::Configuration conf {
@@ -191,14 +191,12 @@ auto main_task(cfgo::Client::Strand strand, cfgo::close_chan closer) -> asio::aw
         rtc::Configuration {},
         cfgo::TrackConfigure {}
     };
-    auto client_ptr = std::make_shared<Client>(conf, strand, closer);
+    auto client_ptr = std::make_shared<Client>(conf, make_executor_factory(io_ctx_ptr), closer);
     gst::Pipeline pipeline("test pipeline");
     pipeline.add_node("cfgosrc", "cfgosrc");
     auto decode_caps = gst_caps_from_string("video/x-raw(memory:CUDAMemory)");
     std::shared_ptr<gst::BufferPool> buffer_pool = std::make_shared<gst::BufferPool>(1600, 16, 48);
-    std::shared_ptr<track_data> track_data_ptr = std::make_shared<track_data>(strand, closer);
-    track_data_ptr->strand = strand;
-    track_data_ptr->closer = closer;
+    std::shared_ptr<track_data> track_data_ptr = std::make_shared<track_data>(client_ptr->strand(), closer);
     g_object_set(
         pipeline.require_node("cfgosrc").get(),
         "client",
@@ -941,12 +939,11 @@ int main(int argc, char **argv) {
 
     ControlCHandler ctrl_c_handler(closer);
 
-    asio::io_context io_ctx {};
-    auto strand = asio::make_strand(io_ctx);
-    auto f = asio::co_spawn(strand, cfgo::fix_async_lambda([strand, closer, loop]() mutable -> asio::awaitable<void> {
+    auto io_ctx = std::make_shared<asio::io_context>();
+    auto f = asio::co_spawn(io_ctx->get_executor(), cfgo::fix_async_lambda([io_ctx, closer, loop]() mutable -> asio::awaitable<void> {
         try
         {
-            co_await main_task(strand, closer);
+            co_await main_task(io_ctx, closer);
         }
         catch(const cfgo::CancelError & e)
         {
@@ -959,7 +956,7 @@ int main(int argc, char **argv) {
         }
         g_main_loop_quit(loop);
     }), asio::use_future);
-    io_ctx.run();
+    io_ctx->run();
     spdlog::debug("main end");
     return 0;
 }

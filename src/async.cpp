@@ -246,7 +246,7 @@ namespace cfgo
 
             auto get_waiter() -> UniqueWaiter;
 
-            void _close_self(bool is_timeout, std::string reason, std::source_location src_loc);
+            bool _close_self(bool is_timeout, std::string reason, std::source_location src_loc);
 
             void close(bool is_timeout, std::string reason, std::source_location src_loc);
 
@@ -489,11 +489,11 @@ namespace cfgo
             return { WaiterList::ptr_t { shared_from_this(), &m_waiters }, m_waiters.emplace() };
         }
 
-        void CloseSignalState::_close_self(bool is_timeout, std::string reason, std::source_location src_loc)
+        bool CloseSignalState::_close_self(bool is_timeout, std::string reason, std::source_location src_loc)
         {
             if (m_closed)
             {
-                return;
+                return false;
             }
             m_closed = true;
             m_stop = false;
@@ -516,6 +516,7 @@ namespace cfgo
             m_stop_waiters.consume_all([](const unique_void_chan & ch) {
                 chan_must_write(ch);
             });
+            return true;
         }
 
         void CloseSignalState::close(bool is_timeout, std::string reason, std::source_location src_loc)
@@ -529,7 +530,10 @@ namespace cfgo
             std::weak_ptr<CloseSignalState> weak_parent;
             {
                 std::lock_guard lock(m_mutex);
-                _close_self(is_timeout, reason, src_loc);
+                if (!_close_self(is_timeout, reason, src_loc))
+                {
+                    return;
+                }
                 weak_parent = m_parent;
                 m_parent.reset();
                 depends_on = m_depends_on;

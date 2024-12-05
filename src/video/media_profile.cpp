@@ -13,11 +13,11 @@ namespace cfgo
                 auto pos = profile.find('=');
                 if (pos != std::string::npos)
                 {
-                    m_profiles.emplace(profile.substr(0, pos), profile.substr(pos + 1));
+                    m_profiles.insert_or_assign(profile.substr(0, pos), profile.substr(pos + 1));
                 }
                 else
                 {
-                    m_profiles.emplace(profile, "");
+                    m_profiles.insert_or_assign(profile, "");
                 }
             }
         }

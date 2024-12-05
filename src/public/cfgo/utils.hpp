@@ -7,6 +7,7 @@
 #include <vector>
 #include <atomic>
 
+#include "cpptrace/cpptrace.hpp"
 #include "cfgo/allocate_tracer.hpp"
 
 // We haven't checked which filesystem to include yet
@@ -114,6 +115,20 @@ namespace cfgo
     protected:
         impl_ptr<T> & impl() noexcept { return mImpl; }
         const impl_ptr<T> & impl() const noexcept { return mImpl; }
+        impl_ptr<T> & make_sure_impl() {
+            if (!mImpl)
+            {
+                throw cpptrace::runtime_error("impl is null");
+            }
+            return mImpl;
+        }
+        const impl_ptr<T> & make_sure_impl() const {
+            if (!mImpl)
+            {
+                throw cpptrace::runtime_error("impl is null");
+            }
+            return mImpl;
+        }
 
     private:
         impl_ptr<T> mImpl;

@@ -789,7 +789,7 @@ namespace cfgo
             return 0;
         }
 
-        static void collect_max_n_ref_count(tracer_entry_result_set>& result, std::size_t n)
+        static void collect_max_n_ref_count(tracer_entry_result_set & result, std::size_t n)
         {}
 
         static void collect_max_n_raw_trace(const raw_trace_result_set & result, std::size_t n)

@@ -3,6 +3,7 @@
 #include "rtc/rtc.hpp"
 #include "cfgo/defer.hpp"
 #include "cfgo/allocate_tracer.hpp"
+#include "cfgo/measure.hpp"
 
 #include <unordered_set>
 
@@ -250,13 +251,23 @@ namespace cfgo
                     DEFER({
                         box->peer.onLocalDescription(nullptr);
                     });
-                    box->peer.setLocalDescription(rtc::Description::Type::Offer);
+                    DurationMeasure m1{1};
+                    {
+                        ScopeDurationMeasurer {m1};
+                        box->peer.setLocalDescription(rtc::Description::Type::Offer);
+                    }
+                    CFGO_SELF_DEBUG("set local desc cost {} ms", cast_ms(m1.latest()));
                     auto sdp = co_await chan_read_or_throw<Signal::SdpMsgPtr>(desc_ch, closer);
                     co_await self->m_signal->send_sdp(closer, std::move(sdp));
                     while (true)
                     {
                         auto sdp_msg = co_await chan_read_or_throw<cfgo::Signal::SdpMsgPtr>(sdp_ch, closer);
-                        box->peer.setRemoteDescription(rtc::Description(sdp_msg->sdp, sdp_msg->type));
+                        DurationMeasure m2{1};
+                        {
+                            ScopeDurationMeasurer {m2};
+                            box->peer.setRemoteDescription(rtc::Description(sdp_msg->sdp, sdp_msg->type));
+                        }
+                        CFGO_SELF_DEBUG("set remote desc cost {} ms", cast_ms(m2.latest()));
                         remoted->store(true, std::memory_order::release);
                         for (auto m : *cands) {
                             add_candidate(box, std::move(m));
@@ -282,7 +293,12 @@ namespace cfgo
                     });
                     auto sdp = co_await chan_read_or_throw<Signal::SdpMsgPtr>(off_sdp_ch, closer);
                     if (sdp->type == msg::SDP_TYPE_OFFER) {
-                        box->peer.setRemoteDescription(rtc::Description {sdp->sdp, sdp->type});
+                        DurationMeasure m1{1};
+                        {
+                            ScopeDurationMeasurer {m1};
+                            box->peer.setRemoteDescription(rtc::Description {sdp->sdp, sdp->type});
+                        }
+                        CFGO_SELF_DEBUG("set remote desc cost {} ms", cast_ms(m1.latest()));
                         remoted->store(true, std::memory_order::release);
                         for (auto m : *cands) {
                             add_candidate(box, std::move(m));
@@ -298,7 +314,12 @@ namespace cfgo
                             req_sdp->type = desc.typeString();
                             chan_must_write(answer_sdp_ch, std::move(req_sdp));
                         });
-                        box->peer.setLocalDescription(rtc::Description::Type::Answer);
+                        DurationMeasure m2{1};
+                        {
+                            ScopeDurationMeasurer {m2};
+                            box->peer.setLocalDescription(rtc::Description::Type::Answer);
+                        }
+                        CFGO_SELF_DEBUG("set local desc cost {} ms", cast_ms(m2.latest()));
                         std::string sdp_type;
                         do
                         {
@@ -317,16 +338,25 @@ namespace cfgo
 
         auto Webrtc::subscribe(close_chan closer, Pattern pattern, std::vector<std::string> req_types) -> asio::awaitable<SubPtr> {
             closer = closer.create_child();
+            close_guard cg {closer};
             auto self = shared_from_this();
             self->m_logger->debug("subscribing...");
             auto sub_req_msg = allocate_tracers::make_unique<msg::SubscribeMessage>();
             sub_req_msg->op = msg::SubscribeOp::ADD;
             sub_req_msg->reqTypes = std::move(req_types);
             sub_req_msg->pattern = std::move(pattern);
+            auto executor = co_await asio::this_coro::executor;
             auto sub_res = co_await self->m_signal->subsrcibe(closer, std::move(sub_req_msg));
+            DEFERS_WHEN_FAIL(cleaner);
+            cleaner.add_defer([executor, self, sub_id = sub_res->subId]() {
+                asio::co_spawn(executor, [self, sub_id = std::move(sub_id)]() -> asio::awaitable<void> {
+                    co_await self->unsubscribe(self->m_closer, std::move(sub_id));
+                }, asio::detached);
+            });
             auto sub_ptr = allocate_tracers::make_shared<cfgo::Subscribation>(sub_res->subId, sub_res->pubId);
             if (sub_res->tracks.empty())
             {
+                cleaner.success();
                 co_return sub_ptr;
             }
             for (auto && track : sub_res->tracks)
@@ -366,17 +396,13 @@ namespace cfgo
                     uncompleted_tracks.erase(iter, uncompleted_tracks.end());
                 }
             }
+            cleaner.success();
             co_return sub_ptr;
         }
 
         auto Webrtc::unsubscribe(close_chan closer, std::string sub_id) -> asio::awaitable<void>
         {
-            auto self = shared_from_this();
-            auto sub_req_msg = allocate_tracers::make_unique<msg::SubscribeMessage>();
-            sub_req_msg->op = msg::SubscribeOp::REMOVE;
-            sub_req_msg->id = sub_id;
-            co_await self->m_signal->subsrcibe(closer, std::move(sub_req_msg));
-            co_return;
+            return m_signal->unsubscribe(std::move(closer), std::move(sub_id));
         }
 
         auto Webrtc::publish(close_chan closer, cfgo::Publication pub) -> asio::awaitable<void>

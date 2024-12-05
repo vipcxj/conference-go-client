@@ -114,14 +114,14 @@ namespace cfgo
 
     using KeepAliveCb = std::function<bool(const KeepAliveContext &)>;
 
-    auto make_keep_alive_callback(close_chan signal, int timeout_num, duration_t timeout_dur, int timeout_num_when_warmup = -1, duration_t timeout_dur_when_warmup = duration_t{0}, bool term_when_err = true, Logger logger = nullptr) -> KeepAliveCb;
+    auto make_keep_alive_callback(int timeout_num, duration_t timeout_dur, int timeout_num_when_warmup = -1, duration_t timeout_dur_when_warmup = duration_t{0}, bool term_when_err = true) -> KeepAliveCb;
 
-    inline auto makeKeepAliveCallback(close_chan signal, int timeout_num, int timeout_num_when_warmup = -1, bool term_when_err = true, Logger logger = nullptr) -> KeepAliveCb {
-        return make_keep_alive_callback(std::move(signal), timeout_num, duration_t{0}, timeout_num_when_warmup, duration_t{0}, term_when_err, logger);
+    inline auto make_keep_alive_callback(int timeout_num, int timeout_num_when_warmup = -1, bool term_when_err = true) -> KeepAliveCb {
+        return make_keep_alive_callback(timeout_num, duration_t{0}, timeout_num_when_warmup, duration_t{0}, term_when_err);
     }
 
-    inline auto makeKeepAliveCallback(close_chan signal, duration_t timeout_dur, duration_t timeout_dur_when_warmup = duration_t{0}, bool term_when_err = true, Logger logger = nullptr) -> KeepAliveCb {
-        return make_keep_alive_callback(std::move(signal), -1, timeout_dur, -1, timeout_dur_when_warmup, term_when_err, logger);
+    inline auto make_keep_alive_callback(duration_t timeout_dur, duration_t timeout_dur_when_warmup = duration_t{0}, bool term_when_err = true) -> KeepAliveCb {
+        return make_keep_alive_callback(-1, timeout_dur, -1, timeout_dur_when_warmup, term_when_err);
     }
 
     struct Signal {
@@ -214,6 +214,8 @@ namespace cfgo
         virtual void off_sdp(std::uint64_t id) = 0;
         [[nodiscard]]
         virtual auto subsrcibe(close_chan closer, SubscribeMsgPtr msg) -> asio::awaitable<SubscribedMsgPtr> = 0;
+        [[nodiscard]]
+        virtual auto unsubscribe(close_chan closer, std::string sub_id) -> asio::awaitable<void> = 0;
         [[nodiscard]]
         virtual auto publish(close_chan closer, Publication pub) -> asio::awaitable<publish_handle> = 0;
         [[nodiscard]]

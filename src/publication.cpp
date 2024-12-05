@@ -367,7 +367,7 @@ namespace cfgo
                                     {
                                         co_return;
                                     }
-                                    CFGO_INFO("send {} bytes", pkt_ptr->size());
+                                    // CFGO_INFO("send {} bytes", pkt_ptr->size());
                                 } while (true);
                             }
                             catch(const CancelError & e) {}

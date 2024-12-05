@@ -343,7 +343,10 @@ CFGO_API int cfgo_client_create(const cfgoConfiguration * config, int io_context
     return cfgo::c_wrap([config, io_context_handle, closer_handle]() {
         auto io_context = cfgo::get_io_context(io_context_handle);
         auto closer = cfgo::get_close_chan(closer_handle);
-        return cfgo::wrap_client(cfgo::allocate_tracers::make_shared_skip_n<cfgo::Client>(1, cfgo::cfgo_config_to_cpp(config), io_context, closer));
+        return cfgo::wrap_client(cfgo::allocate_tracers::make_shared_skip_n<cfgo::Client>(
+            1, 
+            cfgo::cfgo_config_to_cpp(config), cfgo::make_executor_factory(io_context), closer
+        ));
     });
 }
 
@@ -375,7 +378,7 @@ CFGO_API int cfgo_client_subscribe(
         auto client = cfgo::get_client(client_handle);
         auto close_chan = close_chan_handle > 0 ? cfgo::get_close_chan(close_chan_handle) : nullptr;
         asio::co_spawn(
-            client->strand(),
+            client->executor(),
             cfgo::fix_async_lambda([=]() -> asio::awaitable<void> {
                 std::vector<std::string> arg_req_types;
                 cfgo::cfgo_req_types_parse(req_types, arg_req_types);

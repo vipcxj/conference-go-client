@@ -33,7 +33,7 @@ namespace cfgo
             close_guard cg {cleaner};
             if (auto stream = m_stream.lock())
             {
-                closer.after_close(stream->m_executor, [weak_stream = m_stream, &cancel]() -> void {
+                closer.after_close(stream->m_executor_factory(), [weak_stream = m_stream, &cancel]() -> void {
                     if (auto stream = weak_stream.lock())
                     {
                         cancel = true;
@@ -226,7 +226,7 @@ namespace cfgo
         state_notifier m_data_notifier;
         std::mutex m_mutex;
         std::condition_variable m_cv;
-        asio::any_io_executor m_executor;
+        executor_factory_t m_executor_factory;
         std::chrono::high_resolution_clock::duration m_timeout;
         std::shared_ptr<asio::steady_timer> m_timer;
 
@@ -236,7 +236,7 @@ namespace cfgo
             {
                 m_timer->cancel();
             }
-            m_timer = std::make_shared<asio::steady_timer>(m_executor);
+            m_timer = std::make_shared<asio::steady_timer>(m_executor_factory());
             m_timer->expires_after(m_timeout);
             m_timer->async_wait([index = m_index, weak_self = this->weak_from_this()](const std::error_code & ec) {
                 if (!ec)
@@ -264,10 +264,9 @@ namespace cfgo
             }
         }
 
-        FurcateStream(asio::any_io_executor executor, duration_t timeout)
-        : m_executor(std::move(executor)), m_timeout(timeout)
-        {
-        }
+        FurcateStream(executor_factory_t executor_factory, duration_t timeout)
+        : m_executor_factory(std::move(executor_factory)), m_timeout(timeout)
+        {}
 
     public:
         ~FurcateStream()
@@ -281,9 +280,9 @@ namespace cfgo
             m_cv.notify_all();
         }
 
-        static std::shared_ptr<FurcateStream<T, BuffSize>> create(asio::any_io_executor executor, duration_t timeout)
+        static std::shared_ptr<FurcateStream<T, BuffSize>> create(executor_factory_t executor_factory, duration_t timeout)
         {
-            return std::shared_ptr<FurcateStream<T, BuffSize>> {new FurcateStream(std::move(executor), timeout)};
+            return std::shared_ptr<FurcateStream<T, BuffSize>> {new FurcateStream(std::move(executor_factory), timeout)};
         }
 
         bool send_sync(T data, close_chan closer = nullptr)
@@ -291,7 +290,7 @@ namespace cfgo
             asiochan::interrupter_t interrupter {};
             close_chan cleaner {};
             close_guard cg(cleaner);
-            closer.after_close(m_executor, [&interrupter]() -> void {
+            closer.after_close(m_executor_factory(), [&interrupter]() -> void {
                 interrupter.interrupt();
             }, cleaner);
             auto res = m_ch.write_sync(interrupter, std::move(data));

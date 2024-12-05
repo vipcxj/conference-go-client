@@ -96,7 +96,7 @@ struct App
     cfgo::Track::Ptr m_track;
     bool m_valid;
 
-    App(const cfgo::Track::Ptr & track, GMainLoop *loop): m_track(track), m_loop(loop) {
+    App(const cfgo::Track::Ptr & track, GMainLoop *loop): m_loop(loop), m_track(track) {
         m_rtp_sourceid = 0;
         m_rtcp_sourceid = 0;
         watchid = 0;
@@ -564,7 +564,7 @@ static gboolean on_bus_message(GstBus *bus, GstMessage *message, App *app)
     return TRUE;
 }
 
-auto main_task(cfgo::StandardStrand strand, GMainLoop *loop) -> asio::awaitable<void> {
+auto main_task(std::shared_ptr<asio::io_context> io_ctx_ptr, GMainLoop *loop) -> asio::awaitable<void> {
     std::cout << "start main task." << std::endl;
     auto token = co_await cfgo::utils::get_token("localhost", 3100, "10000", "10000", "user10000", "parent", "room0", true);
     cfgo::Configuration conf {
@@ -574,7 +574,7 @@ auto main_task(cfgo::StandardStrand strand, GMainLoop *loop) -> asio::awaitable<
         rtc::Configuration {},
         cfgo::TrackConfigure {}
     };
-    cfgo::Client client(conf, strand);
+    cfgo::Client client(conf, cfgo::make_executor_factory(io_ctx_ptr));
     // client.set_sio_logs_verbose();
     std::cout << "client created." << std::endl;
     cfgo::Pattern pattern {
@@ -642,10 +642,9 @@ int main(int argc, char **argv) {
     }
     g_print("found %d plugins\n", plugins_num);
 
-    asio::io_context io_ctx {};
-    cfgo::StandardStrand strand (io_ctx.get_executor());
+    auto io_ctx = std::make_shared<asio::io_context>();
     GMainLoop *loop = g_main_loop_new(NULL, TRUE);
-    asio::co_spawn(strand, main_task(strand, loop), asio::detached);
+    asio::co_spawn(io_ctx->get_executor(), main_task(io_ctx, loop), asio::detached);
     g_main_loop_run(loop);
     GST_DEBUG("stopping");
     g_main_loop_unref(loop);

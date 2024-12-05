@@ -68,12 +68,12 @@ int main()
     auto dev = device_list.select(AVMediaType::AVMEDIA_TYPE_VIDEO);
 
     auto io_ctx = std::make_shared<asio::io_context>();
-    asio::thread_pool thread_pool {};
+    auto thread_pool = std::make_shared<asio::thread_pool>();
     cfgo::close_chan closer {};
 
-    asio::co_spawn(io_ctx->get_executor(), [io_ctx, executor = thread_pool.get_executor(), closer]() -> asio::awaitable<void> {
+    asio::co_spawn(io_ctx->get_executor(), [io_ctx, thread_pool, closer]() -> asio::awaitable<void> {
         cfgo::close_guard cg {closer};
-        auto media_source = make_media_source(executor, media_source_type_t::DEVICE, "", media_source_mode_t::AUTO, closer);
+        auto media_source = make_media_source(cfgo::make_executor_factory(thread_pool), media_source_type_t::DEVICE, "", media_source_mode_t::AUTO, closer);
 
         auto token = co_await cfgo::utils::get_token("localhost", 3100, "3", "3", "user3", "student", "study-ai::3", true);
         cfgo::Configuration conf {
@@ -83,7 +83,7 @@ int main()
             rtc::Configuration {},
             cfgo::TrackConfigure {}
         };
-        cfgo::Client client(conf, io_ctx, closer);
+        cfgo::Client client(conf, cfgo::make_executor_factory(io_ctx), closer);
         cfgo::Publication pub(media_source, {{"key", "123"}});
         pub.prefer_libdatachannel_packetizer() = false;
         // pub.width() = 800;

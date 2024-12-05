@@ -134,12 +134,12 @@ namespace cfgo
             requires requires(const T & v) { std::to_string(v); }
             void set_profile(std::string_view key, const T & value)
             {
-                m_profiles.emplace(key, std::to_string(value));
+                m_profiles.insert_or_assign(std::string {key}, std::to_string(value));
             }
 
             void set_profile(std::string_view key, std::string_view value)
             {
-                m_profiles.emplace(key, value);
+                m_profiles.insert_or_assign(std::string {key}, std::string {value});
             }
 
             template<typename T>

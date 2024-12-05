@@ -102,7 +102,7 @@ namespace cfgo
         using media_source_ptr_t = std::shared_ptr<media_source_t>;
         using media_source_wptr_t = std::weak_ptr<media_source_t>;
 
-        media_source_ptr_t make_media_source(asio::any_io_executor executor, MediaSourceType source_type, const std::string & url_or_name, media_source_mode_t mode = media_source_mode_t::AUTO, close_chan closer = nullptr);
+        media_source_ptr_t make_media_source(executor_factory_t executor_factory, MediaSourceType source_type, const std::string & url_or_name, media_source_mode_t mode = media_source_mode_t::AUTO, close_chan closer = nullptr);
     } // namespace video
     
 } // namespace cfgo

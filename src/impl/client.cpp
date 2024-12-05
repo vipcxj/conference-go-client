@@ -24,22 +24,24 @@ namespace cfgo
 {
     namespace impl
     {
-        Client::Client(const Configuration &config, const Strand & strand, close_chan closer):
+        Client::Client(const Configuration &config, executor_factory_t executor_factory, close_chan closer):
             m_config(config),
             m_signal(make_websocket_signal(closer, m_config.m_signal_config)),
             m_webrtc(make_webrtc(m_signal, m_config)),
             m_closer(m_signal->get_closer()),
-            m_strand(strand)
-        {}
-
-        Client::Client(const Configuration &config, const IoCtxPtr & io_ctx, close_chan closer):
-            Client(config, Strand(io_ctx->get_executor()), std::move(closer))
+            m_executor_factory(std::move(executor_factory)),
+            m_strand(m_executor_factory())
         {}
 
         Client::~Client()
         {}
 
-        auto Client::strand() const noexcept -> const Strand &
+        auto Client::executor() const noexcept -> executor_t
+        {
+            return m_executor_factory();
+        }
+
+        auto Client::strand() const noexcept -> const strand_t &
         {
             return m_strand;
         }

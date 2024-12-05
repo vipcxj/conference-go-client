@@ -29,8 +29,6 @@ namespace cfgo {
         {
         public:
             using Ptr = std::shared_ptr<Client>;
-            using IoCtxPtr = cfgo::Client::IoCtxPtr;
-            using Strand = cfgo::Client::Strand;
 
         private:
             Logger m_logger;
@@ -38,12 +36,11 @@ namespace cfgo {
             cfgo::SignalPtr m_signal;
             cfgo::WebrtcPtr m_webrtc;
             close_chan m_closer;
-            IoCtxPtr m_io_ctx;
-            Strand m_strand;
+            executor_factory_t m_executor_factory;
+            strand_t m_strand;
         public:
             Client() = delete;
-            Client(const Configuration& config, const Strand & strand, close_chan closer);
-            Client(const Configuration& config, const IoCtxPtr & io_context, close_chan closer);
+            Client(const Configuration& config, executor_factory_t executor_factory, close_chan closer);
             Client(Client&&) = default;
             ~Client();
             Client(const Client&) = delete;
@@ -53,7 +50,8 @@ namespace cfgo {
             [[nodiscard]] auto unsubscribe(std::string sub_id, close_chan close_chan) -> asio::awaitable<void>;
             [[nodiscard]] auto publish(cfgo::Publication pub, close_chan closer) const -> asio::awaitable<void>;
 
-            const Strand & strand() const noexcept;
+            executor_t executor() const noexcept;
+            const strand_t & strand() const noexcept;
             close_chan get_closer() const noexcept;
             SignalPtr get_signal() const noexcept;
         };

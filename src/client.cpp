@@ -5,18 +5,8 @@
 
 namespace cfgo
 {
-    Client::Client(const Configuration& config, const Strand & strand, const close_chan & closer) : ImplBy<impl::Client>(config, strand, closer) {}
-    Client::Client(const Configuration& config, const IoCtxPtr & io_context, const close_chan & closer) : ImplBy<impl::Client>(config, io_context, closer) {}
-
-    // void Client::set_sio_logs_default() const {
-    //     impl()->set_sio_logs_default();
-    // }
-    // void Client::set_sio_logs_verbose() const {
-    //     impl()->set_sio_logs_verbose();
-    // }
-    // void Client::set_sio_logs_quiet() const {
-    //     impl()->set_sio_logs_quiet();
-    // }
+    Client::Client(std::nullptr_t): ImplBy<impl::Client>(nullptr) {}
+    Client::Client(const Configuration& config, executor_factory_t executor_factory, close_chan closer) : ImplBy<impl::Client>(config, std::move(executor_factory), std::move(closer)) {}
 
     // std::optional<rtc::Description> Client::peer_local_desc() const
     // {
@@ -29,35 +19,40 @@ namespace cfgo
     // }
 
     auto Client::connect(std::string socket_id, close_chan closer) const -> asio::awaitable<void> {
-        return impl()->connect(std::move(socket_id), std::move(closer));
+        return make_sure_impl()->connect(std::move(socket_id), std::move(closer));
     }
 
     auto Client::subscribe(Pattern pattern, std::vector<std::string> req_types, close_chan closer) const -> asio::awaitable<SubPtr> {
-        return impl()->subscribe(std::move(pattern), std::move(req_types), std::move(closer));
+        return make_sure_impl()->subscribe(std::move(pattern), std::move(req_types), std::move(closer));
     }
 
     auto Client::unsubscribe(std::string sub_id, close_chan closer) const -> asio::awaitable<void>
     {
-        return impl()->unsubscribe(std::move(sub_id), std::move(closer));
+        return make_sure_impl()->unsubscribe(std::move(sub_id), std::move(closer));
     }
 
     auto Client::publish(Publication pub, close_chan closer) const -> asio::awaitable<void>
     {
-        return impl()->publish(std::move(pub), std::move(closer));
+        return make_sure_impl()->publish(std::move(pub), std::move(closer));
     }
 
-    auto Client::strand() const noexcept -> const Strand &
+    auto Client::executor() const noexcept -> executor_t
     {
-        return impl()->strand();
+        return make_sure_impl()->executor();
+    }
+
+    auto Client::strand() const noexcept -> const strand_t &
+    {
+        return make_sure_impl()->strand();
     }
 
     close_chan Client::get_closer() const noexcept
     {
-        return impl()->get_closer();
+        return make_sure_impl()->get_closer();
     }
 
     SignalPtr Client::get_signal() const noexcept
     {
-        return impl()->get_signal();
+        return make_sure_impl()->get_signal();
     }
 }
