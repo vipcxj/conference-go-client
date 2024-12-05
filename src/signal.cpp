@@ -756,6 +756,9 @@ namespace cfgo
             close_chan get_closer() noexcept override {
                 return m_raw_signal->get_closer();
             }
+            RawSignalPtr get_raw_signal() const noexcept override {
+                return m_raw_signal;
+            }
             void close() override {
                 m_raw_signal->close();
             }

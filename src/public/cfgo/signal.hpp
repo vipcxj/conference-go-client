@@ -186,6 +186,7 @@ namespace cfgo
          */
         [[nodiscard]]
         virtual close_chan get_closer() noexcept = 0;
+        virtual RawSignalPtr get_raw_signal() const noexcept = 0;
         virtual void close() = 0;
         [[nodiscard]]
         virtual auto id(close_chan closer) -> asio::awaitable<std::string> = 0;
