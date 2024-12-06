@@ -114,11 +114,14 @@ namespace cfgo
             std::atomic_int m_sdp_msg_id {1};
             
             [[nodiscard]] auto negotiate(close_chan closer, PeerBoxPtr peer, int sdp_id, bool active) -> asio::awaitable<void>;
-            static void add_candidate(PeerBoxPtr box, cfgo::Signal::CandMsgPtr msg) {
+            static void add_candidate(PeerBoxPtr box, cfgo::Signal::CandMsgPtr msg, Logger logger) {
+                DurationMeasure m {1};
                 if (msg->op == msg::CandidateOp::ADD)
                 {
+                    ScopeDurationMeasurer sm {m};
                     box->peer.addRemoteCandidate(rtc::Candidate {msg->candidate.candidate, msg->candidate.sdpMid.value_or("")});
                 }
+                CFGO_LOGGER_TRACE(logger, "add candidate cost {} ms", cast_ms(m.latest()));
             }
             auto _access_peer_box(close_chan closer) -> asio::awaitable<PeerBoxPtr> {
                 auto self = shared_from_this();
@@ -222,10 +225,10 @@ namespace cfgo
                 DEFER({
                     m_neg_mux.release(executor);
                 });
-                auto cand_cb_id = self->m_signal->on_candidate([box, remoted, cands](cfgo::Signal::CandMsgPtr msg) -> bool {
+                auto cand_cb_id = self->m_signal->on_candidate([box, remoted, cands, logger = self->m_logger](cfgo::Signal::CandMsgPtr msg) -> bool {
                     if (remoted->load(std::memory_order::acquire))
                     {
-                        add_candidate(box, std::move(msg));
+                        add_candidate(box, std::move(msg), logger);
                     } else {
                         cands->push_back(std::move(msg));
                     }
@@ -278,7 +281,7 @@ namespace cfgo
                         CFGO_SELF_DEBUG("set remote desc cost {} ms", cast_ms(m2.latest()));
                         remoted->store(true, std::memory_order::release);
                         for (auto m : *cands) {
-                            add_candidate(box, std::move(m));
+                            add_candidate(box, std::move(m), self->m_logger);
                         }
                         cands->clear();
                         if (sdp_msg->type == msg::SDP_TYPE_ANSWER)
@@ -309,7 +312,7 @@ namespace cfgo
                         CFGO_SELF_DEBUG("set remote desc cost {} ms", cast_ms(m1.latest()));
                         remoted->store(true, std::memory_order::release);
                         for (auto m : *cands) {
-                            add_candidate(box, std::move(m));
+                            add_candidate(box, std::move(m), self->m_logger);
                         }
                         cands->clear();
                         asiochan::unbounded_channel<Signal::SdpMsgPtr> answer_sdp_ch {};
