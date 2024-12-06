@@ -404,8 +404,7 @@ namespace cfgo
                     }
                     else
                     {
-                        static auto g_tpool = std::make_shared<ThreadPool>(std::thread::hardware_concurrency());
-                        task_queue = std::static_pointer_cast<TaskQueue>(g_tpool);
+                        task_queue = ThreadPool::global_instance();
                     }
                     using send_res_t = std::variant<bool, std::exception_ptr>;
                     unique_chan<send_res_t> ch_err {};

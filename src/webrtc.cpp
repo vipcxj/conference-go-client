@@ -4,6 +4,7 @@
 #include "cfgo/defer.hpp"
 #include "cfgo/allocate_tracer.hpp"
 #include "cfgo/measure.hpp"
+#include "cfgo/task_pool.hpp"
 
 #include <unordered_set>
 
@@ -114,15 +115,7 @@ namespace cfgo
             std::atomic_int m_sdp_msg_id {1};
             
             [[nodiscard]] auto negotiate(close_chan closer, PeerBoxPtr peer, int sdp_id, bool active) -> asio::awaitable<void>;
-            static void add_candidate(PeerBoxPtr box, cfgo::Signal::CandMsgPtr msg, Logger logger) {
-                DurationMeasure m {1};
-                if (msg->op == msg::CandidateOp::ADD)
-                {
-                    ScopeDurationMeasurer sm {m};
-                    box->peer.addRemoteCandidate(rtc::Candidate {msg->candidate.candidate, msg->candidate.sdpMid.value_or("")});
-                }
-                CFGO_LOGGER_TRACE(logger, "add candidate cost {} ms", cast_ms(m.latest()));
-            }
+
             auto _access_peer_box(close_chan closer) -> asio::awaitable<PeerBoxPtr> {
                 auto self = shared_from_this();
                 close_chan peer_closer = self->m_closer.create_child();
@@ -217,7 +210,8 @@ namespace cfgo
 
         auto Webrtc::negotiate(close_chan closer, PeerBoxPtr box, int sdp_id, bool active) -> asio::awaitable<void> {
             auto self = shared_from_this();
-            auto remoted = std::make_shared<std::atomic<bool>>(false);
+            auto cand_mux = std::make_shared<std::mutex>();
+            auto cand_flag = std::make_shared<bool>(false);
             auto cands = allocate_tracers::make_shared<std::vector<cfgo::Signal::CandMsgPtr>>();
             auto executor = co_await asio::this_coro::executor;
             if (co_await self->m_neg_mux.accquire(closer))
@@ -225,13 +219,22 @@ namespace cfgo
                 DEFER({
                     m_neg_mux.release(executor);
                 });
-                auto cand_cb_id = self->m_signal->on_candidate([box, remoted, cands, logger = self->m_logger](cfgo::Signal::CandMsgPtr msg) -> bool {
-                    if (remoted->load(std::memory_order::acquire))
-                    {
-                        add_candidate(box, std::move(msg), logger);
-                    } else {
-                        cands->push_back(std::move(msg));
-                    }
+                auto cand_cb_id = self->m_signal->on_candidate([box, cand_mux, cand_flag, cands](cfgo::Signal::CandMsgPtr msg) -> bool {
+                    ThreadPool::global_instance()->enqueue([
+                        box = std::move(box),
+                        cand_mux = std::move(cand_mux),
+                        cand_flag = std::move(cand_flag),
+                        cands = std::move(cands),
+                        msg = std::move(msg)
+                    ]() {
+                        std::unique_lock lk (*cand_mux);
+                        if (*cand_flag)
+                        {
+                            box->peer.addRemoteCandidate(rtc::Candidate {msg->candidate.candidate, msg->candidate.sdpMid.value_or("")});
+                        } else {
+                            cands->push_back(std::move(msg));
+                        }
+                    });
                     return true;
                 });
                 DEFER({
@@ -262,28 +265,26 @@ namespace cfgo
                     DEFER({
                         box->peer.onLocalDescription(nullptr);
                     });
-                    DurationMeasure m1{1};
-                    {
-                        ScopeDurationMeasurer sm {m1};
+                    co_await ThreadPool::global_instance()->enqueue_async([box]() {
                         box->peer.setLocalDescription(rtc::Description::Type::Offer);
-                    }
-                    CFGO_SELF_DEBUG("set local desc cost {} ms", cast_ms(m1.latest()));
+                    });
                     auto sdp = co_await chan_read_or_throw<Signal::SdpMsgPtr>(desc_ch, closer);
                     co_await self->m_signal->send_sdp(closer, std::move(sdp));
                     while (true)
                     {
                         auto sdp_msg = co_await chan_read_or_throw<cfgo::Signal::SdpMsgPtr>(sdp_ch, closer);
-                        DurationMeasure m2{1};
-                        {
-                            ScopeDurationMeasurer sm {m2};
+                        co_await ThreadPool::global_instance()->enqueue_async([box, sdp_msg, cand_mux, cand_flag, cands]() {
                             box->peer.setRemoteDescription(rtc::Description(sdp_msg->sdp, sdp_msg->type));
-                        }
-                        CFGO_SELF_DEBUG("set remote desc cost {} ms", cast_ms(m2.latest()));
-                        remoted->store(true, std::memory_order::release);
-                        for (auto m : *cands) {
-                            add_candidate(box, std::move(m), self->m_logger);
-                        }
-                        cands->clear();
+                            std::unique_lock lk {*cand_mux};
+                            *cand_flag = true;
+                            for (auto m : *cands) {
+                                if (m->op == msg::CandidateOp::ADD)
+                                {
+                                    box->peer.addRemoteCandidate(rtc::Candidate {m->candidate.candidate, m->candidate.sdpMid.value_or("")});
+                                }
+                            }
+                            cands->clear();
+                        });
                         if (sdp_msg->type == msg::SDP_TYPE_ANSWER)
                         {
                             break;
@@ -304,17 +305,18 @@ namespace cfgo
                     });
                     auto sdp = co_await chan_read_or_throw<Signal::SdpMsgPtr>(off_sdp_ch, closer);
                     if (sdp->type == msg::SDP_TYPE_OFFER) {
-                        DurationMeasure m1{1};
-                        {
-                            ScopeDurationMeasurer sm {m1};
+                        co_await ThreadPool::global_instance()->enqueue_async([box, sdp, cand_mux, cand_flag, cands]() {
                             box->peer.setRemoteDescription(rtc::Description {sdp->sdp, sdp->type});
-                        }
-                        CFGO_SELF_DEBUG("set remote desc cost {} ms", cast_ms(m1.latest()));
-                        remoted->store(true, std::memory_order::release);
-                        for (auto m : *cands) {
-                            add_candidate(box, std::move(m), self->m_logger);
-                        }
-                        cands->clear();
+                            std::unique_lock lk {*cand_mux};
+                            *cand_flag = true;
+                            for (auto m : *cands) {
+                                if (m->op == msg::CandidateOp::ADD)
+                                {
+                                    box->peer.addRemoteCandidate(rtc::Candidate {m->candidate.candidate, m->candidate.sdpMid.value_or("")});
+                                }
+                            }
+                            cands->clear();
+                        });
                         asiochan::unbounded_channel<Signal::SdpMsgPtr> answer_sdp_ch {};
                         box->peer.onLocalDescription([box, answer_sdp_ch, sdp_id](const rtc::Description & desc) {
                             assert(desc.type() == rtc::Description::Type::Answer || desc.type() == rtc::Description::Type::Pranswer);
@@ -325,12 +327,9 @@ namespace cfgo
                             req_sdp->type = desc.typeString();
                             chan_must_write(answer_sdp_ch, std::move(req_sdp));
                         });
-                        DurationMeasure m2{1};
-                        {
-                            ScopeDurationMeasurer sm {m2};
+                        co_await ThreadPool::global_instance()->enqueue_async([box]() {
                             box->peer.setLocalDescription(rtc::Description::Type::Answer);
-                        }
-                        CFGO_SELF_DEBUG("set local desc cost {} ms", cast_ms(m2.latest()));
+                        });     
                         std::string sdp_type;
                         do
                         {

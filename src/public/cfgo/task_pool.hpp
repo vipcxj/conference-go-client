@@ -5,9 +5,12 @@
 #include <vector>
 #include <list>
 #include <mutex>
+#include <memory>
 #include <condition_variable>
 #include <functional>
+#include <exception>
 
+#include "cfgo/async.hpp"
 
 namespace cfgo
 {
@@ -19,6 +22,27 @@ namespace cfgo
 
         virtual bool enqueue(std::function<void()> fn) = 0;
         virtual void shutdown(bool wait = true) = 0;
+
+        auto enqueue_async(std::function<void()> fn, close_chan closer = nullptr) -> asio::awaitable<void>
+        {
+            unique_chan<std::exception_ptr> ch {};
+            enqueue([ch, fn = std::move(fn)]() {
+                try
+                {
+                    fn();
+                    chan_must_write(ch, std::exception_ptr(nullptr));
+                }
+                catch(...)
+                {
+                    chan_must_write(ch, std::current_exception());
+                }
+            });
+            auto ex = co_await chan_read_or_throw<std::exception_ptr>(ch, std::move(closer));
+            if (ex)
+            {
+                std::rethrow_exception(ex);
+            }
+        }
 
         virtual void on_idle() {}
     };
@@ -34,6 +58,12 @@ namespace cfgo
                 threads_.emplace_back(worker(*this));
                 n--;
             }
+        }
+
+        static std::shared_ptr<TaskQueue> global_instance()
+        {
+            static auto g_tpool = std::make_shared<ThreadPool>(std::thread::hardware_concurrency());
+            return std::static_pointer_cast<TaskQueue>(g_tpool);
         }
 
         ThreadPool(const ThreadPool &) = delete;
@@ -56,6 +86,8 @@ namespace cfgo
             cond_.notify_one();
             return true;
         }
+
+
 
         void shutdown(bool wait) override
         {
