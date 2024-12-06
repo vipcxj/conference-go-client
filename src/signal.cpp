@@ -1,6 +1,7 @@
 #include "cfgo/signal.hpp"
 #include "cfgo/utils.hpp"
 #include "cfgo/allocate_tracer.hpp"
+#include "cfgo/measure.hpp"
 #include "boost/beast/core.hpp"
 #include "boost/beast/websocket.hpp"
 #include "boost/lexical_cast.hpp"
@@ -519,35 +520,44 @@ namespace cfgo
                 do
                 {
                     auto ack_or_msg = co_await chan_read_or_throw<WSAckOrMsg>(self->m_outgoing_ch, self->m_closer);
+                    DurationMeasure m {1};
                     if (std::holds_alternative<RawSigMsgUPtr>(ack_or_msg))
                     {
                         auto msg = std::get<RawSigMsgUPtr>(std::move(ack_or_msg));
-                        auto payload_str = msg->payload().dump();
-                        auto payload = encodeWsTextData(msg->evt(), msg->msg_id(), msg->ack() ? WS_MSG_FLAG_NEED_ACK : WS_MSG_FLAG_NO_ACK, payload_str);
-                        CFGO_SELF_TRACE("got {} msg with id {} and ack {} from outgoing ch, content: {}", msg->evt(), msg->msg_id(), msg->ack(), payload_str);
-                        co_await self->m_ws->async_write(asio::buffer(payload));
-                        CFGO_SELF_TRACE("{} msg with id {} async writed", msg->evt(), msg->msg_id());
-                        if (!msg->ack())
                         {
-                            WSAck ack_msg(nullptr, false);
-                            auto ch_iter = self->m_incoming_ack_chs.find(msg->msg_id());
-                            if (ch_iter != self->m_incoming_ack_chs.end()) {
-                                chan_must_write(ch_iter->second, std::move(ack_msg));
-                            }
-                            else
+                            ScopeDurationMeasurer sm {m};
+                            auto payload_str = msg->payload().dump();
+                            auto payload = encodeWsTextData(msg->evt(), msg->msg_id(), msg->ack() ? WS_MSG_FLAG_NEED_ACK : WS_MSG_FLAG_NO_ACK, payload_str);
+                            CFGO_SELF_TRACE("got {} msg with id {} and ack {} from outgoing ch, content: {}", msg->evt(), msg->msg_id(), msg->ack(), payload_str);
+                            co_await self->m_ws->async_write(asio::buffer(payload));
+                            CFGO_SELF_TRACE("{} msg with id {} async writed", msg->evt(), msg->msg_id());
+                            if (!msg->ack())
                             {
-                                CFGO_SELF_WARN("for {} msg with id {}, no ack ch is found", msg->evt(), msg->msg_id());
+                                WSAck ack_msg(nullptr, false);
+                                auto ch_iter = self->m_incoming_ack_chs.find(msg->msg_id());
+                                if (ch_iter != self->m_incoming_ack_chs.end()) {
+                                    chan_must_write(ch_iter->second, std::move(ack_msg));
+                                }
+                                else
+                                {
+                                    CFGO_SELF_WARN("for {} msg with id {}, no ack ch is found", msg->evt(), msg->msg_id());
+                                }
                             }
                         }
+                        CFGO_SELF_TRACE("process {} msg with id {} cost {} ms", msg->evt(), msg->msg_id(), cast_ms(m.latest()));
                     }
                     else
                     {
                         auto ack_pkg = std::get<WSAckPackage>(std::move(ack_or_msg));
-                        auto payload = encodeWsTextData("", ack_pkg.msg_id, ack_pkg.err ? WS_MSG_FLAG_IS_ACK_ERR : WS_MSG_FLAG_IS_ACK_NORMAL, ack_pkg.payload);
-                        CFGO_SELF_TRACE("got ack msg with id {} from outgoing ch, content: {}", ack_pkg.msg_id, ack_pkg.payload);
-                        co_await self->m_ws->async_write(asio::buffer(payload));
-                        CFGO_SELF_TRACE("ack msg with id {} async writed");
-                        chan_must_write(ack_pkg.done_ch);
+                        {
+                            ScopeDurationMeasurer sm {m};
+                            auto payload = encodeWsTextData("", ack_pkg.msg_id, ack_pkg.err ? WS_MSG_FLAG_IS_ACK_ERR : WS_MSG_FLAG_IS_ACK_NORMAL, ack_pkg.payload);
+                            CFGO_SELF_TRACE("got ack msg with id {} from outgoing ch, content: {}", ack_pkg.msg_id, ack_pkg.payload);
+                            co_await self->m_ws->async_write(asio::buffer(payload));
+                            CFGO_SELF_TRACE("ack msg with id {} async writed", ack_pkg.msg_id);
+                            chan_must_write(ack_pkg.done_ch);
+                        }
+                        CFGO_SELF_TRACE("process ack msg with id {} cost {} ms", ack_pkg.msg_id, cast_ms(m.latest()));
                     }
                 } while (true);
             }), asio::detached);

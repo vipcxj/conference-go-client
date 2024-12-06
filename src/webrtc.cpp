@@ -261,7 +261,7 @@ namespace cfgo
                     });
                     DurationMeasure m1{1};
                     {
-                        ScopeDurationMeasurer {m1};
+                        ScopeDurationMeasurer sm {m1};
                         box->peer.setLocalDescription(rtc::Description::Type::Offer);
                     }
                     CFGO_SELF_DEBUG("set local desc cost {} ms", cast_ms(m1.latest()));
@@ -272,7 +272,7 @@ namespace cfgo
                         auto sdp_msg = co_await chan_read_or_throw<cfgo::Signal::SdpMsgPtr>(sdp_ch, closer);
                         DurationMeasure m2{1};
                         {
-                            ScopeDurationMeasurer {m2};
+                            ScopeDurationMeasurer sm {m2};
                             box->peer.setRemoteDescription(rtc::Description(sdp_msg->sdp, sdp_msg->type));
                         }
                         CFGO_SELF_DEBUG("set remote desc cost {} ms", cast_ms(m2.latest()));
@@ -303,7 +303,7 @@ namespace cfgo
                     if (sdp->type == msg::SDP_TYPE_OFFER) {
                         DurationMeasure m1{1};
                         {
-                            ScopeDurationMeasurer {m1};
+                            ScopeDurationMeasurer sm {m1};
                             box->peer.setRemoteDescription(rtc::Description {sdp->sdp, sdp->type});
                         }
                         CFGO_SELF_DEBUG("set remote desc cost {} ms", cast_ms(m1.latest()));
@@ -324,7 +324,7 @@ namespace cfgo
                         });
                         DurationMeasure m2{1};
                         {
-                            ScopeDurationMeasurer {m2};
+                            ScopeDurationMeasurer sm {m2};
                             box->peer.setLocalDescription(rtc::Description::Type::Answer);
                         }
                         CFGO_SELF_DEBUG("set local desc cost {} ms", cast_ms(m2.latest()));
