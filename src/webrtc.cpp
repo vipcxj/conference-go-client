@@ -147,7 +147,7 @@ namespace cfgo
                     co_await peer_closer.await();
                     box->peer.close();
 
-                }, self->m_logger)), asio::detached);
+                }, self->access_logger())), asio::detached);
                 asio::co_spawn(executor, log_error(fix_async_lambda([self, cand_ch]() -> asio::awaitable<void> {
                     while (true)
                     {
@@ -158,12 +158,21 @@ namespace cfgo
                         msg->candidate.sdpMid = cand.mid();
                         co_await self->m_signal->send_candidate(self->m_closer, std::move(msg));
                     }
-                }), self->m_logger), asio::detached);
+                }), self->access_logger()), asio::detached);
                 co_return box;
             }
 
             auto access_peer_box(close_chan closer) -> asio::awaitable<PeerBoxPtr> {
                 return m_access_peer(std::move(closer));
+            }
+
+            auto access_logger() -> Logger
+            {
+                if (!m_logger)
+                {
+                    m_logger = Log::instance().create_logger(Log::Category::WEBRTC, Log::make_logger_name(Log::Category::WEBRTC, m_signal->id().substr(0, 4)));
+                }
+                return m_logger;
             }
 
             int next_sdp_msg_id() noexcept
@@ -175,14 +184,13 @@ namespace cfgo
         public:
             /**
              * The logger name is cfgo::webrtc::${signal_id[0:4]}. 
-             * Because the logger name is determined when constructed, so signal id should be determined before it.
-             * signal->connect(closer, socket_id) may changed the id of the signal. So signal.connect should be called before webrtc created.
+             * so if signal change its id, m_logger should change as well.
              */
             Webrtc(SignalPtr signal, const cfgo::Configuration & conf):
                 m_closer(signal->get_notify_closer()),
                 m_signal(signal), 
                 m_conf(conf),
-                m_logger(Log::instance().create_logger(Log::Category::WEBRTC, Log::make_logger_name(Log::Category::WEBRTC, signal->id().substr(0, 4)))),
+                m_logger(nullptr),
                 m_access_peer([this](auto closer) {
                     return _access_peer_box(std::move(closer));
                 }, false)
@@ -340,7 +348,7 @@ namespace cfgo
             closer = closer.create_child();
             close_guard cg {closer};
             auto self = shared_from_this();
-            self->m_logger->debug("subscribing...");
+            self->access_logger()->debug("subscribing...");
             auto sub_req_msg = allocate_tracers::make_unique<msg::SubscribeMessage>();
             sub_req_msg->op = msg::SubscribeOp::ADD;
             sub_req_msg->reqTypes = std::move(req_types);
