@@ -330,8 +330,8 @@ namespace cfgo
             default:
                 return std::nullopt;
             }
-            char str[7];
-            snprintf(str, 7u, "%s%02x", profile_idc_iop_string,
+            char str[13];
+            snprintf(str, 13u, "%s%02x", profile_idc_iop_string,
                      static_cast<unsigned>(profile_level_id.level));
             return {str};
         }

@@ -1,4 +1,5 @@
 #include "cfgo/async.hpp"
+#include "cfgo/async_task.hpp"
 #include "cfgo/defer.hpp"
 #include "cfgo/utils.hpp"
 #include "cfgo/log.hpp"
@@ -240,9 +241,7 @@ namespace cfgo
 
             ~CloseSignalState() noexcept;
 
-            auto timer_task() -> asio::awaitable<void>;
-
-            void init_timer(asio::execution::executor auto executor);
+            void init_timer(const asio::execution::executor auto & executor);
 
             auto get_waiter() -> UniqueWaiter;
 
@@ -353,15 +352,45 @@ namespace cfgo
             auto after_close_1(std::function<void()> cb, close_chan closer) -> asio::awaitable<void>
             {
                 auto self = shared_from_this();
-                auto executor = co_await asio::this_coro::executor;
-                after_close_1(executor, std::move(cb), std::move(closer));
+                if (m_closed)
+                {
+                    cb();
+                    co_return;
+                }
+                if (!closer.is_closed())
+                {
+                    co_await async_submit_async_task(fix_async_lambda([self, cb = std::move(cb), closer = std::move(closer)]() -> asio::awaitable<void> {
+                        if (auto waiter = self->get_waiter())
+                        {
+                            if (co_await chan_read<void>(*waiter, closer))
+                            {
+                                cb();
+                            }
+                        }
+                    }));
+                }
             }
 
             auto after_close_2(std::function<asio::awaitable<void>()> cb, close_chan closer) -> asio::awaitable<void>
             {
                 auto self = shared_from_this();
-                auto executor = co_await asio::this_coro::executor;
-                after_close_2(executor, std::move(cb), std::move(closer));
+                if (m_closed)
+                {
+                    co_await async_submit_async_task(std::move(cb));
+                    co_return;
+                }
+                if (!closer.is_closed())
+                {
+                    co_await async_submit_async_task(fix_async_lambda([self = this->shared_from_this(), cb = std::move(cb), closer = std::move(closer)]() -> asio::awaitable<void> {
+                        if (auto waiter = self->get_waiter())
+                        {
+                            if (co_await chan_read<void>(*waiter, closer))
+                            {
+                                co_await cb();
+                            }
+                        }
+                    }));
+                }
             }
         };
 
@@ -427,25 +456,26 @@ namespace cfgo
             #endif
         }
 
-        auto CloseSignalState::timer_task() -> asio::awaitable<void>
+        void timer_task(const boost::system::error_code & ec, std::weak_ptr<CloseSignalState> weak_self)
         {
-            co_await m_timer->async_wait(asio::use_awaitable);
-            bool cancelled = false;
+            if (ec)
             {
-                std::lock_guard lock(m_mutex);
-                if (m_timeout == duration_t {0})
+                return;
+            }
+            if (auto self = weak_self.lock())
+            {
                 {
-                    cancelled = true;
+                    std::lock_guard lock(self->m_mutex);
+                    if (self->m_timeout == duration_t {0})
+                    {
+                        return;
+                    }
                 }
+                self->close(true, self->m_timeout_reason, self->m_timeout_src_loc);
             }
-            if (cancelled)
-            {
-                co_return;
-            }
-            close(true, m_timeout_reason, m_timeout_src_loc);
         }
 
-        void CloseSignalState::init_timer(asio::execution::executor auto executor)
+        void CloseSignalState::init_timer(const asio::execution::executor auto & executor)
         {
             if (m_closed || m_timer)
             {
@@ -461,9 +491,7 @@ namespace cfgo
                 if (m_timeout != duration_t {0})
                 {
                     m_timer->expires_after(m_timeout);
-                    asio::co_spawn(executor, fix_async_lambda([self = shared_from_this()]() -> asio::awaitable<void> {
-                        co_await self->timer_task();
-                    }), asio::detached);
+                    m_timer->async_wait(std::bind(&timer_task, std::placeholders::_1, weak_from_this()));
                 }
             }
             if (auto parent = m_parent.lock())
@@ -678,9 +706,7 @@ namespace cfgo
                 else if (old_timeout == duration_t {0})
                 {
                     m_timer->expires_after(dur);
-                    asio::co_spawn(m_timer->get_executor(), fix_async_lambda([self = shared_from_this()]() -> asio::awaitable<void> {
-                        co_await self->timer_task();
-                    }), asio::detached);
+                    m_timer->async_wait(std::bind(&timer_task, std::placeholders::_1, weak_from_this()));
                 }
                 else
                 {

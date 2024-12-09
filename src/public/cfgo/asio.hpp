@@ -30,6 +30,12 @@ namespace cfgo
             return exec_ctx_ptr->get_executor();
         };
     }
+
+    template<typename T>
+    concept asio_executor = asio::is_executor<T>::value || asio::execution::is_executor<T>::value;
+
+    template<typename T>
+    concept asio_execution_context = std::convertible_to<T&, asio::execution_context&>;
 } // namespace cfgo
 
 

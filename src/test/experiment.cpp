@@ -1,4 +1,5 @@
 #include "cfgo/async.hpp"
+#include "cfgo/async_task.hpp"
 #include "cfgo/async_locker.hpp"
 #include "cfgo/measure.hpp"
 #include "cfgo/log.hpp"
@@ -75,6 +76,11 @@ void do_async(std::function<asio::awaitable<void>()> func, bool wait = false, st
     }
 }
 
+auto empty_async_task() -> asio::awaitable<void>
+{
+    co_return;
+}
+
 // TEST(Closer, ParentAndChildrenCloseTogether) {
 //     using namespace cfgo;
 //     std::random_device rd {};
@@ -117,11 +123,100 @@ struct TestObj
 
 TEST(MediaSource, TestIt)
 {
-    using namespace cfgo::video;
-    asio::io_context io_ctx {};
-    cfgo::close_chan closer {};
-    cfgo::close_guard {closer};
-    auto media_source = make_media_source(io_ctx.get_executor(), media_source_type_t::DEVICE, "", media_source_mode_t::AUTO, closer);
+    do_async([]() -> asio::awaitable<void> {
+        using namespace cfgo;
+        using namespace std::chrono;
+        using namespace std::chrono_literals;
+        asiochan::channel<int> ch;
+        close_chan closer;
+        close_guard cg {closer};
+        auto executor = co_await asio::this_coro::executor;
+        for (int i = 0; i < 100; i++)
+        {
+            auto timer = std::make_shared<asio::steady_timer>(executor);
+            timer->expires_after(300ms);
+            auto start = high_resolution_clock::now();
+            timer->async_wait([timer](boost::system::error_code ec) {
+                if (ec)
+                {
+                    return;
+                }
+            });
+            auto cost = high_resolution_clock::now() - start;
+            CFGO_INFO("timer task {} scheduled, cost {} ms.", i, duration_cast<microseconds>(cost).count() * 1.0 / 1000);
+        }
+        for (int i = 0; i < 100; i++)
+        {
+            {
+                auto start = high_resolution_clock::now();
+                co_await async_submit_async_task([i, closer, ch]() -> asio::awaitable<void> {
+                    co_await empty_async_task();
+                    do
+                    {
+                        auto j = i;
+                        auto timeouter = closer.create_child();
+                        close_guard cg {timeouter};
+                        {
+                            auto start = high_resolution_clock::now();
+                            timeouter.set_timeout(30ms);
+                            auto cost = high_resolution_clock::now() - start;
+                            CFGO_INFO("set {} timeout for writer cost {} ms.", i, duration_cast<microseconds>(cost).count() * 1.0 / 1000);
+                        }
+                        auto start = high_resolution_clock::now();
+                        if (!co_await chan_write<int>(ch, std::move(j), timeouter))
+                        {
+                            auto cost = high_resolution_clock::now() - start;
+                            CFGO_INFO("write {} timeout, cost {} ms.", i, duration_cast<microseconds>(cost).count() * 1.0 / 1000);
+                            if (closer.is_closed())
+                            {
+                                CFGO_INFO("{} break", i);
+                                break;
+                            }
+                        }
+                    } while (true);
+                });
+                auto cost = high_resolution_clock::now() - start;
+                CFGO_INFO("write task {} scheduled, cost {} ms.", i, duration_cast<microseconds>(cost).count() * 1.0 / 1000);
+            }
+            {
+                auto start = high_resolution_clock::now();
+                co_await async_submit_async_task([i, closer, ch]() -> asio::awaitable<void> {
+                    co_await empty_async_task();
+                    do
+                    {
+                        auto timeouter = closer.create_child();
+                        close_guard cg {timeouter};
+                        {
+                            auto start = high_resolution_clock::now();
+                            timeouter.set_timeout(30ms);
+                            auto cost = high_resolution_clock::now() - start;
+                            CFGO_INFO("set {} timeout for reader cost {} ms.", i, duration_cast<microseconds>(cost).count() * 1.0 / 1000);
+                        }
+                        auto start = high_resolution_clock::now();
+                        if (!co_await chan_read<int>(ch, timeouter))
+                        {
+                            auto cost = high_resolution_clock::now() - start;
+                            CFGO_INFO("read {} timeout, cost {} ms.", i, duration_cast<microseconds>(cost).count() * 1.0 / 1000);
+                            if (closer.is_closed())
+                            {
+                                CFGO_INFO("{} break", i);
+                                break;
+                            }
+                        }
+                        else
+                        {
+                            auto cost = high_resolution_clock::now() - start;
+                            // CFGO_INFO("read {} successed, cost {} ms", i, duration_cast<microseconds>(cost).count() * 1.0 / 1000);
+                        }
+                    } while (true);
+                });
+                auto cost = high_resolution_clock::now() - start;
+                CFGO_INFO("read task {} scheduled, cost {} ms.", i, duration_cast<microseconds>(cost).count() * 1.0 / 1000);
+            }
+        }
+        CFGO_INFO("scheduled.");
+        co_await closer.await();
+    }, true); 
 }
 
 // TEST(AllocateTracer, Tracer)

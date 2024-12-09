@@ -52,7 +52,7 @@ TEST(Chan, CloseChanNoLeak) {
             EXPECT_EQ(1, closer.ref_count());
             closer.set_timeout(std::chrono::milliseconds { 20 });
             co_await closer.init_timer();
-            EXPECT_GT(closer.ref_count(), 1);
+            EXPECT_EQ(closer.ref_count(), 1);
             co_await closer.await();
             EXPECT_TRUE(closer.is_closed());
             EXPECT_EQ(1, closer.ref_count());
@@ -66,7 +66,7 @@ TEST(Chan, CloseChanNoLeak) {
             closer.set_timeout(std::chrono::milliseconds { 30 });
             chan_must_write(ch);
             co_await chan_read<void>(ch, closer);
-            EXPECT_GT(closer.ref_count(), 1);
+            EXPECT_EQ(closer.ref_count(), 1);
             EXPECT_TRUE(!closer.is_closed());
         }
         co_await wait_timeout(std::chrono::milliseconds { 100 });

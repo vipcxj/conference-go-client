@@ -43,6 +43,7 @@ set(MY_PUBLIC_HEADERS
     "${H_PUBLIC_PATH}/allocate_tracer.hpp"
     "${H_PUBLIC_PATH}/asio.hpp"
     "${H_PUBLIC_PATH}/async_locker.hpp"
+    "${H_PUBLIC_PATH}/async_task.hpp"
     "${H_PUBLIC_PATH}/async.hpp"
     "${H_PUBLIC_PATH}/black_magic.hpp"
     "${H_PUBLIC_PATH}/block_queue.hpp"

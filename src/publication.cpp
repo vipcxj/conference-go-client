@@ -3,6 +3,7 @@
 #include "cfgo/str_helper.hpp"
 #include "cfgo/video/media_profile.hpp"
 #include "cfgo/video/h264_profile_level_id.hpp"
+#include "cfgo/async_task.hpp"
 #include <unordered_map>
 #include <unordered_set>
 #include <algorithm>
@@ -349,7 +350,7 @@ namespace cfgo
                         auto key = prepare_track(track.track());
                         auto receiver = self->m_src->acquire_receiver(i, key);
                         self->m_receivers.at(i) = receiver;
-                        asio::co_spawn(executor, log_error([receiver, track, self]() -> asio::awaitable<void> {
+                        co_await async_submit_async_task(log_error([receiver, track, self]() -> asio::awaitable<void> {
                             try
                             {
                                 if (!co_await track.await_open_or_close(self->m_closer))
@@ -383,7 +384,7 @@ namespace cfgo
                                 }
                                 CFGO_ERROR(what());
                             }
-                        }), asio::detached);
+                        }));
                     }
                     ++i;
                 }

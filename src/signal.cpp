@@ -1,16 +1,17 @@
-#include "cfgo/signal.hpp"
-#include "cfgo/utils.hpp"
-#include "cfgo/allocate_tracer.hpp"
-#include "cfgo/measure.hpp"
 #include "boost/beast/core.hpp"
 #include "boost/beast/websocket.hpp"
 #include "boost/lexical_cast.hpp"
 #include "boost/uuid/uuid_io.hpp"
 #include "boost/uuid/uuid_generators.hpp"
 #include "boost/url.hpp"
+#include "cfgo/signal.hpp"
+#include "cfgo/utils.hpp"
+#include "cfgo/allocate_tracer.hpp"
+#include "cfgo/measure.hpp"
 #include "cfgo/fmt.hpp"
 #include "cfgo/json_fmt.hpp"
 #include "cfgo/async.hpp"
+#include "cfgo/async_task.hpp"
 #include "cfgo/defer.hpp"
 
 #include <deque>
@@ -456,8 +457,7 @@ namespace cfgo
 
         auto WebsocketRawSignal::run() -> asio::awaitable<void> {
             auto self = shared_from_this();
-            auto executor = co_await asio::this_coro::executor;
-            asio::co_spawn(executor, self->_wrap_background_task([weak_self = weak_from_this()]() -> asio::awaitable<void> {
+            co_await async_submit_async_task(self->_wrap_background_task([weak_self = weak_from_this()]() -> asio::awaitable<void> {
                 if (auto self = weak_self.lock())
                 {
                     co_await self->m_closer.await();
@@ -475,8 +475,8 @@ namespace cfgo
                     self->m_ws->next_layer().close();
                 }
                 co_return;
-            }), asio::detached);
-            asio::co_spawn(executor, self->_wrap_background_task([self]() -> asio::awaitable<void> {
+            }));
+            co_await async_submit_async_task(self->_wrap_background_task([self]() -> asio::awaitable<void> {
                 auto executor = co_await asio::this_coro::executor;
                 do {
                     beast::flat_buffer buffer;
@@ -505,18 +505,18 @@ namespace cfgo
                         auto acker = make_acker(self->weak_from_this(), flag == WS_MSG_FLAG_NEED_ACK, msg_id);
                         self->m_msg_cbs.start_loop();
                         for(auto it = self->m_msg_cbs->begin(); it != self->m_msg_cbs->end(); ++it) {
-                            asio::co_spawn(executor, fix_async_lambda(log_error([self, cb_id = it->first, msg, acker]() -> asio::awaitable<void> {
+                            co_await async_submit_async_task(fix_async_lambda(log_error([self, cb_id = it->first, msg, acker]() -> asio::awaitable<void> {
                                 auto cb = self->m_msg_cbs->at(cb_id);
                                 if(!co_await cb(msg, acker)) {
                                     self->m_msg_cbs.lazy_remove(cb_id);
                                 }
-                            }, self->m_logger)), asio::detached);
+                            }, self->m_logger)));
                         }
                         self->m_msg_cbs.complete_loop();
                     }
                 } while (true);
-            }), asio::detached);
-            asio::co_spawn(executor, self->_wrap_background_task([self]() -> asio::awaitable<void> {
+            }));
+            co_await async_submit_async_task(self->_wrap_background_task([self]() -> asio::awaitable<void> {
                 do
                 {
                     auto ack_or_msg = co_await chan_read_or_throw<WSAckOrMsg>(self->m_outgoing_ch, self->m_closer);
@@ -560,7 +560,7 @@ namespace cfgo
                         CFGO_SELF_TRACE("process ack msg with id {} cost {} ms", ack_pkg.msg_id, cast_ms(m.latest()));
                     }
                 } while (true);
-            }), asio::detached);
+            }));
         }
 
         auto WebsocketRawSignal::send_msg(close_chan closer, RawSigMsgUPtr msg) -> asio::awaitable<nlohmann::json> {
@@ -1023,13 +1023,13 @@ namespace cfgo
                         auto executor = co_await asio::this_coro::executor;
                         self->m_custom_msg_cbs.start_loop();
                         for (auto iter = self->m_custom_msg_cbs->begin(); iter != self->m_custom_msg_cbs->end(); ++iter) {
-                            asio::co_spawn(executor, fix_async_lambda(log_error([self, cb_id = iter->first, s_msg, s_acker]() -> asio::awaitable<void> {
+                            co_await async_submit_async_task(fix_async_lambda(log_error([self, cb_id = iter->first, s_msg, s_acker]() -> asio::awaitable<void> {
                                 auto cb = self->m_custom_msg_cbs->at(cb_id);
                                 if (!co_await cb(s_msg, s_acker))
                                 {
                                     self->m_custom_msg_cbs.lazy_remove(cb_id);
                                 }
-                            }, self->m_logger)), asio::detached);
+                            }, self->m_logger)));
                         }
                         self->m_custom_msg_cbs.complete_loop();
                     }
@@ -1058,9 +1058,6 @@ namespace cfgo
             self->m_user_info = co_await chan_read_or_throw<UserInfoPtr>(ready_ch, closer);
             self->m_rooms = std::unordered_set<std::string>(self->m_user_info->rooms.begin(), self->m_user_info->rooms.end());
             self->m_user_info->rooms.clear();
-            // asio::co_spawn(executor, fix_async_lambda(log_error([]() -> asio::awaitable<void> {
-
-            // }, self->m_logger)), asio::detached);
         }
 
         auto Signal::send_candidate(close_chan closer, CandMsgPtr msg) -> asio::awaitable<void> {
@@ -1254,8 +1251,7 @@ namespace cfgo
             closer.depend_on(self->m_raw_signal->get_closer());
             co_await self->connect(closer);
 
-            auto executor = co_await asio::this_coro::executor;
-            asio::co_spawn(executor, fix_async_lambda(log_error([
+            co_await async_submit_async_task(fix_async_lambda(log_error([
                 self = std::move(self),
                 closer = std::move(closer),
                 room = std::move(room),
@@ -1415,7 +1411,7 @@ namespace cfgo
                         }
                     } while (true);
                 }
-            })), asio::detached);
+            })));
         }
     } // namespace impl
 

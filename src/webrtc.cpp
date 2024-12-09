@@ -4,7 +4,7 @@
 #include "cfgo/defer.hpp"
 #include "cfgo/allocate_tracer.hpp"
 #include "cfgo/measure.hpp"
-#include "cfgo/task_pool.hpp"
+#include "cfgo/async_task.hpp"
 
 #include <unordered_set>
 
@@ -139,12 +139,11 @@ namespace cfgo
                     chan_must_write(box->track_ch, track);
                 });
                 auto executor = co_await asio::this_coro::executor;
-                asio::co_spawn(executor, fix_async_lambda(log_error([self, peer_closer, box]() -> asio::awaitable<void> {
+                co_await async_submit_async_task(fix_async_lambda(log_error([self, peer_closer, box]() -> asio::awaitable<void> {
                     co_await peer_closer.await();
                     box->peer.close();
-
-                }, self->access_logger())), asio::detached);
-                asio::co_spawn(executor, log_error(fix_async_lambda([self, cand_ch]() -> asio::awaitable<void> {
+                }, self->access_logger())));
+                co_await async_submit_async_task(log_error(fix_async_lambda([self, cand_ch]() -> asio::awaitable<void> {
                     while (true)
                     {
                         auto cand = co_await chan_read_or_throw<rtc::Candidate>(cand_ch, self->m_closer);
@@ -154,7 +153,7 @@ namespace cfgo
                         msg->candidate.sdpMid = cand.mid();
                         co_await self->m_signal->send_candidate(self->m_closer, std::move(msg));
                     }
-                }), self->access_logger()), asio::detached);
+                }), self->access_logger()));
                 co_return box;
             }
 

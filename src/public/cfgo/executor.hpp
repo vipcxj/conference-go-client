@@ -44,9 +44,6 @@ namespace cfgo
         std::shared_ptr<fun_t> fun_;
     };
 
-    template<typename T>
-    concept asio_executor = asio::is_executor<T>::value;
-
     template<asio_executor Executor>
     class wrappable_executor
     {
