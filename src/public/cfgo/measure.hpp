@@ -143,7 +143,7 @@ namespace cfgo
         }
         void run_greater_than(T v, F fun) const noexcept(noexcept(fun(dynamic_cast<const Derve &>(*this))))
         {
-            if (!m_latests.empty() && m_latests.back() > v)
+            if (!m_latests.empty() && m_latests.front() > v)
             {
                 fun(dynamic_cast<const Derve &>(*this));
             }
