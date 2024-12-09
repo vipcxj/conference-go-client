@@ -1032,12 +1032,10 @@ namespace cfgo
                             {
                                 ScopeDurationMeasurer measurer(session.m_rtp_push_measure);
                                 push_rtp_buffer(owner, buffer);
-                                session.m_rtp_push_measure.run_per_n(300, [self](const DurationMeasure & m) {
+                                session.m_rtp_push_measure.run_greater_than(std::chrono::milliseconds {3}, [self](const DurationMeasure & m) {
                                     CFGO_SELF_DEBUG(
-                                        "Push rtp data stats: max times: {}, min times: {}, latest times: {}",
-                                        m.max_vec_string(),
-                                        m.min_vec_string(),
-                                        m.latest_list_string()
+                                        "Push rtp data is slow, cost: {} ms",
+                                        cast_ms(m.latest())
                                     );
                                 });
                             }
@@ -1045,12 +1043,10 @@ namespace cfgo
                             {
                                 ScopeDurationMeasurer measurer(session.m_rtcp_push_measure);
                                 push_rtcp_buffer(owner, buffer);
-                                session.m_rtcp_push_measure.run_per_n(300, [self](const DurationMeasure & m) {
+                                session.m_rtcp_push_measure.run_greater_than(std::chrono::milliseconds {3}, [self](const DurationMeasure & m) {
                                     CFGO_SELF_DEBUG(
-                                        "Push rtcp data stats: max times: {}, min times: {}, latest times: {}",
-                                        m.max_vec_string(),
-                                        m.min_vec_string(),
-                                        m.latest_list_string()
+                                        "Push rtcp data is slow, cost: {} ms",
+                                        cast_ms(m.latest())
                                     );
                                 });
                             }

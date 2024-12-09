@@ -580,22 +580,30 @@ namespace cfgo
             DEFER({
                 m_incoming_ack_chs.erase(msg_id);
             });
-            co_await chan_write_or_throw<WSAckOrMsg>(self->m_outgoing_ch, std::move(msg), closer);
-            CFGO_SELF_TRACE("after async write {} msg with id {}", evt, msg_id);
-
-            if (m_config.ack_timeout > duration_t{0})
+            try
             {
-                closer.set_timeout(m_config.ack_timeout, std::format("ack of {} msg timeout after {} ms", evt, std::chrono::duration_cast<std::chrono::milliseconds>(m_config.ack_timeout).count()));
-            }  
-            auto && ack_msg = co_await chan_read_or_throw<WSAck>(ch, closer);
-            if (ack_msg.err()) {
-                ServerErrorObject error {};
-                nlohmann::from_json(ack_msg.payload(), error);
-                CFGO_SELF_TRACE("send {} msg failed with id {} and ack {}", evt, msg_id, ack);
-                throw ServerError(std::move(error), false);
-            } else {
-                CFGO_SELF_TRACE("send {} msg succeed with id {} and ack {}", evt, msg_id, ack);
-                co_return std::move(ack_msg).payload();
+                co_await chan_write_or_throw<WSAckOrMsg>(self->m_outgoing_ch, std::move(msg), closer);
+                CFGO_SELF_TRACE("after async write {} msg with id {}", evt, msg_id);
+
+                if (m_config.ack_timeout > duration_t{0})
+                {
+                    closer.set_timeout(m_config.ack_timeout, std::format("ack of {} msg timeout after {} ms", evt, std::chrono::duration_cast<std::chrono::milliseconds>(m_config.ack_timeout).count()));
+                }  
+                auto && ack_msg = co_await chan_read_or_throw<WSAck>(ch, closer);
+                if (ack_msg.err()) {
+                    ServerErrorObject error {};
+                    nlohmann::from_json(ack_msg.payload(), error);
+                    CFGO_SELF_TRACE("send {} msg failed with id {} and ack {}", evt, msg_id, ack);
+                    throw ServerError(std::move(error), false);
+                } else {
+                    CFGO_SELF_TRACE("send {} msg succeed with id {} and ack {}", evt, msg_id, ack);
+                    co_return std::move(ack_msg).payload();
+                }
+            }
+            catch(...)
+            {
+                CFGO_SELF_WARN("send {} msg failed with id {} and ack {}, reason: {}", evt, msg_id, ack, what());
+                throw;
             }
         }
 
